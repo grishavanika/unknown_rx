@@ -518,17 +518,54 @@ namespace observer
     }
 } // namespace observer
 
+namespace detail::operator_tag
+{
+    template<typename>
+    struct AlwaysFalse : std::false_type {};
+
+    struct Filter
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .filter() operator implementation. "
+                  "Missing include ?");
+        };
+    };
+} // namespace detail
+
+inline const struct make_operator_fn
+{
+    template<typename Tag, typename... Args>
+    constexpr decltype(auto) operator()(Tag&& tag, Args&&... args) const
+        noexcept(noexcept(tag_invoke(*this, std::forward<Tag>(tag), std::forward<Args>(args)...)))
+            requires tag_invocable<make_operator_fn, Tag, Args...>
+    {
+        return tag_invoke(*this, std::forward<Tag>(tag), std::forward<Args>(args)...);
+    }
+
+    template<typename Tag, typename... Args>
+    constexpr decltype(auto) operator()(Tag, Args&&...) const noexcept
+        requires (not tag_invocable<make_operator_fn, Tag, Args...>)
+    {
+        using NotFound = Tag::template NotFound<int/*any placeholder type*/>;
+        return NotFound();
+    }
+} make_operator;
+
 template<typename KnownObserver>
     requires ValueObserverOf<KnownObserver, int>
 struct StaticObservable
 {
+    using value_type = int;
     [[no_unique_address]] KnownObserver _known_observer;
 
     template<typename Observer>
-        requires ValueObserverOf<Observer, int>
+        requires ValueObserverOf<Observer, value_type>
     void subscribe(Observer&& observer)
     {
-        auto do_next = observer::make([&](int new_value)
+        auto do_next = observer::make([&](value_type new_value)
         {
             on_next(_known_observer, new_value);
             on_next(observer, new_value);
@@ -548,7 +585,21 @@ struct StaticObservable
             on_completed(std::forward<Observer>(observer));
         }
     }
+
+    template<typename F>
+    auto filter(F&& f)
+    {
+        return make_operator(detail::operator_tag::Filter(), *this, std::forward<F>(f));
+    }
 };
+
+template<typename Observable, typename F>
+auto tag_invoke(tag_t<make_operator>, detail::operator_tag::Filter
+    , Observable& source, F&& filter)
+        requires std::predicate<F, typename Observable::value_type>
+{
+    return 0;
+}
 
 #include <cstdio>
 
@@ -568,4 +619,6 @@ int main()
     {
         std::printf("Observer: %i.\n", value);
     });
+
+    observable.filter([](int) { return true; });
 }
