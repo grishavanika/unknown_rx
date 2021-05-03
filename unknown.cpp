@@ -75,7 +75,7 @@ inline const struct on_next_fn
 on_next{};
 
 #if (ZZZ_TEST())
-namespace debug_tests
+namespace debug_tests::on_next_
 {
     struct WithOnly_OnNext
     {
@@ -131,7 +131,177 @@ namespace debug_tests
         constexpr int operator()(int) const { return -1; }
     };
     static_assert(on_next(WithAll(), 4) == 4);
-} // debug_tests
+
+    static_assert(is_tag_invocable_v<tag_t<on_next>, WithAll, int>);
+    static_assert(not is_tag_invocable_v<tag_t<on_next>, void, int>);
+} // namespace debug_tests
+#endif
+
+inline const struct on_completed_fn
+{
+    template<typename S>
+    constexpr decltype(auto) resolve0_(S&& s, priority_tag<1>) const
+        noexcept(noexcept(tag_invoke(*this, std::forward<S>(s))))
+            requires tag_invocable<on_completed_fn, S>
+    {
+        return tag_invoke(*this, std::forward<S>(s));
+    }
+    template<typename S>
+    constexpr auto resolve0_(S&& s, priority_tag<0>) const
+        noexcept(noexcept(std::forward<S>(s).on_completed()))
+            -> decltype(std::forward<S>(s).on_completed())
+    {
+        return std::forward<S>(s).on_completed();
+    }
+    template<typename S>
+    constexpr auto operator()(S&& s) const
+        noexcept(noexcept(resolve0_(std::forward<S>(s), priority_tag<1>())))
+            -> decltype(resolve0_(std::forward<S>(s), priority_tag<1>()))
+    {
+        return resolve0_(std::forward<S>(s), priority_tag<1>());
+    }
+}
+on_completed{};
+
+#if (ZZZ_TEST())
+namespace debug_tests::on_completed_
+{
+    struct With_Completed
+    {
+        constexpr int on_completed() const { return 1; }
+    };
+    static_assert(on_completed(With_Completed()) == 1);
+
+    struct WithOnly_TagInvoke
+    {
+        friend constexpr int tag_invoke(tag_t<::on_completed>
+            , WithOnly_TagInvoke)
+        { return 2; }
+    };
+    static_assert(on_completed(WithOnly_TagInvoke()) == 2);
+
+    struct WithAll
+    {
+        friend constexpr int tag_invoke(tag_t<::on_completed>
+            , WithAll)
+        { return 3; }
+        constexpr int on_completed() const { return -1; }
+    };
+    static_assert(on_completed(WithAll()) == 3);
+} // namespace debug_tests
+#endif
+
+inline const struct on_error
+{
+    // on_error() with single argument.
+    template<typename S, typename E>
+    constexpr decltype(auto) resolve1_(S&& s, E&& e, priority_tag<1>) const
+        noexcept(noexcept(tag_invoke(*this, std::forward<S>(s), std::forward<E>(e))))
+            requires tag_invocable<on_error, S, E>
+    {
+        return tag_invoke(*this, std::forward<S>(s), std::forward<E>(e));
+    }
+    template<typename S, typename E>
+    constexpr auto resolve1_(S&& s, E&& e, priority_tag<0>) const
+        noexcept(noexcept(std::forward<S>(s).on_error(std::forward<E>(e))))
+            -> decltype(std::forward<S>(s).on_error(std::forward<E>(e)))
+    {
+        return std::forward<S>(s).on_error(std::forward<E>(e));
+    }
+    template<typename S, typename E>
+    constexpr auto operator()(S&& s, E&& e) const
+        noexcept(noexcept(resolve1_(std::forward<S>(s), std::forward<E>(e), priority_tag<1>())))
+            -> decltype(resolve1_(std::forward<S>(s), std::forward<E>(e), priority_tag<1>()))
+    {
+        return resolve1_(std::forward<S>(s), std::forward<E>(e), priority_tag<1>());
+    }
+    // on_error() with no argument.
+    template<typename S>
+    constexpr decltype(auto) resolve0_(S&& s, priority_tag<1>) const
+        noexcept(noexcept(tag_invoke(*this, std::forward<S>(s))))
+            requires tag_invocable<on_error, S>
+    {
+        return tag_invoke(*this, std::forward<S>(s));
+    }
+    template<typename S>
+    constexpr auto resolve0_(S&& s, priority_tag<0>) const
+        noexcept(noexcept(std::forward<S>(s).on_error()))
+            -> decltype(std::forward<S>(s).on_error())
+    {
+        return std::forward<S>(s).on_error();
+    }
+    template<typename S>
+    constexpr auto operator()(S&& s) const
+        noexcept(noexcept(resolve0_(std::forward<S>(s), priority_tag<1>())))
+            -> decltype(resolve0_(std::forward<S>(s), priority_tag<1>()))
+    {
+        return resolve0_(std::forward<S>(s), priority_tag<1>());
+    }
+}
+on_error{};
+
+#if (ZZZ_TEST())
+namespace debug_tests::on_error_
+{
+    struct WithOnly_OnError
+    {
+        constexpr int on_error(int v) const { return v; }
+    };
+    static_assert(on_error(WithOnly_OnError(), 1) == 1);
+
+    struct WithOnly_FunctionCall
+    {
+        constexpr int operator()(int v) const { return v; }
+    };
+    static_assert(not is_tag_invocable_v<tag_t<on_error>, WithOnly_FunctionCall, int>);
+
+    struct WithOnly_TagInvoke
+    {
+        friend constexpr int tag_invoke(tag_t<::on_error>
+            , WithOnly_TagInvoke, int v)
+        { return v; }
+    };
+    static_assert(on_error(WithOnly_TagInvoke(), 3) == 3);
+
+    struct WithCombination
+    {
+        friend constexpr int tag_invoke(tag_t<::on_error>
+            , WithCombination, int v)
+        { return v; }
+        constexpr int on_error(int v) const { return -1; }
+    };
+    static_assert(on_error(WithCombination(), 1) == 1);
+
+    // void case.
+    struct Void_WithOnly_OnError
+    {
+        constexpr int on_error() const { return 2; }
+    };
+    static_assert(on_error(Void_WithOnly_OnError()) == 2);
+
+    struct Void_WithOnly_FunctionCall
+    {
+        constexpr int operator()() const { return -1; }
+    };
+    static_assert(not is_tag_invocable_v<tag_t<on_error>, Void_WithOnly_FunctionCall>);
+
+    struct Void_WithOnly_TagInvoke
+    {
+        friend constexpr int tag_invoke(tag_t<::on_error>
+            , Void_WithOnly_TagInvoke)
+        { return 2; }
+    };
+    static_assert(on_error(Void_WithOnly_TagInvoke()) == 2);
+
+    struct Void_WithCombination
+    {
+        friend constexpr int tag_invoke(tag_t<::on_error>
+            , Void_WithCombination)
+        { return 2; }
+        constexpr int on_error(int v) const { return -1; }
+    };
+    static_assert(on_error(Void_WithCombination()) == 2);
+} // namespace debug_tests
 #endif
 
 int main()
