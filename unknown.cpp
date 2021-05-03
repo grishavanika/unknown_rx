@@ -15,7 +15,9 @@ constexpr bool is_cpo_invocable_v = detail::CPOInvocable<CPO, Args...>;
 #include <concepts>
 #include <functional>
 
-#define ZZZ_TEST() 1
+#include <cassert>
+
+#define ZZZ_TEST() 0
 
 template<unsigned I>
 struct priority_tag
@@ -593,12 +595,68 @@ struct StaticObservable
     }
 };
 
-template<typename Observable, typename F>
-auto tag_invoke(tag_t<make_operator>, detail::operator_tag::Filter
-    , Observable& source, F&& filter)
-        requires std::predicate<F, typename Observable::value_type>
+namespace detail
 {
-    return 0;
+    template<typename SourceObservable, typename Filter>
+    struct FilterObservable
+    {
+        using value_type = typename SourceObservable::value_type;
+        SourceObservable* _source = nullptr;
+        Filter _filter;
+
+        template<typename Observer>
+        struct ProxyObserver
+        {
+            FilterObservable* _self = nullptr;
+            Observer _destination;
+
+            template<typename Value>
+            void on_next(Value&& v)
+            {
+                if (_self->_filter(v))
+                {
+                    (void)::on_next(_destination, std::forward<Value>(v));
+                }
+            }
+
+            template<typename Error>
+            void on_error(Error&& error)
+            {
+                if constexpr (is_cpo_invocable_v<tag_t<::on_error>, Observer, Error>)
+                {
+                    (void)::on_error(_destination, std::forward<Error>(error));
+                }
+            }
+
+            void on_completed()
+            {
+                if constexpr (is_cpo_invocable_v<tag_t<::on_completed>, Observer>)
+                {
+                    (void)::on_completed(_destination);
+                }
+            }
+        };
+
+        template<typename Observer>
+            requires ValueObserverOf<Observer, value_type>
+        decltype(auto) subscribe(Observer&& observer)
+        {
+            assert(_source);
+            using Observer_ = std::remove_cvref_t<Observer>;
+            using Proxy     = ProxyObserver<Observer_>;
+            return _source->subscribe(Proxy(this, std::forward<Observer>(observer)));
+        }
+    };
+} // namespace detail
+
+template<typename SourceObservable, typename F>
+auto tag_invoke(tag_t<make_operator>, detail::operator_tag::Filter
+    , SourceObservable& source, F&& filter)
+        requires std::predicate<F, typename SourceObservable::value_type>
+{
+    using F_ = std::remove_cvref_t<F>;
+    using O  = detail::FilterObservable<SourceObservable, F_>;
+    return O(&source, std::forward<F>(filter));
 }
 
 #include <cstdio>
@@ -607,18 +665,23 @@ int main()
 {
     auto o1 = observer::make([](int value)
     {
-        std::printf("Known Observer: %i.\n", value);
+        // std::printf("Known Observer: %i.\n", value);
     }
         , []()
     {
-        std::printf("Known Observer: Completed.\n");
+        // std::printf("Known Observer: Completed.\n");
     });
 
     StaticObservable<decltype(o1)> observable(std::move(o1));
     observable.subscribe([](int value)
     {
-        std::printf("Observer: %i.\n", value);
+        // std::printf("Observer: %i.\n", value);
     });
 
-    observable.filter([](int) { return true; });
+    observable
+        .filter([](int v) { return ((v % 2) == 0); })
+        .subscribe([](int value)
+    {
+        std::printf("Filtered even numbers: %i.\n", value);
+    });
 }
