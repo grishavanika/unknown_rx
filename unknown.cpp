@@ -1,5 +1,17 @@
 #include "tag_invoke.hpp"
 
+namespace detail
+{
+    template<typename CPO, typename... Args>
+    concept CPOInvocable = requires(CPO& cpo, Args&&... args)
+    {
+        cpo(std::forward<Args>(args)...);
+    };
+} // namespace detail
+
+template<typename CPO, typename... Args>
+constexpr bool is_cpo_invocable_v = detail::CPOInvocable<CPO, Args...>;
+
 #include <concepts>
 #include <functional>
 
@@ -132,8 +144,8 @@ namespace debug_tests::on_next_
     };
     static_assert(on_next(WithAll(), 4) == 4);
 
-    static_assert(is_tag_invocable_v<tag_t<on_next>, WithAll, int>);
-    static_assert(not is_tag_invocable_v<tag_t<on_next>, void, int>);
+    static_assert(is_cpo_invocable_v<tag_t<on_next>, WithAll, int>);
+    static_assert(not is_cpo_invocable_v<tag_t<on_next>, void, int>);
 } // namespace debug_tests
 #endif
 
@@ -253,7 +265,7 @@ namespace debug_tests::on_error_
     {
         constexpr int operator()(int v) const { return v; }
     };
-    static_assert(not is_tag_invocable_v<tag_t<on_error>, WithOnly_FunctionCall, int>);
+    static_assert(not is_cpo_invocable_v<tag_t<on_error>, WithOnly_FunctionCall, int>);
 
     struct WithOnly_TagInvoke
     {
@@ -283,7 +295,7 @@ namespace debug_tests::on_error_
     {
         constexpr int operator()() const { return -1; }
     };
-    static_assert(not is_tag_invocable_v<tag_t<on_error>, Void_WithOnly_FunctionCall>);
+    static_assert(not is_cpo_invocable_v<tag_t<on_error>, Void_WithOnly_FunctionCall>);
 
     struct Void_WithOnly_TagInvoke
     {
@@ -301,6 +313,87 @@ namespace debug_tests::on_error_
         constexpr int on_error(int v) const { return -1; }
     };
     static_assert(on_error(Void_WithCombination()) == 2);
+} // namespace debug_tests
+#endif
+
+namespace detail
+{
+    template<typename Observer, typename Value>
+    struct OnNext_Invocable
+    {
+        using Evaluate = std::bool_constant<
+            is_cpo_invocable_v<tag_t<on_next>, Observer, Value>>;
+    };
+    template<typename Observer>
+    struct OnNext_Invocable<Observer, void>
+    {
+        using Evaluate = std::bool_constant<
+            is_cpo_invocable_v<tag_t<on_next>, Observer>>;
+    };
+
+    template<typename Observer, typename Value>
+    struct OnError_Invocable
+    {
+        using Evaluate = std::bool_constant<
+            is_cpo_invocable_v<tag_t<on_error>, Observer, Value>>;
+    };
+    template<typename Observer>
+    struct OnError_Invocable<Observer, void>
+    {
+        using Evaluate = std::bool_constant<
+            is_cpo_invocable_v<tag_t<on_error>, Observer>>;
+    };
+} // namespace detail
+
+// Simplest possible observer with only on_next() callback.
+// No error handling or on_complete() detection.
+template<typename Observer, typename Value>
+concept ValueObserverOf
+    = detail::OnNext_Invocable<Observer, Value>::Evaluate::value;
+
+// Full/strict definition of observer:
+// - on_next(Value)
+// - on_error(Error)
+// - on_completed()
+template<typename Observer, typename Value, typename Error>
+concept StrictObserverOf
+    =    detail::OnNext_Invocable<Observer, Value>::Evaluate::value
+      && is_cpo_invocable_v<tag_t<on_completed>, Observer>
+      && detail::OnError_Invocable<Observer, Error>::Evaluate::value;
+
+#if (ZZZ_TEST())
+namespace debug_tests::concepts_
+{
+    struct Callback
+    {
+        void operator()(int) const;
+        void operator()() const;
+    };
+    static_assert(ValueObserverOf<Callback, int>);
+    static_assert(ValueObserverOf<Callback, void>);
+    static_assert(not ValueObserverOf<Callback, char*>);
+    static_assert(not StrictObserverOf<Callback, int/*value*/, int/*error*/>);
+
+    struct Custom
+    {
+        void on_next(int) const;
+        void operator()() const;
+    };
+    static_assert(ValueObserverOf<Custom, int>);
+    static_assert(ValueObserverOf<Custom, void>);
+    static_assert(not ValueObserverOf<Custom, char*>);
+    static_assert(not StrictObserverOf<Custom, int/*value*/, int/*error*/>);
+
+    struct StrictCustom
+    {
+        void on_next(int) const;
+        void on_error() const;
+        void on_error(int) const;
+        void on_completed() const;
+    };
+    static_assert(StrictObserverOf<StrictCustom, int/*value*/, void/*error*/>);
+    static_assert(StrictObserverOf<StrictCustom, int/*value*/, int/*error*/>);
+    static_assert(ValueObserverOf<StrictCustom, int>);
 } // namespace debug_tests
 #endif
 
