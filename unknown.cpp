@@ -397,7 +397,175 @@ namespace debug_tests::concepts_
 } // namespace debug_tests
 #endif
 
+namespace detail
+{
+    struct OnNext_Noop
+    {
+        template<typename Value>
+        constexpr void on_next(Value&&) const noexcept
+        {
+        }
+        void on_next() const noexcept
+        {
+        }
+    };
+
+    struct OnCompleted_Noop
+    {
+        constexpr void on_completed() const noexcept
+        {
+        }
+    };
+
+    struct OnError_Noop
+    {
+        template<typename Error>
+        constexpr void on_error(Error&&) const noexcept
+        {
+        }
+        constexpr void on_error() const noexcept
+        {
+        }
+    };
+
+    template<typename OnNext, typename OnCompleted, typename OnError>
+    struct LambdaObserver
+    {
+        [[no_unique_address]] OnNext _on_next;
+        [[no_unique_address]] OnCompleted _on_completed;
+        [[no_unique_address]] OnError _on_error;
+
+        template<typename Value>
+        constexpr auto on_next(Value&& value) const
+            -> decltype(::on_next(_on_next, std::forward<Value>(value)))
+        {
+            return ::on_next(_on_next, std::forward<Value>(value));
+        }
+
+        constexpr decltype(auto) on_next() const
+            requires requires { ::on_next(_on_next); }
+        {
+            return ::on_next(_on_next);
+        }
+
+        constexpr auto on_completed()
+            requires requires { std::move(_on_completed)(); }
+        {
+            return std::move(_on_completed)();
+        }
+
+        template<typename Error>
+        constexpr auto on_error(Error&& error)
+            -> decltype(std::move(_on_error)(std::forward<Error>(error)))
+        {
+            return std::move(_on_error)(std::forward<Error>(error));
+        }
+
+        constexpr decltype(auto) on_error()
+            requires requires { std::move(_on_error)(); }
+        {
+            return std::move(_on_error)();
+        }
+    };
+} // namespace detail
+
+namespace observer
+{
+    template<typename OnNext>
+    auto make(OnNext&& on_next)
+    {
+        using F_       = std::remove_cvref_t<OnNext>;
+        using Observer = detail::LambdaObserver<F_, detail::OnCompleted_Noop, detail::OnError_Noop>;
+        return Observer(std::forward<OnNext>(on_next), {}, {});
+    }
+
+    template<typename Value, typename OnNext>
+    ValueObserverOf<Value> auto
+        make_of(OnNext&& on_next)
+            requires is_cpo_invocable_v<tag_t<::on_next>, OnNext, Value>
+    {
+        using F_       = std::remove_cvref_t<OnNext>;
+        using Observer = detail::LambdaObserver<F_, detail::OnCompleted_Noop, detail::OnError_Noop>;
+        return Observer(std::forward<OnNext>(on_next), {}, {});
+    }
+
+    template<typename OnNext, typename OnCompleted, typename OnError = detail::OnError_Noop>
+    auto make(OnNext&& on_next, OnCompleted&& on_completed, OnError&& on_error = {})
+    {
+        using OnNext_      = std::remove_cvref_t<OnNext>;
+        using OnCompleted_ = std::remove_cvref_t<OnCompleted>;
+        using OnError_     = std::remove_cvref_t<OnError>;
+        using Observer     = detail::LambdaObserver<OnNext_, OnCompleted_, OnError_>;
+        return Observer(std::forward<OnNext>(on_next)
+            , std::forward<OnCompleted>(on_completed)
+            , std::forward<OnError>(on_error));
+    }
+
+    template<typename Value, typename Error
+        , typename OnNext, typename OnCompleted, typename OnError>
+    StrictObserverOf<Value, Error> auto
+        make_of(OnNext&& on_next, OnCompleted&& on_completed, OnError&& on_error)
+            requires is_cpo_invocable_v<tag_t<::on_next>, OnNext, Value> &&
+                     is_cpo_invocable_v<tag_t<::on_error>, OnError, Error>
+    {
+        using OnNext_      = std::remove_cvref_t<OnNext>;
+        using OnCompleted_ = std::remove_cvref_t<OnCompleted>;
+        using OnError_     = std::remove_cvref_t<OnError>;
+        using Observer     = detail::LambdaObserver<OnNext_, OnCompleted_, OnError_>;
+        return Observer(std::forward<OnNext>(on_next)
+            , std::forward<OnCompleted>(on_completed)
+            , std::forward<OnError>(on_error));
+    }
+} // namespace observer
+
+template<typename KnownObserver>
+    requires ValueObserverOf<KnownObserver, int>
+struct StaticObservable
+{
+    [[no_unique_address]] KnownObserver _known_observer;
+
+    template<typename Observer>
+        requires ValueObserverOf<Observer, int>
+    void subscribe(Observer&& observer)
+    {
+        auto do_next = observer::make([&](int new_value)
+        {
+            on_next(_known_observer, new_value);
+            on_next(observer, new_value);
+        });
+
+        do_next.on_next(1);
+        do_next.on_next(2);
+        do_next.on_next(3);
+        do_next.on_next(4);
+
+        if constexpr (is_cpo_invocable_v<tag_t<on_completed>, KnownObserver>)
+        {
+            on_completed(_known_observer);
+        }
+        if constexpr (is_cpo_invocable_v<tag_t<on_completed>, Observer>)
+        {
+            on_completed(std::forward<Observer>(observer));
+        }
+    }
+};
+
+#include <cstdio>
+
 int main()
 {
+    auto o1 = observer::make([](int value)
+    {
+        std::printf("Known Observer: %i.\n", value);
+    }
+        , []()
+    {
+        std::printf("Known Observer: Completed.\n");
+    });
 
+    StaticObservable<decltype(o1)> observable(std::move(o1));
+    observable.subscribe([](int value)
+    {
+        std::printf("Observer: %i.\n", value);
+    });
 }
