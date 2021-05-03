@@ -556,36 +556,38 @@ inline const struct make_operator_fn
     }
 } make_operator;
 
-template<typename KnownObserver>
-    requires ValueObserverOf<KnownObserver, int>
-struct StaticObservable
+struct InitialSourceObservable_
 {
     using value_type = int;
-    [[no_unique_address]] KnownObserver _known_observer;
+
+    template<typename Observer>
+    void subscribe(Observer&& observer)
+    {
+        on_next(observer, 1);
+        on_next(observer, 2);
+        on_next(observer, 3);
+        on_next(observer, 4);
+
+        if constexpr (is_cpo_invocable_v<tag_t<on_completed>, Observer>)
+        {
+            on_completed(std::forward<Observer>(observer));
+        }
+    }
+};
+
+
+template<typename SourceObservable>
+struct Observable_
+{
+    using value_type = typename SourceObservable::value_type;
+
+    SourceObservable _source;
 
     template<typename Observer>
         requires ValueObserverOf<Observer, value_type>
     void subscribe(Observer&& observer)
     {
-        auto do_next = observer::make([&](value_type new_value)
-        {
-            on_next(_known_observer, new_value);
-            on_next(observer, new_value);
-        });
-
-        do_next.on_next(1);
-        do_next.on_next(2);
-        do_next.on_next(3);
-        do_next.on_next(4);
-
-        if constexpr (is_cpo_invocable_v<tag_t<on_completed>, KnownObserver>)
-        {
-            on_completed(_known_observer);
-        }
-        if constexpr (is_cpo_invocable_v<tag_t<on_completed>, Observer>)
-        {
-            on_completed(std::forward<Observer>(observer));
-        }
+        return _source.subscribe(std::forward<Observer>(observer));
     }
 
     template<typename F>
@@ -654,32 +656,27 @@ auto tag_invoke(tag_t<make_operator>, detail::operator_tag::Filter
     , SourceObservable& source, F&& filter)
         requires std::predicate<F, typename SourceObservable::value_type>
 {
-    using F_ = std::remove_cvref_t<F>;
-    using O  = detail::FilterObservable<SourceObservable, F_>;
-    return O(&source, std::forward<F>(filter));
+    using F_    = std::remove_cvref_t<F>;
+    using Impl  = detail::FilterObservable<SourceObservable, F_>;
+    return Observable_<Impl>(Impl(&source, std::forward<F>(filter)));
 }
 
 #include <cstdio>
 
 int main()
 {
-    auto o1 = observer::make([](int value)
-    {
-        // std::printf("Known Observer: %i.\n", value);
-    }
-        , []()
-    {
-        // std::printf("Known Observer: Completed.\n");
-    });
+    InitialSourceObservable_ initial;
+    Observable_<InitialSourceObservable_> observable(std::move(initial));
 
-    StaticObservable<decltype(o1)> observable(std::move(o1));
     observable.subscribe([](int value)
     {
         // std::printf("Observer: %i.\n", value);
     });
 
     observable
+        .filter([](int)   { return true; })
         .filter([](int v) { return ((v % 2) == 0); })
+        .filter([](int)   { return true; })
         .subscribe([](int value)
     {
         std::printf("Filtered even numbers: %i.\n", value);
