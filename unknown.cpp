@@ -558,13 +558,10 @@ inline const struct make_operator_fn
 
 struct InitialSourceObservable_
 {
-    InitialSourceObservable_() = default;
-    InitialSourceObservable_(InitialSourceObservable_&&) = default;
-
     using value_type = int;
 
     template<typename Observer>
-    void subscribe(Observer&& observer)
+    void subscribe(Observer&& observer) &&
     {
         on_next(observer, 1);
         on_next(observer, 2);
@@ -576,19 +573,9 @@ struct InitialSourceObservable_
             on_completed(std::forward<Observer>(observer));
         }
     }
-
-    auto share() &
-    {
-        return *this;
-    }
-
-private:
-    InitialSourceObservable_(const InitialSourceObservable_&) = default;
-    InitialSourceObservable_& operator=(const InitialSourceObservable_&) = default;
-    InitialSourceObservable_& operator=(InitialSourceObservable_&&) = default;
 };
 
-
+#if (0)
 template<typename T>
 static auto copy(T&& v) -> std::remove_cv_t<T>
 {
@@ -603,50 +590,29 @@ static auto own(T&& v)
     using Self = std::remove_cv_t<T>;
     return Self(std::move(v));
 }
+#endif
 
 template<typename SourceObservable>
 struct Observable_
 {
     using value_type = typename SourceObservable::value_type;
 
-    Observable_(SourceObservable&& source) : _source(own(std::move(source))) {}
-    Observable_() = default;
-    Observable_(Observable_&&) = default;
-
     SourceObservable _source;
-
-    auto share() &
-    {
-        return Observable_(_source.share());
-    }
 
     template<typename Observer>
         requires ValueObserverOf<Observer, value_type>
-    void subscribe(Observer&& observer)
+    void subscribe(Observer&& observer) &&
     {
-        return _source.subscribe(std::forward<Observer>(observer));
-    }
-
-    template<typename F>
-    auto filter(F&& f) &
-    {
-        return make_operator(detail::operator_tag::Filter()
-            , share()
-            , std::forward<F>(f));
+        return std::move(_source).subscribe(std::forward<Observer>(observer));
     }
 
     template<typename F>
     auto filter(F&& f) &&
     {
         return make_operator(detail::operator_tag::Filter()
-            , own(std::move(*this))
+            , std::move(*this)
             , std::forward<F>(f));
     }
-
-private:
-    Observable_(const Observable_&) = default;
-    Observable_& operator=(const Observable_&) = default;
-    Observable_& operator=(Observable_&&) = default;
 };
 
 namespace detail
@@ -657,11 +623,6 @@ namespace detail
         using value_type = typename SourceObservable::value_type;
         SourceObservable _source;
         Filter _filter;
-
-        auto share()
-        {
-            return FilterObservable(_source.share(), copy(_filter));
-        }
 
         template<typename Observer>
         struct ProxyObserver
@@ -698,23 +659,22 @@ namespace detail
 
         template<typename Observer>
             requires ValueObserverOf<Observer, value_type>
-        decltype(auto) subscribe(Observer&& observer)
+        decltype(auto) subscribe(Observer&& observer) &&
         {
             using Observer_ = std::remove_cvref_t<Observer>;
             using Proxy     = ProxyObserver<Observer_>;
-            return _source.subscribe(Proxy(copy(_filter), std::forward<Observer>(observer)));
+            return std::move(_source).subscribe(Proxy(std::move(_filter), std::forward<Observer>(observer)));
         }
     };
 } // namespace detail
 
 template<typename SourceObservable, typename F>
 auto tag_invoke(tag_t<make_operator>, detail::operator_tag::Filter
-    , SourceObservable source, F&& filter)
+    , SourceObservable source, F filter)
         requires std::predicate<F, typename SourceObservable::value_type>
 {
-    using F_      = std::remove_cvref_t<F>;
-    using Impl    = detail::FilterObservable<SourceObservable, F_>;
-    return Observable_<Impl>(Impl(own(std::move(source)), std::forward<F>(filter)));
+    using Impl    = detail::FilterObservable<SourceObservable, F>;
+    return Observable_<Impl>(Impl(std::move(source), std::move(filter)));
 }
 
 #include <cstdio>
@@ -722,14 +682,15 @@ auto tag_invoke(tag_t<make_operator>, detail::operator_tag::Filter
 int main()
 {
     InitialSourceObservable_ initial;
-    Observable_<InitialSourceObservable_> observable(initial.share());
+    using O = Observable_<InitialSourceObservable_>;
+    O observable(std::move(initial));
 
-    observable.subscribe([](int value)
+    O(observable).subscribe([](int value)
     {
         // std::printf("Observer: %i.\n", value);
     });
 
-    observable
+    O(observable)
         .filter([](int)   { return true; })
         .filter([](int v) { return ((v % 2) == 0); })
         .filter([](int)   { return true; })
