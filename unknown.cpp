@@ -1,5 +1,6 @@
 #include "tag_invoke.hpp"
 #include <memory>
+#include <algorithm>
 
 namespace detail
 {
@@ -417,6 +418,8 @@ namespace debug_tests::concepts_
 
 namespace detail
 {
+    struct none_tag {};
+
     struct OnNext_Noop
     {
         template<typename Value>
@@ -631,9 +634,16 @@ inline const struct make_operator_fn
 struct InitialSourceObservable_
 {
     using value_type = int;
+    using error_type = detail::none_tag;
+
+    struct Unsubscriber
+    {
+        using has_effect = std::false_type;
+        bool detach() { return false; }
+    };
 
     template<typename Observer>
-    void subscribe(Observer&& observer) &&
+    Unsubscriber subscribe(Observer&& observer) &&
     {
         auto strict = detail::make_strict(std::forward<Observer>(observer));
         strict.on_next(1);
@@ -641,6 +651,7 @@ struct InitialSourceObservable_
         strict.on_next(3);
         strict.on_next(4);
         strict.on_completed();
+        return Unsubscriber();
     }
 };
 
@@ -664,13 +675,15 @@ static auto own(T&& v)
 template<typename SourceObservable>
 struct Observable_
 {
-    using value_type = typename SourceObservable::value_type;
+    using value_type   = typename SourceObservable::value_type;
+    using error_type   = typename SourceObservable::error_type;
+    using Unsubscriber = typename SourceObservable::Unsubscriber;
 
     SourceObservable _source;
 
     template<typename Observer>
         requires ValueObserverOf<Observer, value_type>
-    void subscribe(Observer&& observer) &&
+    decltype(auto) subscribe(Observer&& observer) &&
     {
         return std::move(_source).subscribe(std::forward<Observer>(observer));
     }
@@ -689,7 +702,10 @@ namespace detail
     template<typename SourceObservable, typename Filter>
     struct FilterObservable
     {
-        using value_type = typename SourceObservable::value_type;
+        using value_type   = typename SourceObservable::value_type;
+        using error_type   = typename SourceObservable::error_type;
+        using Unsubscriber = typename SourceObservable::Unsubscriber;
+
         SourceObservable _source;
         Filter _filter;
 
@@ -849,9 +865,59 @@ struct AnyObserver
 template<typename Value, typename Error>
 struct Subject_
 {
+    struct Subscription
+    {
+        AnyObserver<Value, Error> _observer;
+        std::uint32_t _index = 0;
+        std::uint32_t _version = 0;
+    };
+
     struct SharedImpl_
     {
-        std::vector<AnyObserver<Value, Error>> _observers;
+        std::uint32_t _version = 0;
+        std::vector<Subscription> _subscriptions;
+    };
+
+    struct Unsubsriber
+    {
+        using has_effect = std::true_type;
+
+        std::weak_ptr<SharedImpl_> _shared_weak;
+        std::uint32_t _version = 0;
+        std::uint32_t _index = 0;
+
+        bool detach()
+        {
+            auto shared = _shared_weak.lock();
+            if (not shared)
+            {
+                return false;
+            }
+            auto& subscriptions = shared->_subscriptions;
+            if (_index < subscriptions.size())
+            {
+                auto it = subscriptions.begin() + _index;
+                if (it->_version == _version)
+                {
+                    subscriptions.erase(it);
+                    return true;
+                }
+            }
+            else
+            {
+                auto it = std::find_if(std::begin(subscriptions), std::end(subscriptions)
+                    , [&](const Subscription& s)
+                {
+                    return ((s._index == _index) && (s._version == _version));
+                });
+                if (it != std::end(subscriptions))
+                {
+                    subscriptions.erase(it);
+                    return true;
+                }
+            }
+            return false;
+        }
     };
 
     std::shared_ptr<SharedImpl_> _shared;
@@ -863,18 +929,33 @@ struct Subject_
 
     struct SourceObservable
     {
-        using value_type = Value;
+        using value_type   = Value;
+        using error_type   = Error;
+        using Unsubscriber = Subject_::Unsubsriber;
 
         std::shared_ptr<SharedImpl_> _shared;
 
         template<typename Observer>
             requires ValueObserverOf<Observer, Value>
-        void subscribe(Observer&& observer)
+        Unsubsriber subscribe(Observer&& observer)
         {
-            assert(_shared);
-            auto strict = detail::make_strict(std::forward<Observer>(observer));
             using O_ = AnyObserver<Value, Error>;
-            _shared->_observers.push_back(O_(std::move(strict)));
+            assert(_shared);
+
+            auto strict = detail::make_strict(std::forward<Observer>(observer));
+            const std::uint32_t index = std::uint32_t(_shared->_subscriptions.size());
+            const std::uint32_t version = ++_shared->_version;
+
+            Subscription subscription{O_(std::move(strict))};
+            subscription._version = version;
+            subscription._index = index;
+            Unsubsriber unsubscriber;
+            unsubscriber._shared_weak = _shared;
+            unsubscriber._version = subscription._version;
+            unsubscriber._index = subscription._index;
+
+            _shared->_subscriptions.push_back(std::move(subscription));
+            return unsubscriber;
         }
     };
 
@@ -891,27 +972,29 @@ struct Subject_
     void on_next(Value v)
     {
         assert(_shared);
-        for (auto& observer : _shared->_observers)
+        // Using raw for with computing size() every loop for a case where
+        // un-subscription can happen in the callback.
+        for (std::size_t i = 0; i < _shared->_subscriptions.size(); ++i)
         {
-            observer.on_next(v);
+            _shared->_subscriptions[i]._observer.on_next(v);
         }
     }
 
     void on_error(Error e)
     {
         assert(_shared);
-        for (auto& observer : _shared->_observers)
+        for (std::size_t i = 0; i < _shared->_subscriptions.size(); ++i)
         {
-            observer.on_error(e);
+            _shared->_subscriptions[i]._observer.on_error(e);
         }
     }
 
     void on_completed()
     {
         assert(_shared);
-        for (auto& observer : _shared->_observers)
+        for (std::size_t i = 0; i < _shared->_subscriptions.size(); ++i)
         {
-            observer.on_completed();
+            _shared->_subscriptions[i]._observer.on_completed();
         }
     }
 };
@@ -924,22 +1007,34 @@ int main()
     using O = Observable_<InitialSourceObservable_>;
     O observable(std::move(initial));
 
-    O(observable).subscribe([](int value)
     {
-        std::printf("Observer: %i.\n", value);
-    });
+        auto unsubscriber = O(observable).subscribe([](int value)
+        {
+            std::printf("Observer: %i.\n", value);
+        });
+        using Unsubscriber = typename decltype(unsubscriber)::Unsubscriber;
+        static_assert(std::is_same_v<Unsubscriber, InitialSourceObservable_::Unsubscriber>);
+        static_assert(not Unsubscriber::has_effect());
+    }
 
-    O(observable)
-        .filter([](int)   { return true; })
-        .filter([](int v) { return ((v % 2) == 0); })
-        .filter([](int)   { return true; })
-        .subscribe([](int value)
     {
-        std::printf("Filtered even numbers: %i.\n", value);
-    });
+        auto unsubscriber = O(observable)
+            .filter([](int)   { return true; })
+            .filter([](int v) { return ((v % 2) == 0); })
+            .filter([](int)   { return true; })
+            .subscribe([](int value)
+        {
+            std::printf("Filtered even numbers: %i.\n", value);
+        });
+        using Unsubscriber = typename decltype(unsubscriber)::Unsubscriber;
+        static_assert(std::is_same_v<Unsubscriber, InitialSourceObservable_::Unsubscriber>);
+        static_assert(not Unsubscriber::has_effect());
+    }
 
     Subject_<int, int> subject;
-    subject.as_observable()
+    using ExpectedUnsubscriber = typename decltype(subject)::Unsubsriber;
+
+    auto unsubscriber = subject.as_observable()
         .filter([](int)   { return true; })
         .filter([](int v) { return ((v % 2) == 0); })
         .filter([](int)   { return true; })
@@ -947,11 +1042,13 @@ int main()
     {
         std::printf("[Subject1] Filtered even numbers: %i.\n", value);
     }
-            , []()
+        , []()
     {
         std::printf("[Subject1] Completed.\n");
     }));
-    
+    static_assert(std::is_same_v<decltype(unsubscriber), ExpectedUnsubscriber>);
+    static_assert(ExpectedUnsubscriber::has_effect());
+
     subject.as_observable()
         .filter([](int v) { return (v == 3); })
         .subscribe([](int value)
@@ -961,6 +1058,9 @@ int main()
 
     subject.on_next(1);
     subject.on_next(2);
+
+    unsubscriber.detach();
+
     subject.on_next(3);
     subject.on_next(4);
     subject.on_completed();
