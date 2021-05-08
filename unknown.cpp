@@ -1,6 +1,5 @@
 #include "tag_invoke.hpp"
 #include <memory>
-#include <algorithm>
 
 namespace detail
 {
@@ -610,6 +609,17 @@ namespace detail::operator_tag
                   "Missing include ?");
         };
     };
+
+    struct Transform
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .transform() operator implementation. "
+                "Missing include ?");
+        };
+    };
 } // namespace detail
 
 inline const struct make_operator_fn
@@ -675,6 +685,11 @@ static auto own(T&& v)
 template<typename SourceObservable>
 struct Observable_
 {
+    static_assert(std::is_copy_constructible_v<SourceObservable>
+        , "Observable required to be copyable; acts like a handle to a source stream.");
+    static_assert(std::is_move_constructible_v<SourceObservable>
+        , "Observable required to be movable; acts like a handle to a source stream.");
+
     using value_type   = typename SourceObservable::value_type;
     using error_type   = typename SourceObservable::error_type;
     using Unsubscriber = typename SourceObservable::Unsubscriber;
@@ -695,6 +710,14 @@ struct Observable_
             , std::move(*this)
             , std::forward<F>(f));
     }
+    template<typename F>
+    auto transform(F&& f) &&
+    {
+        return make_operator(detail::operator_tag::Transform()
+            , std::move(*this)
+            , std::forward<F>(f));
+    }
+
 };
 
 namespace detail
@@ -710,9 +733,9 @@ namespace detail
         Filter _filter;
 
         template<typename Observer>
-        struct ProxyObserver : Observer
+        struct FilterObserver : Observer
         {
-            explicit ProxyObserver(Observer&& o, Filter&& f)
+            explicit FilterObserver(Observer&& o, Filter&& f)
                 : Observer(std::move(o))
                 , _filter(std::move(f)) {}
             Filter _filter;
@@ -734,8 +757,47 @@ namespace detail
         {
             auto strict = make_strict(std::forward<Observer>(observer));
             using Observer_ = decltype(strict);
-            using Proxy     = ProxyObserver<Observer_>;
-            return std::move(_source).subscribe(Proxy(std::move(strict), std::move(_filter)));
+            using FilterObserver = FilterObserver<Observer_>;
+            return std::move(_source).subscribe(FilterObserver(std::move(strict), std::move(_filter)));
+        }
+    };
+
+    template<typename SourceObservable, typename Transform>
+    struct TransformObservable
+    {
+        SourceObservable _source;
+        Transform _transform;
+
+        using value_type   = decltype(_transform(std::declval<typename SourceObservable::value_type>()));
+        using error_type   = typename SourceObservable::error_type;
+        using Unsubscriber = typename SourceObservable::Unsubscriber;
+
+
+        template<typename Observer>
+        struct TransformObserver : Observer
+        {
+            explicit TransformObserver(Observer&& o, Transform&& f)
+                : Observer(std::move(o))
+                , _transform(std::move(f)) {}
+            Transform _transform;
+            Observer& observer() { return *this; }
+
+            template<typename Value>
+            void on_next(Value&& v)
+            {
+                (void)observer().on_next(
+                    _transform(std::forward<Value>(v)));
+            }
+        };
+
+        template<typename Observer>
+            requires ValueObserverOf<Observer, value_type>
+        decltype(auto) subscribe(Observer&& observer) &&
+        {
+            auto strict = make_strict(std::forward<Observer>(observer));
+            using Observer_ = decltype(strict);
+            using TransformObserver = TransformObserver<Observer_>;
+            return std::move(_source).subscribe(TransformObserver(std::move(strict), std::move(_transform)));
         }
     };
 } // namespace detail
@@ -747,6 +809,15 @@ auto tag_invoke(tag_t<make_operator>, detail::operator_tag::Filter
 {
     using Impl = detail::FilterObservable<SourceObservable, F>;
     return Observable_<Impl>(Impl(std::move(source), std::move(filter)));
+}
+
+template<typename SourceObservable, typename F>
+auto tag_invoke(tag_t<make_operator>, detail::operator_tag::Transform
+    , SourceObservable source, F transform)
+        requires requires(typename SourceObservable::value_type v) { transform(v); }
+{
+    using Impl = detail::TransformObservable<SourceObservable, F>;
+    return Observable_<Impl>(Impl(std::move(source), std::move(transform)));
 }
 
 template<typename Value, typename Error>
@@ -763,10 +834,14 @@ namespace detail
 template<typename Value, typename Error>
 struct AnyObserver
 {
+#define X_ANY_OBSERVER_SUPPORTS_COPY() 1
+
     struct ObserverConcept
     {
         virtual ~ObserverConcept() = default;
+#if (X_ANY_OBSERVER_SUPPORTS_COPY())
         virtual std::unique_ptr<ObserverConcept> copy_() const = 0;
+#endif
         virtual void on_next(Value v) = 0;
         virtual void on_error(Error e) = 0;
         virtual void on_completed() = 0;
@@ -780,10 +855,12 @@ struct AnyObserver
         Observer& operator=(const Observer&) = delete;
         Observer& operator=(Observer&&) = delete;
 
+#if (X_ANY_OBSERVER_SUPPORTS_COPY())
         virtual std::unique_ptr<ObserverConcept> copy_() const override
         {
             return std::make_unique<Observer>(_observer);
         }
+#endif
 
         virtual void on_next(Value v) override
         {
@@ -808,6 +885,8 @@ struct AnyObserver
         ConcreateObserver _observer;
     };
 
+    explicit AnyObserver() = default;
+
     template<typename ConcreateObserver>
         requires (!detail::IsAnyObserver<ConcreateObserver>::value)
     explicit AnyObserver(ConcreateObserver o)
@@ -815,6 +894,7 @@ struct AnyObserver
     {
     }
 
+#if (X_ANY_OBSERVER_SUPPORTS_COPY())
     AnyObserver(const AnyObserver& rhs)
         : _observer((assert(rhs._observer), rhs._observer->copy_()))
     {
@@ -828,17 +908,23 @@ struct AnyObserver
         }
         return *this;
     }
-    AnyObserver(AnyObserver& rhs) noexcept
+#endif
+    AnyObserver(AnyObserver&& rhs) noexcept
         : _observer(std::move(rhs._observer))
     {
     }
-    AnyObserver& operator=(AnyObserver& rhs) noexcept
+    AnyObserver& operator=(AnyObserver&& rhs) noexcept
     {
         if (this != &rhs)
         {
             _observer = std::move(rhs._observer);
         }
         return *this;
+    }
+
+    explicit operator bool() const
+    {
+        return !!_observer;
     }
 
     std::unique_ptr<ObserverConcept> _observer;
@@ -862,20 +948,89 @@ struct AnyObserver
     }
 };
 
-template<typename Value, typename Error>
-struct Subject_
+template<typename T>
+struct HandleVector
 {
-    struct Subscription
+    static_assert(std::is_default_constructible_v<T>
+        , "T must be default constructible for erase() support.");
+    static_assert(std::is_move_assignable_v<T>
+        , "T must be move assignable for erase() support.");
+    static_assert(std::is_move_constructible_v<T>
+        , "T must be move constructible for erase() support.");
+
+    struct Value
     {
-        AnyObserver<Value, Error> _observer;
-        std::uint32_t _index = 0;
+        T _data{};
         std::uint32_t _version = 0;
     };
 
-    struct SharedImpl_
+    struct Handle
     {
         std::uint32_t _version = 0;
-        std::vector<Subscription> _subscriptions;
+        std::uint32_t _index = 0;
+    };
+
+    std::uint32_t _version = 0;
+    std::vector<std::size_t> _free_indexes;
+    std::vector<Value> _values;
+
+    template<typename U>
+    Handle push_back(U&& v)
+    {
+        const std::uint32_t version = ++_version;
+        if (_free_indexes.empty())
+        {
+            const std::size_t index = _values.size();
+            assert(index <= std::size_t(std::numeric_limits<std::uint32_t>::max()));
+            _values.push_back(Value(T(std::forward<U>(v)), version));
+            return Handle(version, std::uint32_t(index));
+        }
+        const std::size_t index = _free_indexes.back();
+        _free_indexes.pop_back();
+        _values[index] = Value(T(std::forward<U>(v)), version);
+        return Handle(version, std::uint32_t(index));
+    }
+
+    bool erase(Handle h)
+    {
+        assert(h._version > 0);
+        if (h._index < _values.size())
+        {
+            auto it = std::begin(_values) + h._index;
+            if (it->_version == h._version)
+            {
+                _values[h._index] = Value(T(), 0);
+                _free_indexes.push_back(h._index);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    template<typename F>
+    void for_each(F&& f)
+    {
+        // Using raw for with computing size() every loop for a case where
+        // `f()` can erase element from our vector we iterate.
+        for (std::size_t i = 0; i < _values.size(); ++i)
+        {
+            if (_values[i]._version > 0)
+            {
+                f(_values[i]._data);
+            }
+        }
+    }
+};
+
+template<typename Value, typename Error>
+struct Subject_
+{
+    using Subscriptions = HandleVector<AnyObserver<Value, Error>>;
+    using Handle = typename Subscriptions::Handle;
+
+    struct SharedImpl_
+    {
+        Subscriptions _subscriptions;
     };
 
     struct Unsubsriber
@@ -883,38 +1038,13 @@ struct Subject_
         using has_effect = std::true_type;
 
         std::weak_ptr<SharedImpl_> _shared_weak;
-        std::uint32_t _version = 0;
-        std::uint32_t _index = 0;
+        Handle _handle;
 
         bool detach()
         {
-            auto shared = _shared_weak.lock();
-            if (not shared)
+            if (auto shared = _shared_weak.lock(); shared)
             {
-                return false;
-            }
-            auto& subscriptions = shared->_subscriptions;
-            if (_index < subscriptions.size())
-            {
-                auto it = subscriptions.begin() + _index;
-                if (it->_version == _version)
-                {
-                    subscriptions.erase(it);
-                    return true;
-                }
-            }
-            else
-            {
-                auto it = std::find_if(std::begin(subscriptions), std::end(subscriptions)
-                    , [&](const Subscription& s)
-                {
-                    return ((s._index == _index) && (s._version == _version));
-                });
-                if (it != std::end(subscriptions))
-                {
-                    subscriptions.erase(it);
-                    return true;
-                }
+                return shared->_subscriptions.erase(_handle);
             }
             return false;
         }
@@ -939,22 +1069,11 @@ struct Subject_
             requires ValueObserverOf<Observer, Value>
         Unsubsriber subscribe(Observer&& observer)
         {
-            using O_ = AnyObserver<Value, Error>;
             assert(_shared);
-
-            auto strict = detail::make_strict(std::forward<Observer>(observer));
-            const std::uint32_t index = std::uint32_t(_shared->_subscriptions.size());
-            const std::uint32_t version = ++_shared->_version;
-
-            Subscription subscription{O_(std::move(strict))};
-            subscription._version = version;
-            subscription._index = index;
             Unsubsriber unsubscriber;
             unsubscriber._shared_weak = _shared;
-            unsubscriber._version = subscription._version;
-            unsubscriber._index = subscription._index;
-
-            _shared->_subscriptions.push_back(std::move(subscription));
+            unsubscriber._handle = _shared->_subscriptions.push_back(
+                detail::make_strict(std::forward<Observer>(observer)));
             return unsubscriber;
         }
     };
@@ -972,33 +1091,32 @@ struct Subject_
     void on_next(Value v)
     {
         assert(_shared);
-        // Using raw for with computing size() every loop for a case where
-        // un-subscription can happen in the callback.
-        for (std::size_t i = 0; i < _shared->_subscriptions.size(); ++i)
+        _shared->_subscriptions.for_each([&v](AnyObserver<Value, Error>& observer)
         {
-            _shared->_subscriptions[i]._observer.on_next(v);
-        }
+            observer.on_next(v);
+        });
     }
 
     void on_error(Error e)
     {
         assert(_shared);
-        for (std::size_t i = 0; i < _shared->_subscriptions.size(); ++i)
+        _shared->_subscriptions.for_each([&e](AnyObserver<Value, Error>& observer)
         {
-            _shared->_subscriptions[i]._observer.on_error(e);
-        }
+            observer.on_error(e);
+        });
     }
 
     void on_completed()
     {
         assert(_shared);
-        for (std::size_t i = 0; i < _shared->_subscriptions.size(); ++i)
+        _shared->_subscriptions.for_each([](AnyObserver<Value, Error>& observer)
         {
-            _shared->_subscriptions[i]._observer.on_completed();
-        }
+            observer.on_completed();
+        });
     }
 };
 
+#include <string>
 #include <cstdio>
 
 int main()
@@ -1051,9 +1169,10 @@ int main()
 
     subject.as_observable()
         .filter([](int v) { return (v == 3); })
-        .subscribe([](int value)
+        .transform([](int v) { return std::to_string(v); })
+        .subscribe([](std::string v)
     {
-        std::printf("[Subject2] Exactly 3: %i.\n", value);
+        std::printf("[Subject2] Exactly 3: %s.\n", v.c_str());
     });
 
     subject.on_next(1);
