@@ -17,7 +17,7 @@ constexpr bool is_cpo_invocable_v = detail::CPOInvocable<CPO, Args...>;
 
 #include <cassert>
 
-#define ZZZ_TEST() 0
+#define ZZZ_TEST() 1
 
 template<unsigned I>
 struct priority_tag
@@ -322,36 +322,51 @@ namespace detail
 {
     template<typename Observer, typename Value>
     struct OnNext_Invocable
+        : std::bool_constant<
+            is_cpo_invocable_v<tag_t<on_next>, Observer, Value>>
     {
-        using Evaluate = std::bool_constant<
-            is_cpo_invocable_v<tag_t<on_next>, Observer, Value>>;
     };
     template<typename Observer>
     struct OnNext_Invocable<Observer, void>
+        : std::bool_constant<
+            is_cpo_invocable_v<tag_t<on_next>, Observer>>
     {
-        using Evaluate = std::bool_constant<
-            is_cpo_invocable_v<tag_t<on_next>, Observer>>;
+    };
+
+    template<typename Observer>
+    struct OnCompleted_Invocable
+        : std::bool_constant<
+            is_cpo_invocable_v<tag_t<on_completed>, Observer>>
+    {
     };
 
     template<typename Observer, typename Value>
     struct OnError_Invocable
+        : std::bool_constant<
+            is_cpo_invocable_v<tag_t<on_error>, Observer, Value>>
     {
-        using Evaluate = std::bool_constant<
-            is_cpo_invocable_v<tag_t<on_error>, Observer, Value>>;
     };
     template<typename Observer>
     struct OnError_Invocable<Observer, void>
+        : std::bool_constant<
+            is_cpo_invocable_v<tag_t<on_error>, Observer>>
     {
-        using Evaluate = std::bool_constant<
-            is_cpo_invocable_v<tag_t<on_error>, Observer>>;
     };
+
+    template<typename Observer, typename Value>
+    concept WithOnNext = OnNext_Invocable<Observer, Value>::value;
+    template<typename Observer>
+    concept WithOnCompleted = OnCompleted_Invocable<Observer>::value;
+    template<typename Observer, typename Error>
+    concept WithOnError = OnError_Invocable<Observer, Error>::value;
+
 } // namespace detail
 
 // Simplest possible observer with only on_next() callback.
 // No error handling or on_complete() detection.
 template<typename Observer, typename Value>
 concept ValueObserverOf
-    = detail::OnNext_Invocable<Observer, Value>::Evaluate::value;
+    = detail::OnNext_Invocable<Observer, Value>::value;
 
 // Full/strict definition of observer:
 // - on_next(Value)
@@ -359,9 +374,9 @@ concept ValueObserverOf
 // - on_completed()
 template<typename Observer, typename Value, typename Error>
 concept StrictObserverOf
-    =    detail::OnNext_Invocable<Observer, Value>::Evaluate::value
-      && is_cpo_invocable_v<tag_t<on_completed>, Observer>
-      && detail::OnError_Invocable<Observer, Error>::Evaluate::value;
+    =    detail::WithOnNext<Observer, Value>
+      && detail::WithOnCompleted<Observer>
+      && detail::WithOnError<Observer, Error>;
 
 #if (ZZZ_TEST())
 namespace debug_tests::concepts_
@@ -438,14 +453,14 @@ namespace detail
         [[no_unique_address]] OnError _on_error;
 
         template<typename Value>
-        constexpr auto on_next(Value&& value) const
-            -> decltype(::on_next(_on_next, std::forward<Value>(value)))
+        constexpr decltype(auto) on_next(Value&& value)
+            requires detail::WithOnNext<OnNext, Value>
         {
             return ::on_next(_on_next, std::forward<Value>(value));
         }
 
-        constexpr decltype(auto) on_next() const
-            requires requires { ::on_next(_on_next); }
+        constexpr decltype(auto) on_next()
+            requires detail::WithOnNext<OnNext, void>
         {
             return ::on_next(_on_next);
         }
@@ -458,7 +473,7 @@ namespace detail
 
         template<typename Error>
         constexpr auto on_error(Error&& error)
-            -> decltype(std::move(_on_error)(std::forward<Error>(error)))
+            requires requires { std::move(_on_error)(std::forward<Error>(error)); }
         {
             return std::move(_on_error)(std::forward<Error>(error));
         }
@@ -469,6 +484,62 @@ namespace detail
             return std::move(_on_error)();
         }
     };
+
+    template<typename Observer>
+    struct StrictObserver
+    {
+        [[no_unique_address]] Observer _observer;
+
+        template<typename Value>
+        constexpr decltype(auto) on_next(Value&& value)
+        {
+            if constexpr (detail::WithOnNext<Observer, Value>)
+            {
+                return ::on_next(_observer, std::forward<Value>(value));
+            }
+        }
+
+        constexpr decltype(auto) on_next()
+        {
+            if constexpr (detail::WithOnNext<Observer, void>)
+            {
+                return ::on_next(_observer);
+            }
+        }
+
+        constexpr auto on_completed()
+        {
+            if constexpr (detail::WithOnCompleted<Observer>)
+            {
+                return ::on_completed(std::move(_observer));
+            }
+        }
+
+        template<typename Error>
+        constexpr auto on_error(Error&& error)
+        {
+            if constexpr (detail::WithOnError<Observer, Error>)
+            {
+                return ::on_error(std::move(_observer), std::forward<Error>(error));
+            }
+        }
+
+        constexpr decltype(auto) on_error()
+        {
+            if constexpr (detail::WithOnError<Observer, void>)
+            {
+                return ::on_error(std::move(_observer));
+            }
+        }
+    };
+
+    template<typename Observer>
+    auto make_strict(Observer&& o)
+    {
+        using Observer_ = std::remove_cvref_t<Observer>;
+        return StrictObserver<Observer_>{std::forward<Observer>(o)};
+    }
+
 } // namespace detail
 
 namespace observer
@@ -551,7 +622,7 @@ inline const struct make_operator_fn
     constexpr decltype(auto) operator()(Tag, Args&&...) const noexcept
         requires (not tag_invocable<make_operator_fn, Tag, Args...>)
     {
-        using NotFound = Tag::template NotFound<int/*any placeholder type*/>;
+        using NotFound = typename Tag::template NotFound<int/*any placeholder type*/>;
         return NotFound();
     }
 } make_operator;
@@ -563,15 +634,12 @@ struct InitialSourceObservable_
     template<typename Observer>
     void subscribe(Observer&& observer) &&
     {
-        on_next(observer, 1);
-        on_next(observer, 2);
-        on_next(observer, 3);
-        on_next(observer, 4);
-
-        if constexpr (is_cpo_invocable_v<tag_t<on_completed>, Observer>)
-        {
-            on_completed(std::forward<Observer>(observer));
-        }
+        auto strict = detail::make_strict(std::forward<Observer>(observer));
+        strict.on_next(1);
+        strict.on_next(2);
+        strict.on_next(3);
+        strict.on_next(4);
+        strict.on_completed();
     }
 };
 
@@ -625,34 +693,20 @@ namespace detail
         Filter _filter;
 
         template<typename Observer>
-        struct ProxyObserver
+        struct ProxyObserver : private Observer
         {
+            explicit ProxyObserver(Observer&& o, Filter&& f)
+                : Observer(std::move(o))
+                , _filter(std::move(f)) {}
             Filter _filter;
-            Observer _destination;
+            Observer& observer() { return *this; }
 
             template<typename Value>
             void on_next(Value&& v)
             {
                 if (_filter(v))
                 {
-                    (void)::on_next(_destination, std::forward<Value>(v));
-                }
-            }
-
-            template<typename Error>
-            void on_error(Error&& error)
-            {
-                if constexpr (is_cpo_invocable_v<tag_t<::on_error>, Observer, Error>)
-                {
-                    (void)::on_error(_destination, std::forward<Error>(error));
-                }
-            }
-
-            void on_completed()
-            {
-                if constexpr (is_cpo_invocable_v<tag_t<::on_completed>, Observer>)
-                {
-                    (void)::on_completed(_destination);
+                    (void)observer().on_next(std::forward<Value>(v));
                 }
             }
         };
@@ -661,9 +715,10 @@ namespace detail
             requires ValueObserverOf<Observer, value_type>
         decltype(auto) subscribe(Observer&& observer) &&
         {
-            using Observer_ = std::remove_cvref_t<Observer>;
+            auto strict = make_strict(std::forward<Observer>(observer));
+            using Observer_ = decltype(strict);
             using Proxy     = ProxyObserver<Observer_>;
-            return std::move(_source).subscribe(Proxy(std::move(_filter), std::forward<Observer>(observer)));
+            return std::move(_source).subscribe(Proxy(std::move(strict), std::move(_filter)));
         }
     };
 } // namespace detail
