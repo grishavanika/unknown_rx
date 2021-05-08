@@ -1,3 +1,4 @@
+#pragma once
 // FROM Eric Niebler:
 // https://gist.github.com/ericniebler/056f5459cf259da526d9ea2279c386bb/#file-tag_invoke-hpp
 // Simple implementation of the tag_invoke customization point.
@@ -5,6 +6,7 @@
 #include <utility>
 #include <type_traits>
 
+namespace xrx { // #ZZZ: modification.
 namespace _tag_invoke {
   void tag_invoke();
 
@@ -80,3 +82,5 @@ template <typename CPO, typename... Args>
 concept tag_invocable =
     (sizeof(_tag_invoke::try_tag_invoke<CPO, Args...>(0)) ==
      sizeof(_tag_invoke::yes_type));
+} // namespace xrx
+// #ZZZ: modification.
