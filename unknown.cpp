@@ -1,4 +1,5 @@
 #include "tag_invoke.hpp"
+#include <memory>
 
 namespace detail
 {
@@ -693,7 +694,7 @@ namespace detail
         Filter _filter;
 
         template<typename Observer>
-        struct ProxyObserver : private Observer
+        struct ProxyObserver : Observer
         {
             explicit ProxyObserver(Observer&& o, Filter&& f)
                 : Observer(std::move(o))
@@ -728,9 +729,192 @@ auto tag_invoke(tag_t<make_operator>, detail::operator_tag::Filter
     , SourceObservable source, F filter)
         requires std::predicate<F, typename SourceObservable::value_type>
 {
-    using Impl    = detail::FilterObservable<SourceObservable, F>;
+    using Impl = detail::FilterObservable<SourceObservable, F>;
     return Observable_<Impl>(Impl(std::move(source), std::move(filter)));
 }
+
+template<typename Value, typename Error>
+struct AnyObserver;
+
+namespace detail
+{
+    template<typename>
+    struct IsAnyObserver : std::false_type {};
+    template<typename Value, typename Error>
+    struct IsAnyObserver<AnyObserver<Value, Error>> : std::true_type {};
+} // namespace detail
+
+template<typename Value, typename Error>
+struct AnyObserver
+{
+    struct ObserverConcept
+    {
+        virtual ~ObserverConcept() = default;
+        virtual std::unique_ptr<ObserverConcept> copy_() const = 0;
+        virtual void on_next(Value v) = 0;
+        virtual void on_error(Error e) = 0;
+        virtual void on_completed() = 0;
+    };
+
+    template<typename ConcreateObserver>
+    struct Observer : ObserverConcept
+    {
+        Observer(const Observer&) = delete;
+        Observer(Observer&&) = delete;
+        Observer& operator=(const Observer&) = delete;
+        Observer& operator=(Observer&&) = delete;
+
+        virtual std::unique_ptr<ObserverConcept> copy_() const override
+        {
+            return std::make_unique<Observer>(_observer);
+        }
+
+        virtual void on_next(Value v) override
+        {
+            return ::on_next(_observer, std::forward<Value>(v));
+        }
+
+        virtual void on_error(Error e) override
+        {
+            return ::on_error(std::move(_observer), std::forward<Error>(e));
+        }
+
+        virtual void on_completed()
+        {
+            return ::on_completed(std::move(_observer));
+        }
+
+        explicit Observer(ConcreateObserver o)
+            : _observer(std::move(o))
+        {
+        }
+
+        ConcreateObserver _observer;
+    };
+
+    template<typename ConcreateObserver>
+        requires (!detail::IsAnyObserver<ConcreateObserver>::value)
+    explicit AnyObserver(ConcreateObserver o)
+        : _observer(std::make_unique<Observer<ConcreateObserver>>(std::move(o)))
+    {
+    }
+
+    AnyObserver(const AnyObserver& rhs)
+        : _observer((assert(rhs._observer), rhs._observer->copy_()))
+    {
+    }
+    AnyObserver& operator=(const AnyObserver& rhs)
+    {
+        if (this != &rhs)
+        {
+            assert(rhs._observer);
+            _observer = rhs._observer->copy_();
+        }
+        return *this;
+    }
+    AnyObserver(AnyObserver& rhs) noexcept
+        : _observer(std::move(rhs._observer))
+    {
+    }
+    AnyObserver& operator=(AnyObserver& rhs) noexcept
+    {
+        if (this != &rhs)
+        {
+            _observer = std::move(rhs._observer);
+        }
+        return *this;
+    }
+
+    std::unique_ptr<ObserverConcept> _observer;
+
+    void on_next(Value v)
+    {
+        assert(_observer);
+        return _observer->on_next(std::forward<Value>(v));
+    }
+
+    void on_error(Error e)
+    {
+        assert(_observer);
+        return _observer->on_error(std::forward<Error>(e));
+    }
+
+    void on_completed()
+    {
+        assert(_observer);
+        return _observer->on_completed();
+    }
+};
+
+template<typename Value, typename Error>
+struct Subject_
+{
+    struct SharedImpl_
+    {
+        std::vector<AnyObserver<Value, Error>> _observers;
+    };
+
+    std::shared_ptr<SharedImpl_> _shared;
+
+    explicit Subject_()
+        : _shared(std::make_shared<SharedImpl_>())
+    {
+    }
+
+    struct SourceObservable
+    {
+        using value_type = Value;
+
+        std::shared_ptr<SharedImpl_> _shared;
+
+        template<typename Observer>
+            requires ValueObserverOf<Observer, Value>
+        void subscribe(Observer&& observer)
+        {
+            assert(_shared);
+            auto strict = detail::make_strict(std::forward<Observer>(observer));
+            using O_ = AnyObserver<Value, Error>;
+            _shared->_observers.push_back(O_(std::move(strict)));
+        }
+    };
+
+    Observable_<SourceObservable> as_observable() const
+    {
+        return Observable_<SourceObservable>(SourceObservable(_shared));
+    }
+
+    Subject_ as_observer() const
+    {
+        return Subject_(_shared);
+    }
+
+    void on_next(Value v)
+    {
+        assert(_shared);
+        for (auto& observer : _shared->_observers)
+        {
+            observer.on_next(v);
+        }
+    }
+
+    void on_error(Error e)
+    {
+        assert(_shared);
+        for (auto& observer : _shared->_observers)
+        {
+            observer.on_error(e);
+        }
+    }
+
+    void on_completed()
+    {
+        assert(_shared);
+        for (auto& observer : _shared->_observers)
+        {
+            observer.on_completed();
+        }
+    }
+};
 
 #include <cstdio>
 
@@ -742,7 +926,7 @@ int main()
 
     O(observable).subscribe([](int value)
     {
-        // std::printf("Observer: %i.\n", value);
+        std::printf("Observer: %i.\n", value);
     });
 
     O(observable)
@@ -753,4 +937,31 @@ int main()
     {
         std::printf("Filtered even numbers: %i.\n", value);
     });
+
+    Subject_<int, int> subject;
+    subject.as_observable()
+        .filter([](int)   { return true; })
+        .filter([](int v) { return ((v % 2) == 0); })
+        .filter([](int)   { return true; })
+        .subscribe(observer::make([](int value)
+    {
+        std::printf("[Subject1] Filtered even numbers: %i.\n", value);
+    }
+            , []()
+    {
+        std::printf("[Subject1] Completed.\n");
+    }));
+    
+    subject.as_observable()
+        .filter([](int v) { return (v == 3); })
+        .subscribe([](int value)
+    {
+        std::printf("[Subject2] Exactly 3: %i.\n", value);
+    });
+
+    subject.on_next(1);
+    subject.on_next(2);
+    subject.on_next(3);
+    subject.on_next(4);
+    subject.on_completed();
 }
