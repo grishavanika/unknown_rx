@@ -64,8 +64,15 @@ namespace xrx::detail
                 auto it = std::begin(_values) + h._index;
                 if (it->_version == h._version)
                 {
-                    _values[h._index] = Value(T(), 0);
-                    _free_indexes.push_back(h._index);
+                    if (_values.size() == 1) // last one
+                    {
+                        _values.clear();
+                    }
+                    else
+                    {
+                        _values[h._index] = Value(T(), 0);
+                        _free_indexes.push_back(h._index);
+                    }
                     return true;
                 }
             }

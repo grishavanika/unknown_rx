@@ -41,7 +41,22 @@ namespace xrx::detail
             std::shared_ptr<SharedImpl_> _shared;
             Handle _handle;
 
-            bool detach();
+            bool detach(bool do_refcount = false);
+        };
+
+        struct RefCountUnsubscriber
+        {
+            Unsubscriber _unsubscriber;
+            explicit RefCountUnsubscriber(Unsubscriber unsubscriber)
+                : _unsubscriber(std::move(unsubscriber))
+            {
+            }
+
+            bool detach()
+            {
+                const bool do_refcount = true;
+                return _unsubscriber.detach(do_refcount);
+            }
         };
 
         struct RefCountObservable_
@@ -92,14 +107,14 @@ namespace xrx::detail
             }
 
             template<typename Observer>
-            Unsubscriber subscribe(Observer&& observer)
+            Unsubscriber subscribe(Observer&& observer, bool do_refcount = false)
             {
                 const std::size_t count_before = _subscriptions.size();
                 Unsubscriber unsubscriber;
                 unsubscriber._shared = Base::shared_from_this();
                 unsubscriber._handle = _subscriptions.push_back(
                     observer::make_complete(std::forward<Observer>(observer)));
-                if (count_before == 0)
+                if (do_refcount && (count_before == 0))
                 {
                     if (not _connected)
                     {
@@ -109,12 +124,12 @@ namespace xrx::detail
                 return unsubscriber;
             }
 
-            bool unsubscribe(Handle handle)
+            bool unsubscribe(Handle handle, bool do_refcount)
             {
                 const std::size_t count_before = _subscriptions.size();
                 const bool ok = _subscriptions.erase(handle);
                 const std::size_t count_now = _subscriptions.size();
-                if ((count_now == 0) && (count_before > 0))
+                if (do_refcount && (count_now == 0) && (count_before > 0))
                 {
                     if (_connected)
                     {
@@ -220,9 +235,9 @@ namespace xrx::detail
     }
 
     template<typename SourceObservable>
-    bool ConnectObservableState_<SourceObservable>::Unsubscriber::detach()
+    bool ConnectObservableState_<SourceObservable>::Unsubscriber::detach(bool do_refcount /*= false*/)
     {
-        return _shared->unsubscribe(_handle);
+        return _shared->unsubscribe(_handle, do_refcount);
     }
 
     template<typename SourceObservable>
@@ -230,7 +245,9 @@ namespace xrx::detail
     auto ConnectObservableState_<SourceObservable>::RefCountObservable_
         ::subscribe(Observer&& observer) &&
     {
-        return _shared->subscribe(std::forward<Observer>(observer));
+        const bool do_refcount = true;
+        return RefCountUnsubscriber(_shared->subscribe(
+            std::forward<Observer>(observer), do_refcount));
     }
 
     template<typename SourceObservable>
