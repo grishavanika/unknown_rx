@@ -73,6 +73,8 @@ int main()
     Subject_<int, int> subject;
     using ExpectedUnsubscriber = typename decltype(subject)::Unsubsriber;
 
+    subject.subscribe([](int) {});
+
     auto unsubscriber = subject.as_observable()
         .filter([](int)   { return true; })
         .filter([](int v) { return ((v % 2) == 0); })

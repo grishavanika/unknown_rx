@@ -19,6 +19,9 @@ namespace xrx
             Subscriptions _subscriptions;
         };
 
+        using value_type = Value;
+        using error_type = Error;
+
         struct Unsubsriber
         {
             using has_effect = std::true_type;
@@ -45,24 +48,34 @@ namespace xrx
 
         struct SourceObservable
         {
-            using value_type   = Value;
-            using error_type   = Error;
+            using value_type   = Subject_::value_type;
+            using error_type   = Subject_::error_type;
             using Unsubscriber = Subject_::Unsubsriber;
 
-            std::shared_ptr<SharedImpl_> _shared;
+            std::weak_ptr<SharedImpl_> _shared_weak;
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, Value>
             Unsubsriber subscribe(Observer&& observer)
             {
-                assert(_shared);
-                Unsubsriber unsubscriber;
-                unsubscriber._shared_weak = _shared;
-                unsubscriber._handle = _shared->_subscriptions.push_back(
-                    observer::make_complete(std::forward<Observer>(observer)));
-                return unsubscriber;
+                if (auto shared = _shared_weak.lock(); shared)
+                {
+                    Unsubsriber unsubscriber;
+                    unsubscriber._shared_weak = _shared_weak;
+                    unsubscriber._handle = shared->_subscriptions.push_back(
+                        observer::make_complete(std::forward<Observer>(observer)));
+                    return unsubscriber;
+                }
+                return Unsubsriber();
             }
         };
+
+        template<typename Observer>
+            requires ConceptValueObserverOf<Observer, Value>
+        Unsubsriber subscribe(Observer&& observer) const
+        {
+            return as_observable().subscribe(std::forward<Observer>(observer));
+        }
 
         detail::Observable_<SourceObservable> as_observable() const
         {
