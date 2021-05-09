@@ -3,6 +3,17 @@
 
 namespace xrx::detail::operator_tag
 {
+    struct Publish
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .publish() operator implementation. "
+                  "Missing `operators/operator_publish.h` include ?");
+        };
+    };
+
     struct Filter
     {
         template<typename _>
@@ -10,7 +21,7 @@ namespace xrx::detail::operator_tag
         {
             static_assert(AlwaysFalse<_>()
                 , "Failed to find .filter() operator implementation. "
-                  "Missing include ?");
+                  "Missing `operators/operator_filter.h` include ?");
         };
     };
 
@@ -21,7 +32,7 @@ namespace xrx::detail::operator_tag
         {
             static_assert(AlwaysFalse<_>()
                 , "Failed to find .transform() operator implementation. "
-                "Missing include ?");
+                  "Missing `operators/operator_transform.h` include ?");
         };
     };
 } // namespace detail

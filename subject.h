@@ -22,7 +22,7 @@ namespace xrx
         using value_type = Value;
         using error_type = Error;
 
-        struct Unsubsriber
+        struct Unsubscriber
         {
             using has_effect = std::true_type;
 
@@ -50,29 +50,31 @@ namespace xrx
         {
             using value_type   = Subject_::value_type;
             using error_type   = Subject_::error_type;
-            using Unsubscriber = Subject_::Unsubsriber;
+            using Unsubscriber = Subject_::Unsubscriber;
 
             std::weak_ptr<SharedImpl_> _shared_weak;
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, Value>
-            Unsubsriber subscribe(Observer&& observer)
+            Unsubscriber subscribe(Observer&& observer)
             {
                 if (auto shared = _shared_weak.lock(); shared)
                 {
-                    Unsubsriber unsubscriber;
+                    Unsubscriber unsubscriber;
                     unsubscriber._shared_weak = _shared_weak;
                     unsubscriber._handle = shared->_subscriptions.push_back(
                         observer::make_complete(std::forward<Observer>(observer)));
                     return unsubscriber;
                 }
-                return Unsubsriber();
+                return Unsubscriber();
             }
+
+            auto fork() { return SourceObservable(_shared_weak); }
         };
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, Value>
-        Unsubsriber subscribe(Observer&& observer) const
+        Unsubscriber subscribe(Observer&& observer) const
         {
             return as_observable().subscribe(std::forward<Observer>(observer));
         }

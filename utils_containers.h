@@ -50,6 +50,12 @@ namespace xrx::detail
             return Handle(version, std::uint32_t(index));
         }
 
+        std::size_t size() const
+        {
+            assert(_values.size() >= _free_indexes.size());
+            return (_values.size() - _free_indexes.size());
+        }
+
         bool erase(Handle h)
         {
             assert(h._version > 0);

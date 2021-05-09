@@ -28,6 +28,14 @@ namespace xrx::detail
             return std::move(_source).subscribe(std::forward<Observer>(observer));
         }
 
+        Observable_ fork() { return Observable_(_source.fork()); }
+
+        auto publish() &&
+        {
+            return make_operator(detail::operator_tag::Publish()
+                , std::move(*this));
+        }
+
         template<typename F>
         auto filter(F&& f) &&
         {

@@ -4,6 +4,7 @@
 #include "observable_interface.h"
 #include "operators/operator_filter.h"
 #include "operators/operator_transform.h"
+#include "operators/operator_publish.h"
 
 #include <string>
 #include <cstdio>
@@ -38,6 +39,8 @@ struct InitialSourceObservable_
         strict.on_completed();
         return Unsubscriber();
     }
+
+    InitialSourceObservable_ fork() { return *this; }
 };
 
 int main()
@@ -47,7 +50,7 @@ int main()
     O observable(std::move(initial));
 
     {
-        auto unsubscriber = O(observable).subscribe([](int value)
+        auto unsubscriber = observable.fork().subscribe([](int value)
         {
             std::printf("Observer: %i.\n", value);
         });
@@ -57,7 +60,7 @@ int main()
     }
 
     {
-        auto unsubscriber = O(observable)
+        auto unsubscriber = observable.fork()
             .filter([](int)   { return true; })
             .filter([](int v) { return ((v % 2) == 0); })
             .filter([](int)   { return true; })
@@ -70,40 +73,54 @@ int main()
         static_assert(not Unsubscriber::has_effect());
     }
 
-    Subject_<int, int> subject;
-    using ExpectedUnsubscriber = typename decltype(subject)::Unsubsriber;
-
-    subject.subscribe([](int) {});
-
-    auto unsubscriber = subject.as_observable()
-        .filter([](int)   { return true; })
-        .filter([](int v) { return ((v % 2) == 0); })
-        .filter([](int)   { return true; })
-        .subscribe(observer::make([](int value)
     {
-        std::printf("[Subject1] Filtered even numbers: %i.\n", value);
+        Subject_<int, int> subject;
+        using ExpectedUnsubscriber = typename decltype(subject)::Unsubscriber;
+
+        subject.subscribe([](int) {});
+
+        auto unsubscriber = subject.as_observable()
+            .filter([](int)   { return true; })
+            .filter([](int v) { return ((v % 2) == 0); })
+            .filter([](int)   { return true; })
+            .subscribe(observer::make([](int value)
+        {
+            std::printf("[Subject1] Filtered even numbers: %i.\n", value);
+        }
+            , []()
+        {
+            std::printf("[Subject1] Completed.\n");
+        }));
+        static_assert(std::is_same_v<decltype(unsubscriber), ExpectedUnsubscriber>);
+        static_assert(ExpectedUnsubscriber::has_effect());
+
+        subject.as_observable()
+            .filter([](int v) { return (v == 3); })
+            .transform([](int v) { return std::to_string(v); })
+            .subscribe([](std::string v)
+        {
+            std::printf("[Subject2] Exactly 3: %s.\n", v.c_str());
+        });
+
+        subject.on_next(1);
+        subject.on_next(2);
+
+        unsubscriber.detach();
+
+        subject.on_next(3);
+        subject.on_next(4);
+        subject.on_completed();
     }
-        , []()
+
     {
-        std::printf("[Subject1] Completed.\n");
-    }));
-    static_assert(std::is_same_v<decltype(unsubscriber), ExpectedUnsubscriber>);
-    static_assert(ExpectedUnsubscriber::has_effect());
-
-    subject.as_observable()
-        .filter([](int v) { return (v == 3); })
-        .transform([](int v) { return std::to_string(v); })
-        .subscribe([](std::string v)
-    {
-        std::printf("[Subject2] Exactly 3: %s.\n", v.c_str());
-    });
-
-    subject.on_next(1);
-    subject.on_next(2);
-
-    unsubscriber.detach();
-
-    subject.on_next(3);
-    subject.on_next(4);
-    subject.on_completed();
+        Subject_<int, int> subject;
+        auto unsubscriber = subject.as_observable().publish().ref_count().subscribe(
+            [](int v)
+        {
+            printf("Shared: %i.\n", v);
+        });
+        subject.on_next(1);
+        unsubscriber.detach();
+        subject.on_next(2);
+    }
 }
