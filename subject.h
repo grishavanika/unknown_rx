@@ -89,29 +89,40 @@ namespace xrx
 
         void on_next(Value v)
         {
-            assert(_shared);
-            _shared->_subscriptions.for_each([&v](AnyObserver<Value, Error>& observer)
+            if (_shared)
             {
-                observer.on_next(v);
-            });
+                _shared->_subscriptions.for_each([&v](AnyObserver<Value, Error>& observer)
+                {
+                    observer.on_next(v);
+                });
+            }
+            // else: already completed
         }
 
         void on_error(Error e)
         {
-            assert(_shared);
-            _shared->_subscriptions.for_each([&e](AnyObserver<Value, Error>& observer)
+            if (_shared)
             {
-                observer.on_error(e);
-            });
+                _shared->_subscriptions.for_each([&e](AnyObserver<Value, Error>& observer)
+                {
+                    observer.on_error(e);
+                });
+                _shared.reset(); // done.
+            }
+            // else: already completed
         }
 
         void on_completed()
         {
-            assert(_shared);
-            _shared->_subscriptions.for_each([](AnyObserver<Value, Error>& observer)
+            if (_shared)
             {
-                observer.on_completed();
-            });
+                _shared->_subscriptions.for_each([](AnyObserver<Value, Error>& observer)
+                {
+                    observer.on_completed();
+                });
+                _shared.reset(); // done.
+            }
+            // else: already completed
         }
     };
 } // namespace xrx
