@@ -1,5 +1,6 @@
 #include "concepts_observer.h"
 #include "utils_observers.h"
+#include "utils_observable.h"
 #include "subject.h"
 #include "observable_interface.h"
 #include "observables_factory.h"
@@ -7,6 +8,7 @@
 #include "operators/operator_transform.h"
 #include "operators/operator_publish.h"
 #include "operators/operator_interval.h"
+#include "operators/operator_create.h"
 
 #include <string>
 #include <functional>
@@ -147,6 +149,9 @@ struct EventLoop
 
 int main()
 {
+#if (0)
+    // https://stackoverflow.com/questions/45051166/rxcpp-timeout-on-blocking-function
+    // https://github.com/ReactiveX/RxCpp/issues/151
     InitialSourceObservable_ initial;
     using O = Observable_<InitialSourceObservable_>;
     O observable(std::move(initial));
@@ -297,4 +302,35 @@ int main()
             }
         }
     }
+#endif
+    {
+        auto unsubscriber = observable::create<int, int>([](AnyObserver<int, int> observer)
+        {
+            observer.on_next(1);
+            observer.on_next(2);
+            observer.on_completed();
+        })
+            .filter([](int) { return true; })
+            .subscribe([](int v) { printf("[create] %i\n", v); });
+        unsubscriber.detach();
+    }
+
+    {
+        EventLoop event_loop;
+        auto unsubscriber = observable::create<std::uint64_t>([&event_loop](auto observer)
+        {
+            return observable::interval(std::chrono::seconds(1), event_loop.scheduler())
+                .subscribe(std::move(observer));
+        })
+            .filter([](std::uint64_t) { return true; })
+            .subscribe([](std::uint64_t v) { printf("[create with unsubscribe] %" PRIu64 "\n", v); });
+
+        assert(event_loop.actions_count() != 0);
+        event_loop.poll_one();
+        event_loop.poll_one();
+        event_loop.poll_one();
+        unsubscriber.detach();
+        assert(event_loop.actions_count() == 0);
+    }
+
 }

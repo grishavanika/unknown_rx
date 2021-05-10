@@ -19,7 +19,7 @@ namespace xrx
         struct IsAnyObserver<AnyObserver<Value, Error>> : std::true_type {};
     } // namespace detail
 
-    template<typename Value, typename Error>
+    template<typename Value, typename Error = void>
     struct AnyObserver
     {
 #define X_ANY_OBSERVER_SUPPORTS_COPY() 0
@@ -73,11 +73,18 @@ namespace xrx
             ConcreateObserver _observer;
         };
 
-        explicit AnyObserver() = default;
+        // Should not be explicit to support implicit conversions
+        // on the user side from any observable where AnyObserver can't be
+        // directly constructed. Example:
+        // observable::create([](AnyObserver<>) {})
+        //     .subscribe(CustomObserver()).
+        // (Here - conversions from CustomObserver to AnyObserver<> happens
+        // when passing arguments to create() callback).
+        /*explicit*/ AnyObserver() = default;
 
         template<typename ConcreateObserver>
             requires (!detail::IsAnyObserver<ConcreateObserver>::value)
-        explicit AnyObserver(ConcreateObserver o)
+        /*explicit*/ AnyObserver(ConcreateObserver o)
             : _observer(std::make_unique<Observer<ConcreateObserver>>(std::move(o)))
         {
         }

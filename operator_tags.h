@@ -46,4 +46,17 @@ namespace xrx::detail::operator_tag
                   "Missing `operators/operator_interval.h` include ?");
         };
     };
+
+    template<typename Value, typename Error>
+    struct Create
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .create() operator implementation. "
+                  "Missing `operators/operator_create.h` include ?");
+        };
+    };
+
 } // namespace xrx::detail::operator_tag

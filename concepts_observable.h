@@ -8,10 +8,8 @@ namespace xrx::detail
     template<typename Handle_>
     concept ConceptHandle =
            std::is_copy_constructible_v<Handle_>
-        && std::is_move_constructible_v<Handle_>
-        && std::is_copy_assignable_v<Handle_>
-        && std::is_move_assignable_v<Handle_>;
-
+        && std::is_move_constructible_v<Handle_>;
+    // #TODO: revisit is_copy/move_assignable.
 
     template<typename Unsubscriber_>
     concept ConceptUnsubscriber =
