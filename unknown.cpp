@@ -9,10 +9,12 @@
 #include "operators/operator_publish.h"
 #include "operators/operator_interval.h"
 #include "operators/operator_create.h"
+#include "operators/operator_subscribe_on.h"
 
 #include <string>
 #include <functional>
 #include <thread>
+#include <iostream>
 #include <algorithm>
 #include <cstdio>
 #include <cinttypes>
@@ -53,7 +55,7 @@ struct EventLoop
     using clock_duration = clock::duration;
     using clock_point = clock::time_point;
 
-    using ActionCallback = std::function<void()>;
+    using ActionCallback = std::function<void ()>;
     struct TickAction
     {
         clock_point _last_tick;
@@ -61,29 +63,46 @@ struct EventLoop
         ActionCallback _action;
     };
     using TickActions = HandleVector<TickAction>;
-    using Handle = typename TickActions::Handle;
+    using ActionHandle = typename TickActions::Handle;
     TickActions _tick_actions;
 
+    using TaskCallback = std::function<void ()>;
+    using Tasks = HandleVector<TaskCallback>;
+    using TaskHandle = typename Tasks::Handle;
+    Tasks _tasks;
+
     template<typename F>
-    Handle tick_every(clock_point start_from, clock_duration period, F f)
+    ActionHandle tick_every(clock_point start_from, clock_duration period, F f)
     {
-        Handle handle = _tick_actions.push_back(TickAction(
+        const ActionHandle handle = _tick_actions.push_back(TickAction(
             start_from
             , clock_duration(period)
             , ActionCallback(std::move(f))));
         return handle;
     }
 
-    bool tick_cancel(Handle handle)
+    bool tick_cancel(ActionHandle handle)
     {
         return _tick_actions.erase(handle);
+    }
+
+    template<typename F>
+    TaskHandle task_post(F task)
+    {
+        const TaskHandle handle = _tasks.push_back(TaskCallback(std::move(task)));
+        return handle;
+    }
+
+    bool task_cancel(TaskHandle handle)
+    {
+        return _tasks.erase(handle);
     }
 
     std::size_t poll_one()
     {
         clock_duration smallest = clock_duration::max();
-        Handle to_execute;
-        _tick_actions.for_each([&](TickAction& action, Handle handle)
+        ActionHandle to_execute;
+        _tick_actions.for_each([&](TickAction& action, ActionHandle handle)
         {
             const clock_duration point = (action._last_tick + action._period).time_since_epoch();
             if (point < smallest)
@@ -94,6 +113,19 @@ struct EventLoop
         });
         if (not to_execute)
         {
+            for (std::size_t i = 0; i < _tasks._values.size(); ++i)
+            {
+                const TaskHandle handle(_tasks._values[i]._version, std::uint32_t(i));
+                if (handle)
+                {
+                    TaskCallback* callback = _tasks.get(handle);
+                    assert(callback);
+                    auto f = std::move(*callback);
+                    _tasks.erase(handle);
+                    std::move(f)();
+                    return 1;
+                }
+            }
             return 0;
         }
 
@@ -113,19 +145,23 @@ struct EventLoop
         return 1;
     }
 
-    std::size_t actions_count() const { return _tick_actions.size(); }
+    std::size_t work_count() const
+    {
+        return (_tick_actions.size() + _tasks.size());
+    }
 
     struct Scheduler
     {
         using clock = EventLoop::clock;
         using clock_duration = EventLoop::clock_duration;
         using clock_point = EventLoop::clock_point;
-        using Handle = EventLoop::Handle;
+        using ActionHandle = EventLoop::ActionHandle;
+        using TaskHandle = EventLoop::TaskHandle;
 
         EventLoop* _event_loop = nullptr;
 
         template<typename F>
-        Handle tick_every(clock_point start_from, clock_duration period, F f)
+        ActionHandle tick_every(clock_point start_from, clock_duration period, F f)
         {
             assert(_event_loop);
             return _event_loop->tick_every(
@@ -134,10 +170,23 @@ struct EventLoop
                 , std::move(f));
         }
 
-        bool tick_cancel(Handle handle)
+        bool tick_cancel(ActionHandle handle)
         {
             assert(_event_loop);
             return _event_loop->tick_cancel(handle);
+        }
+
+        template<typename F>
+        TaskHandle task_post(F task)
+        {
+            assert(_event_loop);
+            return _event_loop->task_post(std::move(task));
+        }
+
+        bool task_cancel(TaskHandle handle)
+        {
+            assert(_event_loop);
+            return _event_loop->task_cancel(handle);
         }
     };
 
@@ -245,7 +294,7 @@ int main()
             });
 
         std::size_t executed_total = 0;
-        while (event_loop.actions_count() > 0)
+        while (event_loop.work_count() > 0)
         {
             const std::size_t executed_now = event_loop.poll_one();
             if (executed_now == 0)
@@ -274,7 +323,7 @@ int main()
         }));
 
         std::size_t executed_total = 0;
-        while (event_loop.actions_count() > 0)
+        while (event_loop.work_count() > 0)
         {
             const std::size_t executed_now = event_loop.poll_one();
             if (executed_now == 0)
@@ -302,7 +351,6 @@ int main()
             }
         }
     }
-#endif
     {
         auto unsubscriber = observable::create<int, int>([](AnyObserver<int, int> observer)
         {
@@ -325,12 +373,39 @@ int main()
             .filter([](std::uint64_t) { return true; })
             .subscribe([](std::uint64_t v) { printf("[create with unsubscribe] %" PRIu64 "\n", v); });
 
-        assert(event_loop.actions_count() != 0);
+        assert(event_loop.work_count() != 0);
         event_loop.poll_one();
         event_loop.poll_one();
         event_loop.poll_one();
         unsubscriber.detach();
-        assert(event_loop.actions_count() == 0);
+        assert(event_loop.work_count() == 0);
     }
+#endif
 
+    {
+        InitialSourceObservable_ initial;
+        using O = Observable_<InitialSourceObservable_>;
+        O observable(std::move(initial));
+
+        std::cout << std::this_thread::get_id() << "[subscribe_on] start (main)" << "\n";
+
+        EventLoop event_loop;
+        auto unsubscribe = observable.fork()
+            .subscribe_on(event_loop.scheduler())
+            .subscribe([](int v)
+        {
+            std::cout << std::this_thread::get_id() << "[subscribe_on] (worker)" << " " << v << "\n";
+        });
+        // #XXX: not thread-safe to unsubscribe.
+        (void)unsubscribe;
+
+        std::thread worker([&]()
+        {
+            while (event_loop.work_count() > 0)
+            {
+                (void)event_loop.poll_one();
+            }
+        });
+        worker.join();
+    }
 }

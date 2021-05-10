@@ -14,6 +14,17 @@ namespace xrx::detail::operator_tag
         };
     };
 
+    struct SubscribeOn
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .subscribe_on() operator implementation. "
+                  "Missing `operators/operator_subscribe_on.h` include ?");
+        };
+    };
+
     struct Filter
     {
         template<typename _>

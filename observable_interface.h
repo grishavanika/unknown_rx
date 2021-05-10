@@ -29,6 +29,13 @@ namespace xrx::detail
 
         Observable_ fork() { return Observable_(_source.fork()); }
 
+        template<typename Scheduler>
+        auto subscribe_on(Scheduler&& scheduler) &&
+        {
+            return make_operator(detail::operator_tag::SubscribeOn()
+                , std::move(*this), std::forward<Scheduler>(scheduler));
+        }
+
         auto publish() &&
         {
             return make_operator(detail::operator_tag::Publish()

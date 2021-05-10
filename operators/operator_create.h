@@ -8,8 +8,6 @@
 #include "utils_observers.h"
 #include "observable_interface.h"
 #include <utility>
-#include <chrono>
-#include <cstdint>
 
 namespace xrx::observable
 {

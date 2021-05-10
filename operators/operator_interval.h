@@ -22,7 +22,7 @@ namespace xrx::observable
             using clock = typename Scheduler::clock;
             using clock_duration = typename Scheduler::clock_duration;
             using clock_point = typename Scheduler::clock_point;
-            using Handle = typename Scheduler::Handle;
+            using Handle = typename Scheduler::ActionHandle;
 
             struct Unsubscriber
             {
@@ -50,10 +50,10 @@ namespace xrx::observable
                 const Handle handle = _scheduler.tick_every(start_from, period
                     , [ticks = value_type(0), observer_ = std::move(observer)]() mutable
                 {
-                    ::xrx::detail::on_next(observer_, ticks);
-                    ++ticks;
+                    const value_type now = ticks++;
+                    ::xrx::detail::on_next(observer_, now);
                 });
-                return Unsubscriber(handle, _scheduler);
+                return Unsubscriber(handle, std::move(_scheduler));
             }
 
             auto fork()
