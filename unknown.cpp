@@ -226,6 +226,7 @@ int main()
         subject.on_next(2);
     }
 
+#if (0)
     {
         EventLoop event_loop;
         auto unsubscriber = observable::interval(std::chrono::seconds(1), event_loop.scheduler())
@@ -250,6 +251,49 @@ int main()
             if (executed_total == 10)
             {
                 unsubscriber.detach();
+            }
+        }
+    }
+#endif
+
+    {
+        EventLoop event_loop;
+        auto intervals = observable::interval(std::chrono::seconds(1), event_loop.scheduler())
+            .publish()
+            .ref_count();
+        using Unregister = decltype(intervals.fork().subscribe([](std::uint64_t ticks) {}));
+        std::vector<Unregister> to_unregister;
+        to_unregister.push_back(intervals.fork().subscribe([](std::uint64_t ticks)
+        {
+            printf("[0] %" PRIu64 " ticks elapsed\n", ticks);
+        }));
+
+        std::size_t executed_total = 0;
+        while (event_loop.actions_count() > 0)
+        {
+            const std::size_t executed_now = event_loop.poll_one();
+            if (executed_now == 0)
+            {
+                std::this_thread::yield();
+                continue;
+            }
+            executed_total += executed_now;
+            if ((executed_total % 5) == 0)
+            {
+                const std::size_t index = to_unregister.size();
+                to_unregister.push_back(intervals.fork().subscribe([=](std::uint64_t ticks)
+                {
+                    printf("[%i] %" PRIu64 " ticks elapsed\n", int(index), ticks);
+                }));
+            }
+
+            if (executed_total == 100)
+            {
+                for (Unregister& unregister : to_unregister)
+                {
+                    unregister.detach();
+                }
+                to_unregister.clear();
             }
         }
     }

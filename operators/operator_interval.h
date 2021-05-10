@@ -52,6 +52,11 @@ namespace xrx::observable
                 });
                 return Unsubscriber(handle, _scheduler);
             }
+
+            auto fork()
+            {
+                return IntervalObservable_(_period, _scheduler);
+            }
         };
     } // namespace detail
 } // namespace xrx::observable
