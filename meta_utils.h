@@ -11,5 +11,7 @@ namespace xrx::detail
 
     template<typename>
     struct AlwaysFalse : std::false_type {};
+
+    struct none_tag {};
 } // namespace xrx::detail
 

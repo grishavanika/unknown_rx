@@ -35,4 +35,15 @@ namespace xrx::detail::operator_tag
                   "Missing `operators/operator_transform.h` include ?");
         };
     };
-} // namespace detail
+
+    struct Interval
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .interval() operator implementation. "
+                  "Missing `operators/operator_interval.h` include ?");
+        };
+    };
+} // namespace xrx::detail::operator_tag

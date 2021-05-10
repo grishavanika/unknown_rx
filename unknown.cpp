@@ -2,25 +2,26 @@
 #include "utils_observers.h"
 #include "subject.h"
 #include "observable_interface.h"
+#include "observables_factory.h"
 #include "operators/operator_filter.h"
 #include "operators/operator_transform.h"
 #include "operators/operator_publish.h"
+#include "operators/operator_interval.h"
 
 #include <string>
+#include <functional>
+#include <thread>
+#include <algorithm>
 #include <cstdio>
+#include <cinttypes>
 
 using namespace xrx;
 using namespace detail;
 
-namespace detail2
-{
-    struct none_tag {};
-} // namespace detail2
-
 struct InitialSourceObservable_
 {
     using value_type = int;
-    using error_type = ::detail2::none_tag;
+    using error_type = none_tag;
 
     struct Unsubscriber
     {
@@ -41,6 +42,107 @@ struct InitialSourceObservable_
     }
 
     InitialSourceObservable_ fork() { return *this; }
+};
+
+// Not serious implementation. Just to build needed interface.
+struct EventLoop
+{
+    using clock = std::chrono::steady_clock;
+    using clock_duration = clock::duration;
+    using clock_point = clock::time_point;
+
+    using ActionCallback = std::function<void()>;
+    struct TickAction
+    {
+        clock_point _last_tick;
+        clock_duration _period;
+        ActionCallback _action;
+    };
+    using TickActions = HandleVector<TickAction>;
+    using Handle = typename TickActions::Handle;
+    TickActions _tick_actions;
+
+    template<typename F>
+    Handle tick_every(clock_point start_from, clock_duration period, F f)
+    {
+        Handle handle = _tick_actions.push_back(TickAction(
+            start_from
+            , clock_duration(period)
+            , ActionCallback(std::move(f))));
+        return handle;
+    }
+
+    bool tick_cancel(Handle handle)
+    {
+        return _tick_actions.erase(handle);
+    }
+
+    std::size_t poll_one()
+    {
+        clock_duration smallest = clock_duration::max();
+        Handle to_execute;
+        _tick_actions.for_each([&](TickAction& action, Handle handle)
+        {
+            const clock_duration point = (action._last_tick + action._period).time_since_epoch();
+            if (point < smallest)
+            {
+                smallest = point;
+                to_execute = handle;
+            }
+        });
+        if (not to_execute)
+        {
+            return 0;
+        }
+
+        TickAction* action = _tick_actions.get(to_execute);
+        assert(action);
+        const clock_point desired_point = (action->_last_tick + action->_period);
+        std::this_thread::sleep_until(desired_point); // no-op if time in the past.
+        const clock_point now_point = clock::now();
+        // We are single-threaded now, `action` can't be invalidated.
+        assert(_tick_actions.get(to_execute));
+        action->_action();
+        // Action can invalidate item.
+        if (TickAction* action_modified = _tick_actions.get(to_execute))
+        {
+            action_modified->_last_tick = clock::now();
+        }
+        return 1;
+    }
+
+    std::size_t actions_count() const { return _tick_actions.size(); }
+
+    struct Scheduler
+    {
+        using clock = EventLoop::clock;
+        using clock_duration = EventLoop::clock_duration;
+        using clock_point = EventLoop::clock_point;
+        using Handle = EventLoop::Handle;
+
+        EventLoop* _event_loop = nullptr;
+
+        template<typename F>
+        Handle tick_every(clock_point start_from, clock_duration period, F f)
+        {
+            assert(_event_loop);
+            return _event_loop->tick_every(
+                std::move(start_from)
+                , std::move(period)
+                , std::move(f));
+        }
+
+        bool tick_cancel(Handle handle)
+        {
+            assert(_event_loop);
+            return _event_loop->tick_cancel(handle);
+        }
+    };
+
+    Scheduler scheduler()
+    {
+        return Scheduler{this};
+    }
 };
 
 int main()
@@ -122,5 +224,33 @@ int main()
         subject.on_next(1);
         unsubscriber.detach();
         subject.on_next(2);
+    }
+
+    {
+        EventLoop event_loop;
+        auto unsubscriber = observable::interval(std::chrono::seconds(1), event_loop.scheduler())
+            .filter([](std::uint64_t ticks)
+            {
+                return (ticks >= 0);
+            })
+            .subscribe([](std::uint64_t ticks)
+            {
+                printf("%" PRIu64 " ticks elapsed\n", ticks);
+            });
+
+        std::size_t executed_total = 0;
+        while (event_loop.actions_count() > 0)
+        {
+            const std::size_t executed_now = event_loop.poll_one();
+            if (executed_now == 0)
+            {
+                std::this_thread::yield();
+            }
+            executed_total += executed_now;
+            if (executed_total == 10)
+            {
+                unsubscriber.detach();
+            }
+        }
     }
 }
