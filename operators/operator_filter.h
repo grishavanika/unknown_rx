@@ -47,6 +47,11 @@ namespace xrx::detail
             using FilterObserver = FilterObserver<Observer_>;
             return std::move(_source).subscribe(FilterObserver(std::move(strict), std::move(_filter)));
         }
+
+        FilterObservable fork()
+        {
+            return FilterObservable(_source.fork(), _filter);
+        }
     };
 
     template<typename SourceObservable, typename F>

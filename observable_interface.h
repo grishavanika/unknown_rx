@@ -1,5 +1,6 @@
 #pragma once
 #include "concepts_observer.h"
+#include "concepts_observable.h"
 #include "operator_tags.h"
 #include "cpo_make_operator.h"
 
@@ -10,10 +11,8 @@ namespace xrx::detail
     template<typename SourceObservable>
     struct Observable_
     {
-        static_assert(std::is_copy_constructible_v<SourceObservable>
-            , "Observable required to be copyable; acts like a handle to a source stream.");
-        static_assert(std::is_move_constructible_v<SourceObservable>
-            , "Observable required to be movable; acts like a handle to a source stream.");
+        static_assert(ConceptObservable<SourceObservable>
+            , "SourceObservable should satisfy Observable concept.");
 
         using value_type   = typename SourceObservable::value_type;
         using error_type   = typename SourceObservable::error_type;

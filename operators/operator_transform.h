@@ -46,6 +46,11 @@ namespace xrx::detail
             using TransformObserver = TransformObserver<Observer_>;
             return std::move(_source).subscribe(TransformObserver(std::move(strict), std::move(_transform)));
         }
+
+        TransformObservable fork()
+        {
+            return TransformObservable(_source.fork(), _transform);
+        }
     };
 
     template<typename SourceObservable, typename F>

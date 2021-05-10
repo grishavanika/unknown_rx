@@ -26,8 +26,11 @@ namespace xrx::observable
 
             struct Unsubscriber
             {
+                using has_effect = std::true_type;
+
                 Handle _handle;
                 Scheduler _scheduler;
+
                 bool detach()
                 {
                     return _scheduler.tick_cancel(_handle);
