@@ -2,6 +2,7 @@
 #include "any_observer.h"
 #include "utils_containers.h"
 #include "observable_interface.h"
+#include "debug/assert_mutex.h"
 
 #include <memory>
 #include <cassert>
@@ -16,6 +17,7 @@ namespace xrx
 
         struct SharedImpl_
         {
+            [[no_unique_address]] debug::AssertMutex<> _assert_mutex;
             Subscriptions _subscriptions;
         };
 
@@ -33,6 +35,7 @@ namespace xrx
             {
                 if (auto shared = _shared_weak.lock(); shared)
                 {
+                    auto _ = std::lock_guard(shared->_assert_mutex);
                     return shared->_subscriptions.erase(_handle);
                 }
                 return false;
@@ -60,6 +63,7 @@ namespace xrx
             {
                 if (auto shared = _shared_weak.lock(); shared)
                 {
+                    auto _ = std::lock_guard(shared->_assert_mutex);
                     Unsubscriber unsubscriber;
                     unsubscriber._shared_weak = _shared_weak;
                     unsubscriber._handle = shared->_subscriptions.push_back(
@@ -93,8 +97,10 @@ namespace xrx
         {
             if (_shared)
             {
-                _shared->_subscriptions.for_each([&v](AnyObserver<Value, Error>& observer)
+                auto lock = std::unique_lock(_shared->_assert_mutex);
+                _shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
                 {
+                    auto _ = debug::ScopeUnlock(lock);
                     observer.on_next(v);
                 });
             }
@@ -105,8 +111,10 @@ namespace xrx
         {
             if (_shared)
             {
-                _shared->_subscriptions.for_each([&e](AnyObserver<Value, Error>& observer)
+                auto lock = std::unique_lock(_shared->_assert_mutex);
+                _shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
                 {
+                    auto _ = debug::ScopeUnlock(lock);
                     observer.on_error(e);
                 });
                 _shared.reset(); // done.
@@ -118,9 +126,11 @@ namespace xrx
         {
             if (_shared)
             {
-                _shared->_subscriptions.for_each([](AnyObserver<Value, Error>& observer)
+                auto lock = std::unique_lock(_shared->_assert_mutex);
+                _shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
                 {
-                    observer.on_completed();
+                        auto _ = debug::ScopeUnlock(lock);
+                        observer.on_completed();
                 });
                 _shared.reset(); // done.
             }

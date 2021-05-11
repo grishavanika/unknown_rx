@@ -2,6 +2,7 @@
 #include "utils_observers.h"
 #include "utils_observable.h"
 #include "subject.h"
+#include "debug/assert_mutex.h"
 #include "observable_interface.h"
 #include "observables_factory.h"
 #include "operators/operator_filter.h"
@@ -66,15 +67,18 @@ struct EventLoop
     using TickActions = HandleVector<TickAction>;
     using ActionHandle = typename TickActions::Handle;
     TickActions _tick_actions;
+    mutable debug::AssertMutex<> _assert_mutex_tick;
 
     using TaskCallback = std::function<void ()>;
     using Tasks = HandleVector<TaskCallback>;
     using TaskHandle = typename Tasks::Handle;
     Tasks _tasks;
+    mutable debug::AssertMutex<> _assert_mutex_tasks;
 
     template<typename F>
     ActionHandle tick_every(clock_point start_from, clock_duration period, F f)
     {
+        auto _ = std::lock_guard(_assert_mutex_tick);
         const ActionHandle handle = _tick_actions.push_back(TickAction(
             start_from
             , clock_duration(period)
@@ -84,6 +88,7 @@ struct EventLoop
 
     bool tick_cancel(ActionHandle handle)
     {
+        auto _ = std::lock_guard(_assert_mutex_tick);
         return _tick_actions.erase(handle);
     }
 
@@ -99,21 +104,15 @@ struct EventLoop
         return _tasks.erase(handle);
     }
 
-    std::size_t poll_one()
+    std::size_t poll_one_task()
     {
-        clock_duration smallest = clock_duration::max();
-        ActionHandle to_execute;
-        _tick_actions.for_each([&](TickAction& action, ActionHandle handle)
+        TaskCallback task;
         {
-            const clock_duration point = (action._last_tick + action._period).time_since_epoch();
-            if (point < smallest)
+            auto _ = std::lock_guard(_assert_mutex_tasks);
+            if (_tasks.size() == 0)
             {
-                smallest = point;
-                to_execute = handle;
+                return 0;
             }
-        });
-        if (not to_execute)
-        {
             for (std::size_t i = 0; i < _tasks._values.size(); ++i)
             {
                 const TaskHandle handle(_tasks._values[i]._version, std::uint32_t(i));
@@ -121,24 +120,67 @@ struct EventLoop
                 {
                     TaskCallback* callback = _tasks.get(handle);
                     assert(callback);
-                    auto f = std::move(*callback);
+                    task = std::move(*callback);
                     _tasks.erase(handle);
-                    std::move(f)();
-                    return 1;
+                    break; // find & execute first task.
                 }
             }
-            return 0;
+        }
+        if (task)
+        {
+            std::move(task)();
+            return 1;
+        }
+        return 0;
+    }
+
+    std::size_t poll_one()
+    {
+        ActionHandle to_execute;
+        {
+            auto _ = std::lock_guard(_assert_mutex_tick);
+            clock_duration smallest = clock_duration::max();
+            _tick_actions.for_each([&](TickAction& action, ActionHandle handle)
+            {
+                const clock_duration point = (action._last_tick + action._period).time_since_epoch();
+                if (point < smallest)
+                {
+                    smallest = point;
+                    to_execute = handle;
+                }
+            });
+        }
+        if (not to_execute)
+        {
+            return poll_one_task();
         }
 
-        TickAction* action = _tick_actions.get(to_execute);
-        assert(action);
-        const clock_point desired_point = (action->_last_tick + action->_period);
+        clock_point desired_point;
+        {
+            auto _ = std::lock_guard(_assert_mutex_tick);
+            TickAction* action = _tick_actions.get(to_execute);
+            if (not action)
+            {
+                // Someone just removed it.
+                return 0;
+            }
+            desired_point = (action->_last_tick + action->_period);
+        }
+        
+        // #TODO: resume this one when new item arrives
+        // (with probably closer-to-execute time point).
         std::this_thread::sleep_until(desired_point); // no-op if time in the past.
-        const clock_point now_point = clock::now();
-        // We are single-threaded now, `action` can't be invalidated.
-        assert(_tick_actions.get(to_execute));
-        action->_action();
-        // Action can invalidate item.
+
+        auto _ = std::lock_guard(_assert_mutex_tick);
+        // Can be removed by someone while we slept.
+        if (TickAction* action = _tick_actions.get(to_execute))
+        {
+            // #TODO: can be locked-up if lock is called from the action.
+            // On the other hand, we can't copy callback (now, by requirements of .interval()).
+            action->_action();
+        }
+        // Action can invalidate item or item can be removed.
+        // #TODO: can't not now, because we hold a lock. Dead-lock happens.
         if (TickAction* action_modified = _tick_actions.get(to_execute))
         {
             action_modified->_last_tick = clock::now();
@@ -148,6 +190,9 @@ struct EventLoop
 
     std::size_t work_count() const
     {
+        // std::scoped_lock<> requires .try_lock() ?
+        auto ticks_lock = std::lock_guard(_assert_mutex_tick);
+        auto tasks_lock = std::lock_guard(_assert_mutex_tasks);
         return (_tick_actions.size() + _tasks.size());
     }
 
@@ -288,7 +333,7 @@ int main()
 
     {
         EventLoop event_loop;
-        auto unsubscriber = observable::interval(std::chrono::seconds(1), event_loop.scheduler())
+        auto unsubscriber = observable::interval(std::chrono::milliseconds(100), event_loop.scheduler())
             .filter([](std::uint64_t ticks)
             {
                 return (ticks >= 0);
@@ -316,7 +361,7 @@ int main()
 
     {
         EventLoop event_loop;
-        auto intervals = observable::interval(std::chrono::seconds(1), event_loop.scheduler())
+        auto intervals = observable::interval(std::chrono::milliseconds(100), event_loop.scheduler())
             .publish()
             .ref_count();
         using Unregister = decltype(intervals.fork().subscribe([](std::uint64_t ticks) {}));
@@ -345,7 +390,7 @@ int main()
                 }));
             }
 
-            if (executed_total == 100)
+            if (executed_total == 40)
             {
                 for (Unregister& unregister : to_unregister)
                 {

@@ -30,7 +30,7 @@ namespace xrx::observable
             std::shared_ptr<Shared_> _shared;
             
             explicit ObserveOnObserver_(Scheduler scheduler, DestinationObserver_ target)
-                : _shared(std::make_shared<Shared_>(Shared_(std::move(scheduler), std::move(target))))
+                : _shared(std::make_shared<Shared_>(std::move(scheduler), std::move(target)))
             {
             }
 
