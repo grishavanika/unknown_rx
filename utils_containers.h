@@ -4,6 +4,7 @@
 #include <limits>
 
 #include <cstdint>
+#include <cassert>
 
 namespace xrx::detail
 {

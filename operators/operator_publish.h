@@ -1,13 +1,12 @@
 #pragma once
-#include "tag_invoke.hpp"
-#include "concepts_observer.h"
-#include "concepts_observable.h"
 #include "operator_tags.h"
 #include "cpo_make_operator.h"
 #include "utils_observers.h"
 #include "observable_interface.h"
 #include "utils_containers.h"
 #include "debug/assert_mutex.h"
+#include "any_observer.h"
+#include <type_traits>
 #include <utility>
 #include <memory>
 #include <optional>
@@ -40,6 +39,7 @@ namespace xrx::detail
             using has_effect = std::true_type;
 
             // #XXX: note strong reference, not weak one.
+            // #TODO: add a test that makes sure we can't use weak there.
             std::shared_ptr<SharedImpl_> _shared;
             Handle _handle;
 
@@ -100,10 +100,10 @@ namespace xrx::detail
                 auto _ = std::lock_guard(_assert_mutex);
                 if (not _connected)
                 {
-                    // #XXX: reference cycle ? _source that remembers Observer
+                    // #XXX: references cycle ? _source that remembers Observer
                     // that takes strong reference to this ?
                     auto unsubscriber = _source.fork().subscribe(
-                        Observer_(Base::shared_from_this()));
+                        Observer_(this->shared_from_this()));
                     _connected = unsubscriber;
                     return unsubscriber;
                 }
