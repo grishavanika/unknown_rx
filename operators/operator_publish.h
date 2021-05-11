@@ -18,8 +18,8 @@ namespace xrx::detail
     {
         using value_type = typename SourceObservable::value_type;
         using error_type = typename SourceObservable::error_type;
-        using AnyObserver = AnyObserver<value_type, error_type>;
-        using Subscriptions = detail::HandleVector<AnyObserver>;
+        using AnyObserver_ = AnyObserver<value_type, error_type>;
+        using Subscriptions = detail::HandleVector<AnyObserver_>;
         using Handle = typename Subscriptions::Handle;
         using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
 
@@ -208,8 +208,8 @@ namespace xrx::detail
 
         auto ref_count()
         {
-            return Observable_<SharedState_::RefCountObservable_>(
-                SharedState_::RefCountObservable_(state()._shared));
+            using RefCountObservable_ = typename SharedState_::RefCountObservable_;
+            return Observable_<RefCountObservable_>(RefCountObservable_(state()._shared));
         }
     };
 
@@ -217,7 +217,7 @@ namespace xrx::detail
     void ConnectObservableState_<SourceObservable>::Observer_::on_next(value_type v)
     {
         auto lock = std::unique_lock(_shared->_assert_mutex);
-        _shared->_subscriptions.for_each([&](AnyObserver& observer)
+        _shared->_subscriptions.for_each([&](AnyObserver_& observer)
         {
             auto _ = debug::ScopeUnlock(lock);
             observer.on_next(v);
@@ -228,7 +228,7 @@ namespace xrx::detail
     void ConnectObservableState_<SourceObservable>::Observer_::on_error(error_type e)
     {
         auto lock = std::unique_lock(_shared->_assert_mutex);
-        _shared->_subscriptions.for_each([&](AnyObserver& observer)
+        _shared->_subscriptions.for_each([&](AnyObserver_& observer)
         {
             auto _ = debug::ScopeUnlock(lock);
             observer.on_error(e);
@@ -239,7 +239,7 @@ namespace xrx::detail
     void ConnectObservableState_<SourceObservable>::Observer_::on_completed()
     {
         auto lock = std::unique_lock(_shared->_assert_mutex);
-        _shared->_subscriptions.for_each([&](AnyObserver& observer)
+        _shared->_subscriptions.for_each([&](AnyObserver_& observer)
         {
             auto _ = debug::ScopeUnlock(lock);
             observer.on_completed();

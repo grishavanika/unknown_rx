@@ -91,13 +91,13 @@ namespace xrx::observable
                         if (auto* not_initialized = std::get_if<std::monostate>(&shared->_unsubscribers); not_initialized)
                         {
                             // We are first; task_post() executed before subscribe_impl() end.
-                            subscribed = &shared->_unsubscribers.emplace<Subscribed>();
+                            subscribed = &shared->_unsubscribers.template emplace<Subscribed>();
                         }
                         else if (auto* task_handle = std::get_if<TaskHandle>(&shared->_unsubscribers); task_handle)
                         {
                             // We are second; task_post() executed *after* subscribe_impl() end.
                             // Invalidate task handle reference. We can't cancel that anymore.
-                            subscribed = &shared->_unsubscribers.emplace<Subscribed>();
+                            subscribed = &shared->_unsubscribers.template emplace<Subscribed>();
                         }
                         else if (auto* already_subscribing = std::get_if<Subscribed>(&shared->_unsubscribers))
                         {
@@ -105,7 +105,7 @@ namespace xrx::observable
                         }
                         if (subscribed)
                         {
-                            in_progress = &subscribed->_state.emplace<SubscribeInProgress>();
+                            in_progress = &subscribed->_state.template emplace<SubscribeInProgress>();
                         }
                     }
 
@@ -137,7 +137,7 @@ namespace xrx::observable
                             // and simply put final Unsubscriber.
                             Subscribed* subscribed = std::get_if<Subscribed>(&shared->_unsubscribers);
                             assert(subscribed && "No-one should change Subscribed state when it was already set");
-                            subscribed->_state.emplace<SubscribeEnded>(SubscribeEnded(std::move(unsubscriber)));
+                            subscribed->_state.template emplace<SubscribeEnded>(std::move(unsubscriber));
                         }
                     }
                 });
@@ -145,7 +145,7 @@ namespace xrx::observable
                     const std::lock_guard lock(_mutex);
                     if (auto* not_initialized = std::get_if<std::monostate>(&_unsubscribers); not_initialized)
                     {
-                        _unsubscribers.emplace<TaskHandle>(std::move(task_handle));
+                        _unsubscribers.template emplace<TaskHandle>(std::move(task_handle));
                     }
                     else if (auto* already_subscribing = std::get_if<Subscribed>(&_unsubscribers); already_subscribing)
                     {

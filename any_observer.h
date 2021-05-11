@@ -1,4 +1,6 @@
 #pragma once
+#include "concepts_observer.h"
+
 #include <type_traits>
 #include <utility>
 #include <memory>

@@ -56,7 +56,8 @@ namespace xrx::observable
             
             using ObserverArchetype = ::xrx::detail::ObserverArchetype<Value, Error>;
             using CreateReturn = decltype(std::move(_on_subscribe)(ObserverArchetype()));
-            static_assert(std::is_same_v<void, CreateReturn> or ConceptUnsubscriber<CreateReturn>
+            static_assert(std::is_same_v<void, CreateReturn> or
+                ::xrx::detail::ConceptUnsubscriber<CreateReturn>
                 , "Return value of create() callback should be Unsubscriber-like.");
 
             using Unsubscriber = CreateUnsubscriber<CreateReturn>;

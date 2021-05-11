@@ -26,9 +26,7 @@ namespace xrx::detail
     template<typename Value, typename Error>
     struct ObserverArchetype
     {
-        template<typename Value>
         void on_next(Value);
-        template<typename Error>
         void on_error(Error);
         void on_completed();
     };
@@ -36,7 +34,6 @@ namespace xrx::detail
     template<typename Value>
     struct ObserverArchetype<Value, void>
     {
-        template<typename Value>
         void on_next(Value);
         void on_error();
         void on_completed();
@@ -45,7 +42,6 @@ namespace xrx::detail
     template<typename Value>
     struct ObserverArchetype<Value, none_tag>
     {
-        template<typename Value>
         void on_next(Value);
         void on_error();
         void on_completed();
