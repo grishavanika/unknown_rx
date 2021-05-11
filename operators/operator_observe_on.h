@@ -21,6 +21,7 @@ namespace xrx::observable
             // Needs to have shared state so 
             // `DestinationObserver_` can be only move_construcrible.
             // Also, on_next() and on_completed() calls need to target same Observer.
+            // #TODO: don't do this if Observer is stateless.
             struct Shared_
             {
                 Scheduler _sheduler;

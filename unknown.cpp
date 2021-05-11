@@ -205,7 +205,6 @@ struct EventLoop
 
 int main()
 {
-#if (0)
     // https://stackoverflow.com/questions/45051166/rxcpp-timeout-on-blocking-function
     // https://github.com/ReactiveX/RxCpp/issues/151
     InitialSourceObservable_ initial;
@@ -287,7 +286,6 @@ int main()
         subject.on_next(2);
     }
 
-#if (0)
     {
         EventLoop event_loop;
         auto unsubscriber = observable::interval(std::chrono::seconds(1), event_loop.scheduler())
@@ -315,7 +313,6 @@ int main()
             }
         }
     }
-#endif
 
     {
         EventLoop event_loop;
@@ -387,7 +384,6 @@ int main()
         unsubscriber.detach();
         assert(event_loop.work_count() == 0);
     }
-#endif
 
     {
         InitialSourceObservable_ initial;

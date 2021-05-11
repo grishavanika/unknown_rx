@@ -7,6 +7,7 @@
 #include "utils_observers.h"
 #include "observable_interface.h"
 #include "utils_containers.h"
+#include "debug/assert_mutex.h"
 #include <utility>
 #include <memory>
 #include <optional>
@@ -81,6 +82,7 @@ namespace xrx::detail
         {
             using Base = std::enable_shared_from_this<SharedImpl_>;
 
+            [[no_unique_address]] debug::AssertMutex<> _assert_mutex;
             SourceObservable _source;
             Subscriptions _subscriptions;
             std::optional<SourceUnsubscriber> _connected;
@@ -95,6 +97,7 @@ namespace xrx::detail
 
             SourceUnsubscriber connect()
             {
+                auto _ = std::lock_guard(_assert_mutex);
                 if (not _connected)
                 {
                     // #XXX: reference cycle ? _source that remembers Observer
@@ -110,23 +113,25 @@ namespace xrx::detail
             template<typename Observer>
             Unsubscriber subscribe(Observer&& observer, bool do_refcount = false)
             {
-                const std::size_t count_before = _subscriptions.size();
+                auto strict = observer::make_complete(std::forward<Observer>(observer));
+                std::size_t count_before = 0;
                 Unsubscriber unsubscriber;
                 unsubscriber._shared = Base::shared_from_this();
-                unsubscriber._handle = _subscriptions.push_back(
-                    observer::make_complete(std::forward<Observer>(observer)));
+                {
+                    auto _ = std::lock_guard(_assert_mutex);
+                    count_before = _subscriptions.size();
+                    unsubscriber._handle = _subscriptions.push_back(std::move(strict));
+                }
                 if (do_refcount && (count_before == 0))
                 {
-                    if (not _connected)
-                    {
-                        connect();
-                    }
+                    connect();
                 }
                 return unsubscriber;
             }
 
             bool unsubscribe(Handle handle, bool do_refcount)
             {
+                auto _ = std::lock_guard(_assert_mutex);
                 const std::size_t count_before = _subscriptions.size();
                 const bool ok = _subscriptions.erase(handle);
                 const std::size_t count_now = _subscriptions.size();
@@ -145,7 +150,7 @@ namespace xrx::detail
         std::shared_ptr<SharedImpl_> _shared;
 
         explicit ConnectObservableState_(SourceObservable source)
-            : _shared(std::make_shared<SharedImpl_>(SharedImpl_(std::move(source))))
+            : _shared(std::make_shared<SharedImpl_>(std::move(source)))
         {
         }
     };
@@ -211,8 +216,10 @@ namespace xrx::detail
     template<typename SourceObservable>
     void ConnectObservableState_<SourceObservable>::Observer_::on_next(value_type v)
     {
-        _shared->_subscriptions.for_each([&v](AnyObserver& observer)
+        auto lock = std::unique_lock(_shared->_assert_mutex);
+        _shared->_subscriptions.for_each([&](AnyObserver& observer)
         {
+            auto _ = debug::ScopeUnlock(lock);
             observer.on_next(v);
         });
     }
@@ -220,8 +227,10 @@ namespace xrx::detail
     template<typename SourceObservable>
     void ConnectObservableState_<SourceObservable>::Observer_::on_error(error_type e)
     {
-        _shared->_subscriptions.for_each([&e](AnyObserver& observer)
+        auto lock = std::unique_lock(_shared->_assert_mutex);
+        _shared->_subscriptions.for_each([&](AnyObserver& observer)
         {
+            auto _ = debug::ScopeUnlock(lock);
             observer.on_error(e);
         });
     }
@@ -229,8 +238,10 @@ namespace xrx::detail
     template<typename SourceObservable>
     void ConnectObservableState_<SourceObservable>::Observer_::on_completed()
     {
-        _shared->_subscriptions.for_each([](AnyObserver& observer)
+        auto lock = std::unique_lock(_shared->_assert_mutex);
+        _shared->_subscriptions.for_each([&](AnyObserver& observer)
         {
+            auto _ = debug::ScopeUnlock(lock);
             observer.on_completed();
         });
     }
