@@ -25,6 +25,17 @@ namespace xrx::detail::operator_tag
         };
     };
 
+    struct ObserveOn
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .observe_on() operator implementation. "
+                  "Missing `operators/operator_observe_on.h` include ?");
+        };
+    };
+
     struct Filter
     {
         template<typename _>

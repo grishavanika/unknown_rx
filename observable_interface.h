@@ -36,6 +36,13 @@ namespace xrx::detail
                 , std::move(*this), std::forward<Scheduler>(scheduler));
         }
 
+        template<typename Scheduler>
+        auto observe_on(Scheduler&& scheduler) &&
+        {
+            return make_operator(detail::operator_tag::ObserveOn()
+                , std::move(*this), std::forward<Scheduler>(scheduler));
+        }
+
         auto publish() &&
         {
             return make_operator(detail::operator_tag::Publish()

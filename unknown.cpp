@@ -10,6 +10,7 @@
 #include "operators/operator_interval.h"
 #include "operators/operator_create.h"
 #include "operators/operator_subscribe_on.h"
+#include "operators/operator_observe_on.h"
 
 #include <string>
 #include <functional>
@@ -188,6 +189,12 @@ struct EventLoop
             assert(_event_loop);
             return _event_loop->task_cancel(handle);
         }
+
+        // Scheduler for which every task is ordered.
+        // #TODO: looks like too big restriction.
+        // on_next() can go in whatever order, but on_complete and on_error
+        // should be last one.
+        Scheduler stream_scheduler() { return *this; }
     };
 
     Scheduler scheduler()
@@ -392,6 +399,7 @@ int main()
         EventLoop event_loop;
         auto unsubscribe = observable.fork()
             .subscribe_on(event_loop.scheduler())
+            .observe_on(event_loop.scheduler())
             .subscribe([](int v)
         {
             std::cout << std::this_thread::get_id() << "[subscribe_on] (worker)" << " " << v << "\n";
