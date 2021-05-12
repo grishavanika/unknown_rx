@@ -81,4 +81,26 @@ namespace xrx::detail::operator_tag
         };
     };
 
+    struct Range
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .range() operator implementation. "
+                  "Missing `operators/operator_range.h` include ?");
+        };
+    };
+
+    struct Take
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .take() operator implementation. "
+                  "Missing `operators/operator_take.h` include ?");
+        };
+    };
+
 } // namespace xrx::detail::operator_tag

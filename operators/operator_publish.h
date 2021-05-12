@@ -220,6 +220,7 @@ namespace xrx::detail
         _shared->_subscriptions.for_each([&](AnyObserver_& observer)
         {
             auto _ = debug::ScopeUnlock(lock);
+            // #XXX: handle unsubscribe.
             observer.on_next(v);
         });
     }

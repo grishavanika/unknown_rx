@@ -11,4 +11,10 @@
  - fork() && and fork() & overloads.
  - Add allocators support to all interfaces.
  - Add Small Buffer/Object Optimization to type-erased interfaces.
- - 
+ - Detaching Observer after on_completed()/on_error().
+ - Safe guards/asserts for calls to on_next() after stream's end ?
+ - Do subscription unsubscribe for Observables that support dynamic subscription when Observer returns ::xrx::unsubscribe(true).
+ - Maybe Scheduler interface should support State passing & remembering.
+   This should help to reduce usage of std::shared_ptr in few places.
+ = 
+

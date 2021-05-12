@@ -12,6 +12,8 @@
 #include "operators/operator_create.h"
 #include "operators/operator_subscribe_on.h"
 #include "operators/operator_observe_on.h"
+#include "operators/operator_range.h"
+#include "operators/operator_take.h"
 
 #include <string>
 #include <functional>
@@ -39,6 +41,7 @@ struct InitialSourceObservable_
     Unsubscriber subscribe(Observer&& observer) &&
     {
         auto strict = observer::make_complete(std::forward<Observer>(observer));
+        // #XXX: handle unsubscribe.
         strict.on_next(1);
         strict.on_next(2);
         strict.on_next(3);
@@ -250,6 +253,7 @@ struct EventLoop
 
 int main()
 {
+#if (0)
     // https://stackoverflow.com/questions/45051166/rxcpp-timeout-on-blocking-function
     // https://github.com/ReactiveX/RxCpp/issues/151
     InitialSourceObservable_ initial;
@@ -457,4 +461,12 @@ int main()
         });
         worker.join();
     }
+#endif
+
+    observable::range(1)
+        .take(10)
+        .subscribe([](auto v)
+    {
+        printf("[take] %i\n", v);
+    });
 }

@@ -48,6 +48,7 @@ namespace xrx::observable
                     , [ticks = value_type(0), observer_ = std::move(observer)]() mutable
                 {
                     const value_type now = ticks++;
+                    // #XXX: handle ::xrx::unsubscribe return.
                     ::xrx::detail::on_next(observer_, now);
                 });
                 return Unsubscriber(handle, std::move(_scheduler));

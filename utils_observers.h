@@ -6,6 +6,68 @@
 
 namespace xrx::detail
 {
+    struct [[nodiscard]] OnNextAction
+    {
+        bool _unsubscribe = false;
+    };
+
+    template<typename Observer, typename Value>
+    OnNextAction on_next_with_action(Observer&& observer, Value&& value)
+        requires requires { ::xrx::detail::on_next(std::forward<Observer>(observer), std::forward<Value>(value)); }
+    {
+        using Return_ = decltype(::xrx::detail::on_next(std::forward<Observer>(observer), std::forward<Value>(value)));
+        static_assert(not std::is_reference_v<Return_>
+            , "Return by value only allowed fron on_next() callback. To simplify implementation below.");
+        if constexpr (std::is_same_v<Return_, void>)
+        {
+            (void)::xrx::detail::on_next(std::forward<Observer>(observer), std::forward<Value>(value));
+            return OnNextAction();
+        }
+        else if constexpr (std::is_same_v<Return_, OnNextAction>)
+        {
+            return ::xrx::detail::on_next(std::forward<Observer>(observer), std::forward<Value>(value));
+        }
+        else if constexpr (std::is_same_v<Return_, ::xrx::unsubscribe>)
+        {
+            const ::xrx::unsubscribe state = ::xrx::detail::on_next(std::forward<Observer>(observer), std::forward<Value>(value));
+            return OnNextAction{._unsubscribe = state._do_unsubscribe};
+        }
+        else
+        {
+            static_assert(AlwaysFalse<Observer>()
+                , "Unknown return type from ::on_next(Value). New tag to handle ?");
+        }
+    }
+
+    // #TODO: merge those 2 functions.
+    template<typename Observer, typename Value>
+    OnNextAction on_next_with_action(Observer&& observer)
+        requires requires { ::xrx::detail::on_next(std::forward<Observer>(observer)); }
+    {
+        using Return_ = decltype(::xrx::detail::on_next(std::forward<Observer>(observer)));
+        static_assert(not std::is_reference_v<Return_>
+            , "Return by value only allowed fron on_next() callback. To simplify implementation below.");
+        if constexpr (std::is_same_v<Return_, void>)
+        {
+            (void)::xrx::detail::on_next(std::forward<Observer>(observer));
+            return OnNextAction();
+        }
+        else if constexpr (std::is_same_v<Return_, OnNextAction>)
+        {
+            return ::xrx::detail::on_next(std::forward<Observer>(observer));
+        }
+        else if constexpr (std::is_same_v<Return_, ::xrx::unsubscribe>)
+        {
+            const ::xrx::unsubscribe state = ::xrx::detail::on_next(std::forward<Observer>(observer));
+            return OnNextAction{._unsubscribe = state._do_unsubscribe};
+        }
+        else
+        {
+            static_assert(AlwaysFalse<Observer>()
+                , "Unknown return type from ::on_next(). New tag to handle ?");
+        }
+    }
+
     struct OnNext_Noop
     {
         template<typename Value>

@@ -32,7 +32,7 @@ namespace xrx
 #if (X_ANY_OBSERVER_SUPPORTS_COPY())
             virtual std::unique_ptr<ObserverConcept> copy_() const = 0;
 #endif
-            virtual void on_next(Value v) = 0;
+            virtual ::xrx::detail::OnNextAction on_next(Value v) = 0;
             virtual void on_error(Error e) = 0;
             virtual void on_completed() = 0;
         };
@@ -52,9 +52,9 @@ namespace xrx
             }
 #endif
 
-            virtual void on_next(Value v) override
+            virtual ::xrx::detail::OnNextAction on_next(Value v) override
             {
-                return ::xrx::detail::on_next(_observer, std::forward<Value>(v));
+                return ::xrx::detail::on_next_with_action(_observer, std::forward<Value>(v));
             }
 
             virtual void on_error(Error e) override

@@ -44,6 +44,7 @@ namespace xrx::observable
                 {
                     if (not self->_unsubscribed)
                     {
+                        // #XXX: handle unsubscribe.
                         self->_target.on_next(std::forward<Value>(v_));
                     }
                 });

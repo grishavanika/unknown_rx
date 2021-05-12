@@ -19,4 +19,11 @@ namespace xrx::observable
         return ::xrx::detail::make_operator(Tag_()
             , std::move(on_subscribe));
     }
+
+    template<typename Integer>
+    auto range(Integer start = Integer())
+    {
+        return ::xrx::detail::make_operator(xrx::detail::operator_tag::Range()
+            , start, 1, 1);
+    }
 } // namespace xrx::observable

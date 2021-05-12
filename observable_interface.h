@@ -61,5 +61,10 @@ namespace xrx::detail
             return make_operator(detail::operator_tag::Transform()
                 , std::move(*this), std::forward<F>(f));
         }
+        auto take(std::size_t count) &&
+        {
+            return make_operator(detail::operator_tag::Take()
+                , std::move(*this), std::size_t(count));
+        }
     };
 } // namespace xrx::detail

@@ -33,7 +33,8 @@ namespace xrx::detail
             {
                 if (_filter(v))
                 {
-                    (void)observer().on_next(std::forward<Value>(v));
+                    // #XXX: handle unsubscribe.
+                    observer().on_next(std::forward<Value>(v));
                 }
             }
         };

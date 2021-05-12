@@ -129,7 +129,7 @@ foreach ($header in $ordered)
     {
         if (-Not $already_included.Contains($dependency))
         {
-            throw "Tryig to copy-paste $($header.Header) file, but its dependency is not yet included: '$($dependency.Header)'."
+            throw "Tryig to copy-paste $($header.Header) file, but its dependency is not yet included: $dependency."
         }
     }
 

@@ -101,6 +101,7 @@ namespace xrx
                 _shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
                 {
                     auto _ = debug::ScopeUnlock(lock);
+                    // #XXX: handle unsubscribe.
                     observer.on_next(v);
                 });
             }

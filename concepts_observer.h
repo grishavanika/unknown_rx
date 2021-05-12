@@ -6,6 +6,18 @@
 #include <type_traits>
 #include <functional> // std::invoke
 
+namespace xrx
+{
+    struct unsubscribe
+    {
+        const bool _do_unsubscribe;
+        constexpr explicit unsubscribe(bool do_unsubscribe = true)
+            : _do_unsubscribe(do_unsubscribe)
+        {
+        }
+    };
+} // namespace xrx
+
 namespace xrx::detail
 {
     struct on_next_fn
@@ -33,7 +45,7 @@ namespace xrx::detail
             return std::invoke(std::forward<S>(s), std::forward<T>(v));
         }
         template<typename S, typename T>
-        constexpr auto operator()(S&& s, T&& v) const
+        [[nodiscard]] constexpr auto operator()(S&& s, T&& v) const
             noexcept(noexcept(resolve1_(std::forward<S>(s), std::forward<T>(v), priority_tag<2>())))
                 -> decltype(resolve1_(std::forward<S>(s), std::forward<T>(v), priority_tag<2>()))
         {
@@ -62,7 +74,7 @@ namespace xrx::detail
             return std::invoke(std::forward<S>(s));
         }
         template<typename S>
-        constexpr auto operator()(S&& s) const
+        [[nodiscard]] constexpr auto operator()(S&& s) const
             noexcept(noexcept(resolve0_(std::forward<S>(s), priority_tag<2>())))
                 -> decltype(resolve0_(std::forward<S>(s), priority_tag<2>()))
         {

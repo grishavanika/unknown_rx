@@ -31,7 +31,8 @@ namespace xrx::detail
             template<typename Value>
             void on_next(Value&& v)
             {
-                (void)observer().on_next(
+                // #XXX: handle unsubscribe.
+                observer().on_next(
                     _transform(std::forward<Value>(v)));
             }
         };
