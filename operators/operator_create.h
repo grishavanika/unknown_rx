@@ -66,8 +66,7 @@ namespace xrx::observable
                 requires ConceptValueObserverOf<Observer, value_type>
             Unsubscriber subscribe(Observer observer) &&
             {
-                auto strict = ::xrx::observer::make_complete(std::move(observer));
-                return Unsubscriber::invoke_(std::move(_on_subscribe), std::move(strict));
+                return Unsubscriber::invoke_(std::move(_on_subscribe), std::move(observer));
             }
 
             auto fork() && { return CreateObservable_(std::move(_on_subscribe)); }

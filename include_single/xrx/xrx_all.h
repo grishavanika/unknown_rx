@@ -1026,65 +1026,10 @@ namespace xrx::detail
             return std::move(_on_error)();
         }
     };
-
-    template<typename Observer>
-    struct CompleteObserver
-    {
-        [[no_unique_address]] Observer _observer;
-
-        template<typename Value>
-        [[nodiscard]] constexpr decltype(auto) on_next(Value&& value)
-        {
-            if constexpr (ConceptWithOnNext<Observer, Value>)
-            {
-                return ::xrx::detail::on_next(_observer, std::forward<Value>(value));
-            }
-        }
-
-        constexpr decltype(auto) on_next()
-        {
-            if constexpr (ConceptWithOnNext<Observer, void>)
-            {
-                return ::xrx::detail::on_next(_observer);
-            }
-        }
-
-        constexpr auto on_completed()
-        {
-            if constexpr (ConceptWithOnCompleted<Observer>)
-            {
-                return ::xrx::detail::on_completed(std::move(_observer));
-            }
-        }
-
-        template<typename Error>
-        constexpr auto on_error(Error&& error)
-        {
-            if constexpr (ConceptWithOnError<Observer, Error>)
-            {
-                return ::xrx::detail::on_error(std::move(_observer), std::forward<Error>(error));
-            }
-        }
-
-        constexpr decltype(auto) on_error()
-        {
-            if constexpr (ConceptWithOnError<Observer, void>)
-            {
-                return ::xrx::detail::on_error(std::move(_observer));
-            }
-        }
-    };
 } // namespace xrx::detail
 
 namespace xrx::observer
 {
-    template<typename Observer>
-    auto make_complete(Observer&& o)
-    {
-        using Observer_ = std::remove_cvref_t<Observer>;
-        return ::xrx::detail::CompleteObserver<Observer_>(std::forward<Observer>(o));
-    }
-
     template<typename OnNext>
     auto make(OnNext&& on_next)
     {
@@ -1837,12 +1782,9 @@ namespace xrx::observable
                 requires ConceptValueObserverOf<Observer, value_type>
             Unsubscriber subscribe(Observer observer) &&
             {
-                auto strict = xrx::observer::make_complete(std::move(observer));
-                using CompleteObserver_ = decltype(strict);
-                using Observer_ = ObserveOnObserver_<
-                    value_type, error_type, Scheduler, CompleteObserver_>;
-                auto shared = Observer_::make_state(std::move(_scheduler), std::move(strict));
-                auto handle = std::move(_source).subscribe(Observer_(shared));
+                using ObserverImpl_ = ObserveOnObserver_<value_type, error_type, Scheduler, Observer>;
+                auto shared = ObserverImpl_::make_state(std::move(_scheduler), std::move(observer));
+                auto handle = std::move(_source).subscribe(ObserverImpl_(shared));
                 Unsubscriber unsubscriber;
                 unsubscriber._unsubscribed = std::shared_ptr<std::atomic_bool>(shared, &shared->_unsubscribed);
                 unsubscriber._unsubscriber = handle;
@@ -1939,8 +1881,7 @@ namespace xrx::observable
                 requires ConceptValueObserverOf<Observer, value_type>
             Unsubscriber subscribe(Observer observer) &&
             {
-                auto strict = ::xrx::observer::make_complete(std::move(observer));
-                return Unsubscriber::invoke_(std::move(_on_subscribe), std::move(strict));
+                return Unsubscriber::invoke_(std::move(_on_subscribe), std::move(observer));
             }
 
             auto fork() && { return CreateObservable_(std::move(_on_subscribe)); }
@@ -2020,10 +1961,9 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         decltype(auto) subscribe(Observer&& observer) &&
         {
-            auto strict = observer::make_complete(std::forward<Observer>(observer));
-            using Observer_ = decltype(strict);
+            using Observer_ = std::remove_reference_t<Observer>;
             using FilterObserver = FilterObserver<Observer_>;
-            return std::move(_source).subscribe(FilterObserver(std::move(strict), std::move(_filter)));
+            return std::move(_source).subscribe(FilterObserver(std::forward<Observer>(observer), std::move(_filter)));
         }
 
         FilterObservable fork()
@@ -2339,11 +2279,11 @@ namespace xrx
             {
                 if (auto shared = _shared_weak.lock(); shared)
                 {
+                    AnyObserver<value_type, error_type> erased(std::forward<Observer>(observer));
                     auto _ = std::lock_guard(shared->_assert_mutex);
                     Unsubscriber unsubscriber;
                     unsubscriber._shared_weak = _shared_weak;
-                    unsubscriber._handle = shared->_subscriptions.push_back(
-                        observer::make_complete(std::forward<Observer>(observer)));
+                    unsubscriber._handle = shared->_subscriptions.push_back(std::move(erased));
                     return unsubscriber;
                 }
                 return Unsubscriber();
@@ -2542,14 +2482,14 @@ namespace xrx::detail
             template<typename Observer>
             Unsubscriber subscribe(Observer&& observer, bool do_refcount = false)
             {
-                auto strict = observer::make_complete(std::forward<Observer>(observer));
                 std::size_t count_before = 0;
+                AnyObserver_ erased_observer(std::forward<Observer>(observer));
                 Unsubscriber unsubscriber;
                 unsubscriber._shared = Base::shared_from_this();
                 {
                     auto _ = std::lock_guard(_assert_mutex);
                     count_before = _subscriptions.size();
-                    unsubscriber._handle = _subscriptions.push_back(std::move(strict));
+                    unsubscriber._handle = _subscriptions.push_back(std::move(erased_observer));
                 }
                 if (do_refcount && (count_before == 0))
                 {

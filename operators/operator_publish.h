@@ -114,14 +114,14 @@ namespace xrx::detail
             template<typename Observer>
             Unsubscriber subscribe(Observer&& observer, bool do_refcount = false)
             {
-                auto strict = observer::make_complete(std::forward<Observer>(observer));
                 std::size_t count_before = 0;
+                AnyObserver_ erased_observer(std::forward<Observer>(observer));
                 Unsubscriber unsubscriber;
                 unsubscriber._shared = Base::shared_from_this();
                 {
                     auto _ = std::lock_guard(_assert_mutex);
                     count_before = _subscriptions.size();
-                    unsubscriber._handle = _subscriptions.push_back(std::move(strict));
+                    unsubscriber._handle = _subscriptions.push_back(std::move(erased_observer));
                 }
                 if (do_refcount && (count_before == 0))
                 {

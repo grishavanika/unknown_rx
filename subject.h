@@ -63,11 +63,11 @@ namespace xrx
             {
                 if (auto shared = _shared_weak.lock(); shared)
                 {
+                    AnyObserver<value_type, error_type> erased(std::forward<Observer>(observer));
                     auto _ = std::lock_guard(shared->_assert_mutex);
                     Unsubscriber unsubscriber;
                     unsubscriber._shared_weak = _shared_weak;
-                    unsubscriber._handle = shared->_subscriptions.push_back(
-                        observer::make_complete(std::forward<Observer>(observer)));
+                    unsubscriber._handle = shared->_subscriptions.push_back(std::move(erased));
                     return unsubscriber;
                 }
                 return Unsubscriber();

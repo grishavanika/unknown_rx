@@ -147,65 +147,10 @@ namespace xrx::detail
             return std::move(_on_error)();
         }
     };
-
-    template<typename Observer>
-    struct CompleteObserver
-    {
-        [[no_unique_address]] Observer _observer;
-
-        template<typename Value>
-        [[nodiscard]] constexpr decltype(auto) on_next(Value&& value)
-        {
-            if constexpr (ConceptWithOnNext<Observer, Value>)
-            {
-                return ::xrx::detail::on_next(_observer, std::forward<Value>(value));
-            }
-        }
-
-        constexpr decltype(auto) on_next()
-        {
-            if constexpr (ConceptWithOnNext<Observer, void>)
-            {
-                return ::xrx::detail::on_next(_observer);
-            }
-        }
-
-        constexpr auto on_completed()
-        {
-            if constexpr (ConceptWithOnCompleted<Observer>)
-            {
-                return ::xrx::detail::on_completed(std::move(_observer));
-            }
-        }
-
-        template<typename Error>
-        constexpr auto on_error(Error&& error)
-        {
-            if constexpr (ConceptWithOnError<Observer, Error>)
-            {
-                return ::xrx::detail::on_error(std::move(_observer), std::forward<Error>(error));
-            }
-        }
-
-        constexpr decltype(auto) on_error()
-        {
-            if constexpr (ConceptWithOnError<Observer, void>)
-            {
-                return ::xrx::detail::on_error(std::move(_observer));
-            }
-        }
-    };
 } // namespace xrx::detail
 
 namespace xrx::observer
 {
-    template<typename Observer>
-    auto make_complete(Observer&& o)
-    {
-        using Observer_ = std::remove_cvref_t<Observer>;
-        return ::xrx::detail::CompleteObserver<Observer_>(std::forward<Observer>(o));
-    }
-
     template<typename OnNext>
     auto make(OnNext&& on_next)
     {

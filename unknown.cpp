@@ -78,13 +78,12 @@ struct InitialSourceObservable_
     template<typename Observer>
     Unsubscriber subscribe(Observer&& observer) &&
     {
-        auto strict = observer::make_complete(std::forward<Observer>(observer));
         // #XXX: handle unsubscribe.
-        (void)strict.on_next(1);
-        (void)strict.on_next(2);
-        (void)strict.on_next(3);
-        (void)strict.on_next(4);
-        strict.on_completed();
+        (void)::xrx::detail::on_next(observer, 1);
+        (void)::xrx::detail::on_next(observer, 2);
+        (void)::xrx::detail::on_next(observer, 3);
+        (void)::xrx::detail::on_next(observer, 4);
+        (void)::xrx::detail::on_completed(observer);
         return Unsubscriber();
     }
 

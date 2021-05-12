@@ -50,10 +50,9 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         decltype(auto) subscribe(Observer&& observer) &&
         {
-            auto strict = observer::make_complete(std::forward<Observer>(observer));
-            using Observer_ = decltype(strict);
+            using Observer_ = std::remove_reference_t<Observer>;
             using FilterObserver = FilterObserver<Observer_>;
-            return std::move(_source).subscribe(FilterObserver(std::move(strict), std::move(_filter)));
+            return std::move(_source).subscribe(FilterObserver(std::forward<Observer>(observer), std::move(_filter)));
         }
 
         FilterObservable fork()

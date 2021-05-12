@@ -131,12 +131,9 @@ namespace xrx::observable
                 requires ConceptValueObserverOf<Observer, value_type>
             Unsubscriber subscribe(Observer observer) &&
             {
-                auto strict = xrx::observer::make_complete(std::move(observer));
-                using CompleteObserver_ = decltype(strict);
-                using Observer_ = ObserveOnObserver_<
-                    value_type, error_type, Scheduler, CompleteObserver_>;
-                auto shared = Observer_::make_state(std::move(_scheduler), std::move(strict));
-                auto handle = std::move(_source).subscribe(Observer_(shared));
+                using ObserverImpl_ = ObserveOnObserver_<value_type, error_type, Scheduler, Observer>;
+                auto shared = ObserverImpl_::make_state(std::move(_scheduler), std::move(observer));
+                auto handle = std::move(_source).subscribe(ObserverImpl_(shared));
                 Unsubscriber unsubscriber;
                 unsubscriber._unsubscribed = std::shared_ptr<std::atomic_bool>(shared, &shared->_unsubscribed);
                 unsubscriber._unsubscriber = handle;
