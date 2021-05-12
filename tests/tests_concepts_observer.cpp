@@ -117,7 +117,7 @@ namespace tests::on_error_
         friend constexpr int tag_invoke(tag_t<::on_error>
             , WithCombination, int v)
         { return v; }
-        constexpr int on_error(int v) const { return -1; }
+        constexpr int on_error(int) const { return -1; }
     };
     static_assert(on_error(WithCombination(), 1) == 1);
 
@@ -147,7 +147,7 @@ namespace tests::on_error_
         friend constexpr int tag_invoke(tag_t<::on_error>
             , Void_WithCombination)
         { return 2; }
-        constexpr int on_error(int v) const { return -1; }
+        constexpr int on_error(int) const { return -1; }
     };
     static_assert(on_error(Void_WithCombination()) == 2);
 } // namespace tests::on_error_

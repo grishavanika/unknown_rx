@@ -461,7 +461,7 @@ int main(int argc, char* argv[])
         auto intervals = observable::interval(std::chrono::milliseconds(100), event_loop.scheduler())
             .publish()
             .ref_count();
-        using Unregister = decltype(intervals.fork().subscribe([](std::uint64_t ticks) {}));
+        using Unregister = decltype(intervals.fork().subscribe([](std::uint64_t) {}));
         std::vector<Unregister> to_unregister;
         to_unregister.push_back(intervals.fork().subscribe([](std::uint64_t ticks)
         {
@@ -529,14 +529,14 @@ int main(int argc, char* argv[])
     }
 
     {
-        InitialSourceObservable_ initial;
+        InitialSourceObservable_ temp;
         using O = Observable_<InitialSourceObservable_>;
-        O observable(std::move(initial));
+        O cold(std::move(temp));
 
         std::cout << std::this_thread::get_id() << "[subscribe_on] start (main)" << "\n";
 
         EventLoop event_loop;
-        auto unsubscribe = observable.fork()
+        auto unsubscribe = cold.fork()
             .subscribe_on(event_loop.scheduler())
             .observe_on(event_loop.scheduler())
             .subscribe([](int v)
@@ -556,16 +556,19 @@ int main(int argc, char* argv[])
         worker.join();
     }
 
+#if (0)
     Allocs::get() = Allocs{};
+#endif
     observable::range(1)
         .take(10)
         .subscribe([](auto v)
     {
         printf("[take] %i\n", v);
     });
+#if (0)
     std::cout << "Allocations count: " << Allocs::get()._count << "\n";
     std::cout << "Allocations size: " << Allocs::get()._size << "\n";
-
+#endif
     observable::range(0)
         .transform([](int v) { return float(v); })
         .filter([](float) { return true; })
@@ -577,7 +580,7 @@ int main(int argc, char* argv[])
     }
             , []()
     {
-        printf("[stop on filter & tranform] completed\n");
+        printf("[stop on filter & transform] completed\n");
     }));
 #endif
 

@@ -1,8 +1,8 @@
 
-$Src = Join-Path -Path $PSScriptRoot -ChildPath ".." -Resolve
+$Src = Join-Path -Path $PSScriptRoot -ChildPath "../include" -Resolve
 $Folders = @(".", "debug", "operators")
 $Extensions = @("*.h", "*.hpp")
-$OutputFile = "include_single/xrx/xrx_all.h"
+$OutputFile = "../include_single/xrx/xrx_all.h"
 $RegExpHeader = '#include(.*)((<(?<name>(.*))>)|"(?<name>(.*))")'
 $RegExpPragmaOnce = '#pragma(.*)once'
 

@@ -1,0 +1,20 @@
+add_subdirectory(single_compile)
+set_target_properties(tests_single_compile PROPERTIES FOLDER tests)
+new_test(single_compile tests_single_compile)
+set_target_properties(tests_all_compile PROPERTIES FOLDER tests)
+new_test(all_compile tests_all_compile)
+
+set(xrx_tests_SRC
+    "unknown.cpp"
+    "tests_operator_range.cpp"
+    "tests_concepts_observer.cpp"
+    )
+add_executable(tests_xrx ${xrx_tests_SRC})
+set_all_warnings(tests_xrx PRIVATE)
+target_link_libraries(tests_xrx PRIVATE GTest_Integrated)
+target_link_libraries(tests_xrx INTERFACE xrx)
+# XXX: temporary. Why xrx includes do not work ?
+target_include_directories(tests_xrx PRIVATE "../include")
+
+set_target_properties(tests_xrx PROPERTIES FOLDER tests)
+new_test(xrx_ tests_xrx)

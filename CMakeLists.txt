@@ -1,0 +1,65 @@
+cmake_minimum_required(VERSION 3.12.4 FATAL_ERROR)
+# 3.12.4 is required because of C++20 support.
+project(xrx)
+
+# For proper work of CMAKE_EXPORT_COMPILE_COMMANDS.
+set(CMAKE_C_USE_RESPONSE_FILE_FOR_INCLUDES OFF)
+set(CMAKE_CXX_USE_RESPONSE_FILE_FOR_INCLUDES OFF)
+
+include(tools/cmake/utils.cmake)
+include(tools/cmake/clang_msvc_integration.cmake)
+include(CTest)
+
+# Enable folders for VS.
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+# Leave only most Debug/Release configurations.
+set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "" FORCE)
+
+detect_compilers()
+set_cpp20_standard()
+
+if (clang_on_msvc)
+    make_clang_work_on_windows()
+endif()
+
+add_subdirectory(third_party)
+
+set(xrx_HEADERS
+    "include/any_observer.h"
+    "include/utils_observers.h"
+    "include/observables_factory.h"
+    "include/subject.h"
+    "include/observable_interface.h"
+    "include/operator_tags.h"
+    "include/concepts_observer.h"
+    "include/concepts_observable.h"
+    "include/utils_containers.h"
+    "include/utils_observable.h"
+    "include/meta_utils.h"
+    "include/tag_invoke.hpp"
+    "include/cpo_make_operator.h"
+    "include/tag_invoke_with_extension.h"
+    "include/operators/operator_take.h"
+    "include/operators/operator_range.h"
+    "include/operators/operator_observe_on.h"
+    "include/operators/operator_filter.h"
+    "include/operators/operator_publish.h"
+    "include/operators/operator_create.h"
+    "include/operators/operator_transform.h"
+    "include/operators/operator_interval.h"
+    "include/operators/operator_subscribe_on.h"
+    "include/debug/assert_flag.h"
+    "include/debug/assert_mutex.h"
+    )
+
+add_library(xrx INTERFACE ${xrx_HEADERS})
+target_include_directories(xrx INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
+
+set(xrx_single_HEADERS
+    "include_single/xrx/xrx_all.h"
+    )
+
+add_library(xrx_all INTERFACE ${xrx_single_HEADERS})
+target_include_directories(xrx_all INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include_single>")
+
+add_subdirectory(tests)

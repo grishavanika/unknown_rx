@@ -1484,7 +1484,7 @@ namespace xrx::observable
                         // No need to remember `task_handle`. We already executed the task, nothing to cancel.
                         (void)task_handle;
                     }
-                    else if (auto* task_handle = std::get_if<TaskHandle>(&_unsubscribers); task_handle)
+                    else if (std::get_if<TaskHandle>(&_unsubscribers))
                     {
                         assert(false && "No-one should be able to subscribe to single state twice.");
                     }
