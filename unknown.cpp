@@ -26,6 +26,7 @@
 using namespace xrx;
 using namespace detail;
 
+#if (0)
 struct Allocs
 {
     std::size_t _count = 0;
@@ -63,6 +64,7 @@ void operator delete[](void* ptr) noexcept
 {
     free(ptr);
 }
+#endif
 
 struct InitialSourceObservable_
 {
@@ -338,8 +340,12 @@ struct EventLoop
     }
 };
 
-int main()
+#include <gtest/gtest.h>
+
+int main(int argc, char* argv[])
 {
+    testing::InitGoogleTest(&argc, argv);
+    const int status = RUN_ALL_TESTS();
 #if (0)
     // https://stackoverflow.com/questions/45051166/rxcpp-timeout-on-blocking-function
     // https://github.com/ReactiveX/RxCpp/issues/151
@@ -559,7 +565,6 @@ int main()
     });
     std::cout << "Allocations count: " << Allocs::get()._count << "\n";
     std::cout << "Allocations size: " << Allocs::get()._size << "\n";
-#endif
 
     observable::range(0)
         .transform([](int v) { return float(v); })
@@ -574,4 +579,7 @@ int main()
     {
         printf("[stop on filter & tranform] completed\n");
     }));
+#endif
+
+    return status;
 }

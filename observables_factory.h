@@ -21,9 +21,22 @@ namespace xrx::observable
     }
 
     template<typename Integer>
-    auto range(Integer start = Integer())
+    auto range(Integer first)
     {
         return ::xrx::detail::make_operator(xrx::detail::operator_tag::Range()
-            , start, 1, 1);
+            , first, first/*last*/, 1/*step*/, std::true_type()/*endless*/);
     }
+    template<typename Integer>
+    auto range(Integer first, Integer last)
+    {
+        return ::xrx::detail::make_operator(xrx::detail::operator_tag::Range()
+            , first, last/*last*/, 1/*step*/, std::false_type()/*endless*/);
+    }
+    template<typename Integer>
+    auto range(Integer first, Integer last, std::intmax_t step)
+    {
+        return ::xrx::detail::make_operator(xrx::detail::operator_tag::Range()
+            , first, last/*last*/, step/*step*/, std::false_type()/*endless*/);
+    }
+
 } // namespace xrx::observable

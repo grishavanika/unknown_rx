@@ -8,6 +8,6 @@ using xrx::detail::operator_tag::Range;
 
 TEST(Compile, Range)
 {
-    auto o = make_operator(Range(), 0, 0, 0);
+    auto o = make_operator(Range(), 0, 0, 0, std::true_type());
     static_assert(ConceptObservable<decltype(o)>);
 }
