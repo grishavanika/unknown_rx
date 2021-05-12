@@ -135,7 +135,7 @@ foreach ($header in $ordered)
 
     $path = Join-Path -Path $Src -ChildPath $header.Header
 
-    "`n// Header: $($header.Header).`n" `
+    "`r`n// Header: $($header.Header).`r`n" `
         | Out-File -FilePath $OutFile -Append -Encoding utf8
     Get-Content $path `
         | % { Get-Line $_ } `

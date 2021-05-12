@@ -1742,16 +1742,25 @@ namespace xrx::observable
                 return std::make_shared<Shared_>(std::move(scheduler), std::move(target));
             }
 
-            void on_next(Value v)
+            ::xrx::unsubscribe on_next(Value v)
             {
+                if (_shared->_unsubscribed)
+                {
+                    return ::xrx::unsubscribe(true);
+                }
                 auto self = _shared;
                 const auto handle = self->_sheduler.task_post(
                     [self, v_ = std::forward<Value>(v)]() mutable
                 {
-                    if (not self->_unsubscribed)
+                    if (self->_unsubscribed)
                     {
-                        // #XXX: handle unsubscribe.
-                        self->_target.on_next(std::forward<Value>(v_));
+                        return;
+                    }
+                    const auto action = ::xrx::detail::on_next_with_action(
+                        self->_target.on_next(std::forward<Value>(v_)));
+                    if (action._unsubscribe)
+                    {
+                        self->_unsubscribed = true;
                     }
                 });
                 (void)handle;
@@ -1759,6 +1768,10 @@ namespace xrx::observable
             // #TODO: support void Error.
             void on_error(Error e)
             {
+                if (_shared->_unsubscribed)
+                {
+                    return;
+                }
                 auto self = _shared;
                 const auto handle = self->_sheduler.task_post(
                     [self, e_ = std::forward<Error>(e)]() mutable
@@ -1772,6 +1785,10 @@ namespace xrx::observable
             }
             void on_completed()
             {
+                if (_shared->_unsubscribed)
+                {
+                    return;
+                }
                 auto self = _shared;
                 const auto handle = self->_sheduler.task_post(
                     [self]()
