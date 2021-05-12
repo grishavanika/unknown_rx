@@ -27,18 +27,22 @@ namespace xrx::detail
                 , _taken(0) {}
             std::size_t _max;
             std::size_t _taken;
+            [[no_unique_address]] debug::AssertFlag<> _disconnected;
             Observer& observer() { return *this; }
 
             template<typename Value>
-            ::xrx::unsubscribe on_next(Value&& v)
+            OnNextAction on_next(Value&& v)
             {
+                _disconnected.check_not_set();
                 if (++_taken > _max)
                 {
-                    return ::xrx::unsubscribe(true);
+                    ::xrx::detail::on_completed(observer());
+                    _disconnected.raise();
+                    return OnNextAction{._unsubscribe = true};
                 }
-                // #XXX: unsubscribe.
-                (void)::xrx::detail::on_next_with_action(observer(), std::forward<Value>(v));
-                return ::xrx::unsubscribe(false);
+                return xrx::detail::ensure_action_state(
+                    ::xrx::detail::on_next_with_action(observer(), std::forward<Value>(v))
+                    , _disconnected);
             }
         };
 

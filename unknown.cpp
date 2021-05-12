@@ -26,6 +26,44 @@
 using namespace xrx;
 using namespace detail;
 
+struct Allocs
+{
+    std::size_t _count = 0;
+    std::size_t _size = 0;
+
+    static Allocs& get()
+    {
+        static Allocs o;
+        return o;
+    }
+};
+
+void* operator new(std::size_t count)
+{
+    auto& x = Allocs::get();
+    ++x._count;
+    ++x._size += count;
+    return malloc(count);
+}
+
+void* operator new[](std::size_t count)
+{
+    auto& x = Allocs::get();
+    ++x._count;
+    ++x._size += count;
+    return malloc(count);
+}
+
+void operator delete(void* ptr) noexcept
+{
+    free(ptr);
+}
+
+void operator delete[](void* ptr) noexcept
+{
+    free(ptr);
+}
+
 struct InitialSourceObservable_
 {
     using value_type = int;
@@ -42,10 +80,10 @@ struct InitialSourceObservable_
     {
         auto strict = observer::make_complete(std::forward<Observer>(observer));
         // #XXX: handle unsubscribe.
-        strict.on_next(1);
-        strict.on_next(2);
-        strict.on_next(3);
-        strict.on_next(4);
+        (void)strict.on_next(1);
+        (void)strict.on_next(2);
+        (void)strict.on_next(3);
+        (void)strict.on_next(4);
         strict.on_completed();
         return Unsubscriber();
     }
@@ -60,13 +98,48 @@ struct EventLoop
     using clock_duration = clock::duration;
     using clock_point = clock::time_point;
 
-    using ActionCallback = std::function<void ()>;
-    struct TickAction
+    struct IActionCallback
     {
+        clock_point _start_from;
         clock_point _last_tick;
         clock_duration _period;
-        ActionCallback _action;
+
+        virtual ~IActionCallback() = default;
+        virtual bool invoke() = 0;
     };
+
+    template<typename F, typename State>
+    struct ActionCallback_ : IActionCallback
+    {
+        F _f;
+        State _state;
+
+        explicit ActionCallback_(F f, State state)
+            : _f(std::move(f))
+            , _state(std::move(state))
+        {
+        }
+
+        virtual bool invoke() override
+        {
+            return _f(_state);
+        }
+    };
+    // Need to be able to copy when executing to release a lock, hence shared_ptr.
+    using TickAction = std::shared_ptr<IActionCallback>;
+
+    template<typename F, typename State>
+    static std::shared_ptr<IActionCallback> make_action(
+        clock_point start_from, clock_duration period
+        , F f, State state)
+    {
+        auto shared = std::make_shared<ActionCallback_<F, State>>(std::move(f), std::move(state));
+        shared->_start_from = start_from;
+        shared->_last_tick = {};
+        shared->_period = period;
+        return shared;
+    }
+
     using TickActions = HandleVector<TickAction>;
     using ActionHandle = typename TickActions::Handle;
     TickActions _tick_actions;
@@ -78,14 +151,16 @@ struct EventLoop
     Tasks _tasks;
     mutable debug::AssertMutex<> _assert_mutex_tasks;
 
-    template<typename F>
-    ActionHandle tick_every(clock_point start_from, clock_duration period, F f)
+    template<typename F, typename State>
+        requires std::convertible_to<std::invoke_result_t<F, State&>, bool>
+    ActionHandle tick_every(clock_point start_from, clock_duration period, F f, State state)
     {
         auto _ = std::lock_guard(_assert_mutex_tick);
-        const ActionHandle handle = _tick_actions.push_back(TickAction(
+        const ActionHandle handle = _tick_actions.push_back(make_action(
             start_from
             , clock_duration(period)
-            , ActionCallback(std::move(f))));
+            , std::move(f)
+            , std::move(state)));
         return handle;
     }
 
@@ -145,7 +220,7 @@ struct EventLoop
             clock_duration smallest = clock_duration::max();
             _tick_actions.for_each([&](TickAction& action, ActionHandle handle)
             {
-                const clock_duration point = (action._last_tick + action._period).time_since_epoch();
+                const clock_duration point = (action->_last_tick + action->_period).time_since_epoch();
                 if (point < smallest)
                 {
                     smallest = point;
@@ -167,26 +242,38 @@ struct EventLoop
                 // Someone just removed it.
                 return 0;
             }
-            desired_point = (action->_last_tick + action->_period);
+            desired_point = ((*action)->_last_tick + (*action)->_period);
         }
         
         // #TODO: resume this one when new item arrives
         // (with probably closer-to-execute time point).
         std::this_thread::sleep_until(desired_point); // no-op if time in the past.
 
-        auto _ = std::lock_guard(_assert_mutex_tick);
-        // Can be removed by someone while we slept.
-        if (TickAction* action = _tick_actions.get(to_execute))
+        TickAction invoke_action;
+        bool do_remove = false;
         {
-            // #TODO: can be locked-up if lock is called from the action.
-            // On the other hand, we can't copy callback (now, by requirements of .interval()).
-            action->_action();
+            auto _ = std::lock_guard(_assert_mutex_tick);
+            if (TickAction* action = _tick_actions.get(to_execute))
+            {
+                invoke_action = *action; // copy.
+            }
         }
-        // Action can invalidate item or item can be removed.
-        // #TODO: can't not now, because we hold a lock. Dead-lock happens.
+        if (invoke_action)
+        {
+            // Notice: we don't have lock.
+            do_remove = invoke_action->invoke();
+        }
+        if (do_remove)
+        {
+            const bool removed = tick_cancel(to_execute);
+            assert(removed);
+            return 1;
+        }
+        auto _ = std::lock_guard(_assert_mutex_tick);
+        // Action can removed from the inside of callback.
         if (TickAction* action_modified = _tick_actions.get(to_execute))
         {
-            action_modified->_last_tick = clock::now();
+            (*action_modified)->_last_tick = clock::now();
         }
         return 1;
     }
@@ -209,14 +296,15 @@ struct EventLoop
 
         EventLoop* _event_loop = nullptr;
 
-        template<typename F>
-        ActionHandle tick_every(clock_point start_from, clock_duration period, F f)
+        template<typename F, typename State>
+        ActionHandle tick_every(clock_point start_from, clock_duration period, F f, State state)
         {
             assert(_event_loop);
             return _event_loop->tick_every(
                 std::move(start_from)
                 , std::move(period)
-                , std::move(f));
+                , std::move(f)
+                , std::move(state));
         }
 
         bool tick_cancel(ActionHandle handle)
@@ -407,8 +495,9 @@ int main()
     {
         auto unsubscriber = observable::create<int, int>([](AnyObserver<int, int> observer)
         {
-            observer.on_next(1);
-            observer.on_next(2);
+            // #TODO: need to handle return action.
+            (void)observer.on_next(1);
+            (void)observer.on_next(2);
             observer.on_completed();
         })
             .filter([](int) { return true; })
@@ -461,12 +550,29 @@ int main()
         });
         worker.join();
     }
-#endif
 
+    Allocs::get() = Allocs{};
     observable::range(1)
         .take(10)
         .subscribe([](auto v)
     {
         printf("[take] %i\n", v);
     });
+    std::cout << "Allocations count: " << Allocs::get()._count << "\n";
+    std::cout << "Allocations size: " << Allocs::get()._size << "\n";
+#endif
+
+    observable::range(0)
+        .transform([](int v) { return float(v); })
+        .filter([](float) { return true; })
+        .take(0)
+        .subscribe(observer::make(
+            [](float v)
+    {
+        printf("[stop on filter & tranform] %f\n", v);
+    }
+            , []()
+    {
+        printf("[stop on filter & tranform] completed\n");
+    }));
 }

@@ -45,8 +45,8 @@ namespace tests
         using ActionHandle = int;
         using TaskHandle = int;
 
-        template<typename F>
-        ActionHandle tick_every(clock_point, clock_duration, F)
+        template<typename F, typename State>
+        ActionHandle tick_every(clock_point, clock_duration, F, State)
         {
             return ActionHandle();
         }

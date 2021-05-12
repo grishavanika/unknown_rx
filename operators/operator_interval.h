@@ -3,6 +3,7 @@
 #include "operator_tags.h"
 #include "cpo_make_operator.h"
 #include "observable_interface.h"
+#include "utils_observers.h"
 #include <utility>
 #include <chrono>
 #include <cstdint>
@@ -42,15 +43,24 @@ namespace xrx::observable
             Unsubscriber subscribe(Observer observer) &&
             {
                 const clock_duration period(_period);
-                // To get zero tick at first.
-                const clock_point start_from = clock::now() - period;
-                const Handle handle = _scheduler.tick_every(start_from, period
-                    , [ticks = value_type(0), observer_ = std::move(observer)]() mutable
+                // To get zero tick at first. #TODO: revisit this logic.
+                const clock_point start_from = (clock::now() - period);
+                
+                struct State
                 {
-                    const value_type now = ticks++;
-                    // #XXX: handle ::xrx::unsubscribe return.
-                    ::xrx::detail::on_next(observer_, now);
-                });
+                    Observer _observer;
+                    value_type _ticks = 0;
+                };
+
+                const Handle handle = _scheduler.tick_every(start_from, period
+                    , [](State& state) mutable
+                {
+                    const value_type now = state._ticks++;
+                    const auto action = ::xrx::detail::on_next_with_action(state._observer, now);
+                    return action._unsubscribe;
+                }
+                    , State(std::move(observer), value_type(0)));
+
                 return Unsubscriber(handle, std::move(_scheduler));
             }
 

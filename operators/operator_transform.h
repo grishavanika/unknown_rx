@@ -3,6 +3,7 @@
 #include "cpo_make_operator.h"
 #include "utils_observers.h"
 #include "observable_interface.h"
+#include "debug/assert_flag.h"
 #include <type_traits>
 #include <utility>
 
@@ -24,16 +25,20 @@ namespace xrx::detail
         {
             explicit TransformObserver(Observer&& o, Transform&& f)
                 : Observer(std::move(o))
-                , _transform(std::move(f)) {}
+                , _transform(std::move(f))
+                , _disconnected() {}
             Transform _transform;
+            [[no_unique_address]] debug::AssertFlag<> _disconnected;
             Observer& observer() { return *this; }
 
             template<typename Value>
-            void on_next(Value&& v)
+            auto on_next(Value&& v)
             {
-                // #XXX: handle unsubscribe.
-                observer().on_next(
-                    _transform(std::forward<Value>(v)));
+                _disconnected.check_not_set();
+                return xrx::detail::ensure_action_state(
+                    xrx::detail::on_next_with_action(observer()
+                        , _transform(std::forward<Value>(v)))
+                    , _disconnected);
             }
         };
 
@@ -41,10 +46,10 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         decltype(auto) subscribe(Observer&& observer) &&
         {
-            auto strict = observer::make_complete(std::forward<Observer>(observer));
-            using Observer_ = decltype(strict);
+            using Observer_ = std::remove_reference_t<Observer>;
             using TransformObserver = TransformObserver<Observer_>;
-            return std::move(_source).subscribe(TransformObserver(std::move(strict), std::move(_transform)));
+            return std::move(_source).subscribe(TransformObserver(
+                std::forward<Observer>(observer), std::move(_transform)));
         }
 
         TransformObservable fork()

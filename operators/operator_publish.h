@@ -28,6 +28,7 @@ namespace xrx::detail
         struct Observer_
         {
             std::shared_ptr<SharedImpl_> _shared;
+            bool _do_refcount = false;
 
             void on_next(value_type v);
             void on_error(error_type e);
@@ -95,15 +96,15 @@ namespace xrx::detail
             {
             }
 
-            SourceUnsubscriber connect()
+            SourceUnsubscriber connect(bool do_refcount)
             {
                 auto _ = std::lock_guard(_assert_mutex);
                 if (not _connected)
                 {
-                    // #XXX: references cycle ? _source that remembers Observer
-                    // that takes strong reference to this ?
+                    // #XXX: circular dependency ?
+                    // `_source` that remembers Observer that takes strong reference to this.
                     auto unsubscriber = _source.fork().subscribe(
-                        Observer_(this->shared_from_this()));
+                        Observer_(this->shared_from_this(), do_refcount));
                     _connected = unsubscriber;
                     return unsubscriber;
                 }
@@ -124,7 +125,7 @@ namespace xrx::detail
                 }
                 if (do_refcount && (count_before == 0))
                 {
-                    connect();
+                    connect(do_refcount);
                 }
                 return unsubscriber;
             }
@@ -144,6 +145,21 @@ namespace xrx::detail
                     }
                 }
                 return ok;
+            }
+
+            void on_next_impl(value_type v, bool do_refcount)
+            {
+                auto lock = std::unique_lock(_assert_mutex);
+                _subscriptions.for_each([&](AnyObserver_& observer, Handle handle)
+                {
+                    auto _ = debug::ScopeUnlock(lock);
+                    const auto action = observer.on_next(v);
+                    if (action._unsubscribe)
+                    {
+                        unsubscribe(handle, do_refcount);
+                    }
+                });
+                // #XXX: should we return there for caller's on_next() ?
             }
         };
 
@@ -203,7 +219,8 @@ namespace xrx::detail
 
         Unsubscriber connect()
         {
-            return state()._shared->connect();;
+            const bool do_refcount = false;
+            return state()._shared->connect(do_refcount);
         }
 
         auto ref_count()
@@ -216,13 +233,7 @@ namespace xrx::detail
     template<typename SourceObservable>
     void ConnectObservableState_<SourceObservable>::Observer_::on_next(value_type v)
     {
-        auto lock = std::unique_lock(_shared->_assert_mutex);
-        _shared->_subscriptions.for_each([&](AnyObserver_& observer)
-        {
-            auto _ = debug::ScopeUnlock(lock);
-            // #XXX: handle unsubscribe.
-            observer.on_next(v);
-        });
+        _shared->on_next_impl(std::forward<value_type>(v), _do_refcount);
     }
 
     template<typename SourceObservable>

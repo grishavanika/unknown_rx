@@ -1,5 +1,6 @@
 #pragma once
 #include "concepts_observer.h"
+#include "debug/assert_flag.h"
 
 #include <type_traits>
 #include <utility>
@@ -10,6 +11,16 @@ namespace xrx::detail
     {
         bool _unsubscribe = false;
     };
+
+    template<typename Action>
+    OnNextAction ensure_action_state(OnNextAction action, debug::AssertFlag<Action>& unsubscribed)
+    {
+        if (action._unsubscribe)
+        {
+            unsubscribed.raise();
+        }
+        return action;
+    }
 
     template<typename Observer, typename Value>
     OnNextAction on_next_with_action(Observer&& observer, Value&& value)
@@ -143,7 +154,7 @@ namespace xrx::detail
         [[no_unique_address]] Observer _observer;
 
         template<typename Value>
-        constexpr decltype(auto) on_next(Value&& value)
+        [[nodiscard]] constexpr decltype(auto) on_next(Value&& value)
         {
             if constexpr (ConceptWithOnNext<Observer, Value>)
             {

@@ -1,10 +1,9 @@
 #pragma once
 #include "concepts_observer.h"
-
+#include "utils_observers.h"
 #include <type_traits>
 #include <utility>
 #include <memory>
-
 #include <cassert>
 
 // Type-erased version of any Observer.
@@ -126,7 +125,7 @@ namespace xrx
 
         std::unique_ptr<ObserverConcept> _observer;
 
-        void on_next(Value v)
+        ::xrx::detail::OnNextAction on_next(Value v)
         {
             assert(_observer);
             return _observer->on_next(std::forward<Value>(v));

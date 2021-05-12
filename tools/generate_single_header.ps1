@@ -120,7 +120,7 @@ $prelude =
 // powershell -File tools/generate_single_header.ps1
 // 
 '@
-$prelude | Out-File -FilePath $OutFile
+$prelude | Out-File -FilePath $OutFile -Encoding utf8
 
 foreach ($header in $ordered)
 {
@@ -136,9 +136,9 @@ foreach ($header in $ordered)
     $path = Join-Path -Path $Src -ChildPath $header.Header
 
     "`n// Header: $($header.Header).`n" `
-        | Out-File -FilePath $OutFile -Append
+        | Out-File -FilePath $OutFile -Append -Encoding utf8
     Get-Content $path `
         | % { Get-Line $_ } `
-        | Out-File -FilePath $OutFile -Append
+        | Out-File -FilePath $OutFile -Append -Encoding utf8
 }
 

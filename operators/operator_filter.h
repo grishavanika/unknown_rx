@@ -3,7 +3,9 @@
 #include "operator_tags.h"
 #include "cpo_make_operator.h"
 #include "utils_observers.h"
+#include "utils_observers.h"
 #include "observable_interface.h"
+#include "debug/assert_flag.h"
 #include <utility>
 #include <concepts>
 
@@ -24,18 +26,23 @@ namespace xrx::detail
         {
             explicit FilterObserver(Observer&& o, Filter&& f)
                 : Observer(std::move(o))
-                , _filter(std::move(f)) {}
+                , _filter(std::move(f))
+                , _disconnected() {}
             Filter _filter;
+            [[no_unique_address]] debug::AssertFlag<> _disconnected;
             Observer& observer() { return *this; }
 
             template<typename Value>
-            void on_next(Value&& v)
+            OnNextAction on_next(Value&& v)
             {
-                if (_filter(v))
+                _disconnected.check_not_set();
+                if (not _filter(v))
                 {
-                    // #XXX: handle unsubscribe.
-                    observer().on_next(std::forward<Value>(v));
+                    return OnNextAction();
                 }
+                return ::xrx::detail::ensure_action_state(
+                    ::xrx::detail::on_next_with_action(observer(), std::forward<Value>(v))
+                    , _disconnected);
             }
         };
 

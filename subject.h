@@ -98,11 +98,19 @@ namespace xrx
             if (_shared)
             {
                 auto lock = std::unique_lock(_shared->_assert_mutex);
-                _shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
+                _shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer, Handle handle)
                 {
-                    auto _ = debug::ScopeUnlock(lock);
-                    // #XXX: handle unsubscribe.
-                    observer.on_next(v);
+                    bool do_unsubscribe = false;
+                    {
+                        auto _ = debug::ScopeUnlock(lock);
+                        const auto action = observer.on_next(v);
+                        do_unsubscribe = action._unsubscribe;
+                    }
+                    if (do_unsubscribe)
+                    {
+                        // Notice: we have mutex lock.
+                        _shared->_subscriptions.erase(handle);
+                    }
                 });
             }
             // else: already completed

@@ -16,5 +16,8 @@
  - Do subscription unsubscribe for Observables that support dynamic subscription when Observer returns ::xrx::unsubscribe(true).
  - Maybe Scheduler interface should support State passing & remembering.
    This should help to reduce usage of std::shared_ptr in few places.
- = 
+ - subscribe_on(): when invoked for Observable that produces few on_next() calls
+   and iff Scheduler is single-thread (?) only (other options are possible) - move whole Observable
+   to that thread/task to optimize amoun of scheduling. Example: observable::range(0).subscribe_on(main_loop).
+ - 
 
