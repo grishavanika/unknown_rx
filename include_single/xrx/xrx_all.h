@@ -1171,7 +1171,7 @@ namespace xrx
 
             virtual void on_completed()
             {
-                return ::xrx::detail::on_completed(std::move(_observer));
+                return ::xrx::detail::on_completed_optional(std::move(_observer));
             }
 
             explicit Observer(ConcreateObserver o)
@@ -2167,7 +2167,7 @@ namespace xrx::detail
                 _disconnected.check_not_set();
                 if (++_taken > _max)
                 {
-                    ::xrx::detail::on_completed(observer());
+                    ::xrx::detail::on_completed_optional(std::move(observer()));
                     _disconnected.raise();
                     return OnNextAction{._unsubscribe = true};
                 }

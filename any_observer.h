@@ -63,7 +63,7 @@ namespace xrx
 
             virtual void on_completed()
             {
-                return ::xrx::detail::on_completed(std::move(_observer));
+                return ::xrx::detail::on_completed_optional(std::move(_observer));
             }
 
             explicit Observer(ConcreateObserver o)

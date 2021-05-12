@@ -36,7 +36,7 @@ namespace xrx::detail
                 _disconnected.check_not_set();
                 if (++_taken > _max)
                 {
-                    ::xrx::detail::on_completed(observer());
+                    ::xrx::detail::on_completed_optional(std::move(observer()));
                     _disconnected.raise();
                     return OnNextAction{._unsubscribe = true};
                 }

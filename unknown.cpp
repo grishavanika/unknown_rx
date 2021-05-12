@@ -85,7 +85,7 @@ struct InitialSourceObservable_
         (void)::xrx::detail::on_next(observer, 2);
         (void)::xrx::detail::on_next(observer, 3);
         (void)::xrx::detail::on_next(observer, 4);
-        (void)::xrx::detail::on_completed(observer);
+        (void)::xrx::detail::on_completed_optional(std::move(observer));
         return Unsubscriber();
     }
 
