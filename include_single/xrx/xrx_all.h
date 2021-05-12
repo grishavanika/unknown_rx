@@ -868,11 +868,24 @@ namespace xrx::observable
     }
 
     template<typename Integer>
-    auto range(Integer start = Integer())
+    auto range(Integer first)
     {
         return ::xrx::detail::make_operator(xrx::detail::operator_tag::Range()
-            , start, 1, 1);
+            , first, first/*last*/, 1/*step*/, std::true_type()/*endless*/);
     }
+    template<typename Integer>
+    auto range(Integer first, Integer last)
+    {
+        return ::xrx::detail::make_operator(xrx::detail::operator_tag::Range()
+            , first, last/*last*/, 1/*step*/, std::false_type()/*endless*/);
+    }
+    template<typename Integer>
+    auto range(Integer first, Integer last, std::intmax_t step)
+    {
+        return ::xrx::detail::make_operator(xrx::detail::operator_tag::Range()
+            , first, last/*last*/, step/*step*/, std::false_type()/*endless*/);
+    }
+
 } // namespace xrx::observable
 
 // Header: utils_observers.h.
@@ -920,7 +933,7 @@ namespace xrx::detail
         else if constexpr (std::is_same_v<Return_, ::xrx::unsubscribe>)
         {
             const ::xrx::unsubscribe state = ::xrx::detail::on_next(std::forward<Observer>(observer), std::forward<Value>(value));
-            return OnNextAction{._unsubscribe = state._do_unsubscribe};
+            return OnNextAction{ ._unsubscribe = state._do_unsubscribe };
         }
         else
         {
@@ -949,13 +962,26 @@ namespace xrx::detail
         else if constexpr (std::is_same_v<Return_, ::xrx::unsubscribe>)
         {
             const ::xrx::unsubscribe state = ::xrx::detail::on_next(std::forward<Observer>(observer));
-            return OnNextAction{._unsubscribe = state._do_unsubscribe};
+            return OnNextAction{ ._unsubscribe = state._do_unsubscribe };
         }
         else
         {
             static_assert(AlwaysFalse<Observer>()
                 , "Unknown return type from ::on_next(). New tag to handle ?");
         }
+    }
+
+    template<typename Observer>
+    auto on_completed_optional(Observer&& o)
+        requires ConceptWithOnCompleted<Observer>
+    {
+        return ::xrx::detail::on_completed(std::forward<Observer>(o));
+    }
+    
+    template<typename Observer>
+    auto on_completed_optional(Observer&&)
+        requires (not ConceptWithOnCompleted<Observer>)
+    {
     }
 
     struct OnNext_Noop
@@ -1595,10 +1621,11 @@ namespace xrx::detail::operator_tag
 #include <utility>
 #include <type_traits>
 #include <cstdint>
+#include <cassert>
 
 namespace xrx::detail
 {
-    template<typename Integer>
+    template<typename Integer, bool Endless>
     struct RangeObservable
     {
         struct NoUnsubscription
@@ -1611,24 +1638,55 @@ namespace xrx::detail
         using error_type   = none_tag;
         using Unsubscriber = NoUnsubscription;
 
+        explicit RangeObservable(Integer first, Integer last, std::intmax_t step)
+            : _first(first)
+            , _last(last)
+            , _step(step)
+        {
+            assert(((step >= 0) && (last  >= first))
+                || ((step <  0) && (first >= last)));
+        }
 
         const Integer _first;
         const Integer _last;
         const std::intmax_t _step;
 
+        static bool compare_(Integer, Integer, std::intmax_t, std::true_type/*endless*/)
+        {
+            return true;
+        }
+        static bool compare_(Integer current, Integer last, std::intmax_t step, std::false_type/*endless*/)
+        {
+            if (step >= 0)
+            {
+                return (current <= last);
+            }
+            return (current >= last);
+        }
+        static Integer do_step_(Integer current, std::intmax_t step)
+        {
+            if (step >= 0)
+            {
+                return Integer(current + Integer(step));
+            }
+            return Integer(std::intmax_t(current) + step);
+        }
+
         template<typename Observer>
         Unsubscriber subscribe(Observer&& observer) &&
         {
-            Integer value = _first;
-            while (true)
+            constexpr std::bool_constant<Endless> _edless;
+            Integer current = _first;
+            while (compare_(current, _last, _step, _edless))
             {
-                const OnNextAction action = ::xrx::detail::on_next_with_action(observer, Integer(value));
+                const OnNextAction action = on_next_with_action(observer, Integer(current));
                 if (action._unsubscribe)
                 {
                     break;
                 }
-                value = Integer(std::intmax_t(value) + _step);
+                current = do_step_(current, _step);
             }
+            (void)on_completed_optional(std::forward<Observer>(observer));
             return Unsubscriber();
         }
 
@@ -1638,11 +1696,11 @@ namespace xrx::detail
         }
     };
 
-    template<typename Integer>
+    template<typename Integer, bool Endless>
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Range
-        , Integer first, Integer last, std::intmax_t step)
+        , Integer first, Integer last, std::intmax_t step, std::bool_constant<Endless>)
     {
-        using Impl = RangeObservable<Integer>;
+        using Impl = RangeObservable<Integer, Endless>;
         return Observable_<Impl>(Impl(first, last, step));
     }
 } // namespace xrx::detail

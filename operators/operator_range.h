@@ -64,14 +64,14 @@ namespace xrx::detail
             Integer current = _first;
             while (compare_(current, _last, _step, _edless))
             {
-                const OnNextAction action = ::xrx::detail::on_next_with_action(observer, Integer(current));
+                const OnNextAction action = on_next_with_action(observer, Integer(current));
                 if (action._unsubscribe)
                 {
                     break;
                 }
                 current = do_step_(current, _step);
             }
-            ::xrx::detail::on_completed(observer);
+            (void)on_completed_optional(std::forward<Observer>(observer));
             return Unsubscriber();
         }
 
