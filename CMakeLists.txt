@@ -67,5 +67,6 @@ add_library(xrx_all INTERFACE ${xrx_single_HEADERS})
 target_include_directories(xrx_all INTERFACE "include_single/")
 
 add_subdirectory(tests)
+add_subdirectory(examples)
 
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT "tests_xrx")
