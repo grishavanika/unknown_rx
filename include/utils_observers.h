@@ -24,7 +24,7 @@ namespace xrx::detail
 
     template<typename Observer, typename Value>
     OnNextAction on_next_with_action(Observer&& observer, Value&& value)
-        requires requires { ::xrx::detail::on_next(std::forward<Observer>(observer), std::forward<Value>(value)); }
+        requires ConceptWithOnNext<Observer, Value>
     {
         using Return_ = decltype(::xrx::detail::on_next(std::forward<Observer>(observer), std::forward<Value>(value)));
         static_assert(not std::is_reference_v<Return_>
@@ -53,7 +53,7 @@ namespace xrx::detail
     // #TODO: merge those 2 functions.
     template<typename Observer, typename Value>
     OnNextAction on_next_with_action(Observer&& observer)
-        requires requires { ::xrx::detail::on_next(std::forward<Observer>(observer)); }
+        requires ConceptWithOnNext<Observer, void>
     {
         using Return_ = decltype(::xrx::detail::on_next(std::forward<Observer>(observer)));
         static_assert(not std::is_reference_v<Return_>
@@ -77,6 +77,30 @@ namespace xrx::detail
             static_assert(AlwaysFalse<Observer>()
                 , "Unknown return type from ::on_next(). New tag to handle ?");
         }
+    }
+
+    template<typename Observer, typename Error>
+    void on_error_optional(Observer&& observer, Error&& error)
+        requires ConceptWithOnError<Observer, Error>
+    {
+        return ::xrx::detail::on_error(std::forward<Observer>(observer), std::forward<Error>(error));
+    }
+    template<typename Observer, typename Error>
+    void on_error_optional(Observer&&, Error&&)
+        requires (not ConceptWithOnError<Observer, Error>)
+    {
+    }
+
+    template<typename Observer>
+    void on_error_optional(Observer&& observer)
+        requires ConceptWithOnError<Observer, void>
+    {
+        return ::xrx::detail::on_error(std::forward<Observer>(observer));
+    }
+    template<typename Observer>
+    void on_error_optional(Observer&&)
+        requires (not ConceptWithOnError<Observer, void>)
+    {
     }
 
     template<typename Observer>

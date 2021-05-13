@@ -26,7 +26,7 @@
 using namespace xrx;
 using namespace detail;
 
-#if (0)
+#if (1)
 struct Allocs
 {
     std::size_t _count = 0;
@@ -346,7 +346,7 @@ int main(int argc, char* argv[])
 {
     testing::InitGoogleTest(&argc, argv);
     const int status = RUN_ALL_TESTS();
-#if (0)
+#if (1)
     // https://stackoverflow.com/questions/45051166/rxcpp-timeout-on-blocking-function
     // https://github.com/ReactiveX/RxCpp/issues/151
     InitialSourceObservable_ initial;

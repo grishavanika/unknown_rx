@@ -916,7 +916,7 @@ namespace xrx::detail
 
     template<typename Observer, typename Value>
     OnNextAction on_next_with_action(Observer&& observer, Value&& value)
-        requires requires { ::xrx::detail::on_next(std::forward<Observer>(observer), std::forward<Value>(value)); }
+        requires ConceptWithOnNext<Observer, Value>
     {
         using Return_ = decltype(::xrx::detail::on_next(std::forward<Observer>(observer), std::forward<Value>(value)));
         static_assert(not std::is_reference_v<Return_>
@@ -945,7 +945,7 @@ namespace xrx::detail
     // #TODO: merge those 2 functions.
     template<typename Observer, typename Value>
     OnNextAction on_next_with_action(Observer&& observer)
-        requires requires { ::xrx::detail::on_next(std::forward<Observer>(observer)); }
+        requires ConceptWithOnNext<Observer, void>
     {
         using Return_ = decltype(::xrx::detail::on_next(std::forward<Observer>(observer)));
         static_assert(not std::is_reference_v<Return_>
@@ -969,6 +969,30 @@ namespace xrx::detail
             static_assert(AlwaysFalse<Observer>()
                 , "Unknown return type from ::on_next(). New tag to handle ?");
         }
+    }
+
+    template<typename Observer, typename Error>
+    void on_error_optional(Observer&& observer, Error&& error)
+        requires ConceptWithOnError<Observer, Error>
+    {
+        return ::xrx::detail::on_error(std::forward<Observer>(observer), std::forward<Error>(error));
+    }
+    template<typename Observer, typename Error>
+    void on_error_optional(Observer&&, Error&&)
+        requires (not ConceptWithOnError<Observer, Error>)
+    {
+    }
+
+    template<typename Observer>
+    void on_error_optional(Observer&& observer)
+        requires ConceptWithOnError<Observer, void>
+    {
+        return ::xrx::detail::on_error(std::forward<Observer>(observer));
+    }
+    template<typename Observer>
+    void on_error_optional(Observer&&)
+        requires (not ConceptWithOnError<Observer, void>)
+    {
     }
 
     template<typename Observer>
@@ -1166,7 +1190,7 @@ namespace xrx
 
             virtual void on_error(Error e) override
             {
-                return ::xrx::detail::on_error(std::move(_observer), std::forward<Error>(e));
+                return ::xrx::detail::on_error_optional(std::move(_observer), std::forward<Error>(e));
             }
 
             virtual void on_completed()
@@ -1760,48 +1784,59 @@ namespace xrx::observable
                         return;
                     }
                     const auto action = ::xrx::detail::on_next_with_action(
-                        self->_target.on_next(std::forward<Value>(v_)));
+                        self->_target, std::forward<Value>(v_));
                     if (action._unsubscribe)
                     {
                         self->_unsubscribed = true;
                     }
                 });
                 (void)handle;
+                return ::xrx::unsubscribe(false);
             }
             // #TODO: support void Error.
             void on_error(Error e)
             {
-                if (_shared->_unsubscribed)
+                if constexpr (::xrx::detail::ConceptWithOnError<DestinationObserver_, Error>)
                 {
-                    return;
-                }
-                auto self = _shared;
-                const auto handle = self->_sheduler.task_post(
-                    [self, e_ = std::forward<Error>(e)]() mutable
-                {
-                    if (not self->_unsubscribed)
+                    if (_shared->_unsubscribed)
                     {
-                        self->_target.on_error(std::forward<Error>(e_));
+                        return;
                     }
-                });
-                (void)handle;
+                    auto self = _shared;
+                    const auto handle = self->_sheduler.task_post(
+                        [self, e_ = std::forward<Error>(e)]() mutable
+                    {
+                        if (not self->_unsubscribed)
+                        {
+                            (void)::xrx::detail::on_error(self->_target, std::forward<Error>(e_));
+                        }
+                    });
+                    (void)handle;
+                }
+                else
+                {
+                    (void)e;
+                }
             }
             void on_completed()
             {
-                if (_shared->_unsubscribed)
+                if constexpr (::xrx::detail::ConceptWithOnCompleted<DestinationObserver_>)
                 {
-                    return;
-                }
-                auto self = _shared;
-                const auto handle = self->_sheduler.task_post(
-                    [self]()
-                {
-                    if (not self->_unsubscribed)
+                    if (_shared->_unsubscribed)
                     {
-                        self->_target.on_completed();
+                        return;
                     }
-                });
-                (void)handle;
+                    auto self = _shared;
+                    const auto handle = self->_sheduler.task_post(
+                        [self]()
+                    {
+                        if (not self->_unsubscribed)
+                        {
+                            (void)xrx::detail::on_completed(self->_target);
+                        }
+                    });
+                    (void)handle;
+                }
             }
         };
 

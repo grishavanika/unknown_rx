@@ -51,48 +51,59 @@ namespace xrx::observable
                         return;
                     }
                     const auto action = ::xrx::detail::on_next_with_action(
-                        self->_target.on_next(std::forward<Value>(v_)));
+                        self->_target, std::forward<Value>(v_));
                     if (action._unsubscribe)
                     {
                         self->_unsubscribed = true;
                     }
                 });
                 (void)handle;
+                return ::xrx::unsubscribe(false);
             }
             // #TODO: support void Error.
             void on_error(Error e)
             {
-                if (_shared->_unsubscribed)
+                if constexpr (::xrx::detail::ConceptWithOnError<DestinationObserver_, Error>)
                 {
-                    return;
-                }
-                auto self = _shared;
-                const auto handle = self->_sheduler.task_post(
-                    [self, e_ = std::forward<Error>(e)]() mutable
-                {
-                    if (not self->_unsubscribed)
+                    if (_shared->_unsubscribed)
                     {
-                        self->_target.on_error(std::forward<Error>(e_));
+                        return;
                     }
-                });
-                (void)handle;
+                    auto self = _shared;
+                    const auto handle = self->_sheduler.task_post(
+                        [self, e_ = std::forward<Error>(e)]() mutable
+                    {
+                        if (not self->_unsubscribed)
+                        {
+                            (void)::xrx::detail::on_error(self->_target, std::forward<Error>(e_));
+                        }
+                    });
+                    (void)handle;
+                }
+                else
+                {
+                    (void)e;
+                }
             }
             void on_completed()
             {
-                if (_shared->_unsubscribed)
+                if constexpr (::xrx::detail::ConceptWithOnCompleted<DestinationObserver_>)
                 {
-                    return;
-                }
-                auto self = _shared;
-                const auto handle = self->_sheduler.task_post(
-                    [self]()
-                {
-                    if (not self->_unsubscribed)
+                    if (_shared->_unsubscribed)
                     {
-                        self->_target.on_completed();
+                        return;
                     }
-                });
-                (void)handle;
+                    auto self = _shared;
+                    const auto handle = self->_sheduler.task_post(
+                        [self]()
+                    {
+                        if (not self->_unsubscribed)
+                        {
+                            (void)xrx::detail::on_completed(self->_target);
+                        }
+                    });
+                    (void)handle;
+                }
             }
         };
 

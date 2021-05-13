@@ -58,7 +58,7 @@ namespace xrx
 
             virtual void on_error(Error e) override
             {
-                return ::xrx::detail::on_error(std::move(_observer), std::forward<Error>(e));
+                return ::xrx::detail::on_error_optional(std::move(_observer), std::forward<Error>(e));
             }
 
             virtual void on_completed()
