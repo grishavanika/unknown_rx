@@ -48,6 +48,7 @@ set(xrx_HEADERS
     "include/operators/operator_transform.h"
     "include/operators/operator_interval.h"
     "include/operators/operator_subscribe_on.h"
+    "include/operators/operator_from.h"
     "include/debug/assert_flag.h"
     "include/debug/assert_mutex.h"
     )

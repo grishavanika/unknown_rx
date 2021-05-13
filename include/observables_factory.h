@@ -39,4 +39,11 @@ namespace xrx::observable
             , first, last/*last*/, step/*step*/, std::false_type()/*endless*/);
     }
 
+    template<typename V, typename... Vs>
+    auto from(V v0, Vs... vs)
+    {
+        return ::xrx::detail::make_operator(xrx::detail::operator_tag::From()
+            , std::move(v0), std::move(vs)...);
+    }
+
 } // namespace xrx::observable

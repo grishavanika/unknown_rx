@@ -346,7 +346,7 @@ int main(int argc, char* argv[])
 {
     testing::InitGoogleTest(&argc, argv);
     const int status = RUN_ALL_TESTS();
-#if (1)
+#if (0)
     // https://stackoverflow.com/questions/45051166/rxcpp-timeout-on-blocking-function
     // https://github.com/ReactiveX/RxCpp/issues/151
     InitialSourceObservable_ initial;

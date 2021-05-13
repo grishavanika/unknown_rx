@@ -4,6 +4,7 @@ set(xrx_tests_SRC
     "unknown.cpp"
     "tests_concepts_observer.cpp"
     "tests_operator_range.cpp"
+    "tests_operator_from.cpp"
     )
 add_executable(tests_xrx ${xrx_tests_SRC})
 set_all_warnings(tests_xrx PRIVATE)

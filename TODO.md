@@ -19,5 +19,7 @@
  - subscribe_on(): when invoked for Observable that produces few on_next() calls
    and iff Scheduler is single-thread (?) only (other options are possible) - move whole Observable
    to that thread/task to optimize amoun of scheduling. Example: observable::range(0).subscribe_on(main_loop).
+ - [*] Support Observables with only move-constructor. For them, no copy & fork should be available.
  - 
+
 
