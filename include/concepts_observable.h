@@ -6,11 +6,14 @@
 namespace xrx::detail
 {
     template<typename Observable_>
-        requires requires { typename Observable_::ends_in_subscribe; }
-    constexpr auto detect_ends_in_subscribe() { return typename Observable_::ends_in_subscribe(); }
+        requires requires { typename Observable_::is_async; }
+    constexpr auto detect_async() { return typename Observable_::is_async(); }
     template<typename Observable_>
-        requires (not requires { typename Observable_::ends_in_subscribe; })
-    constexpr std::false_type detect_ends_in_subscribe() { return std::false_type(); }
+        requires (not requires { typename Observable_::is_async; })
+    constexpr auto detect_async() { return std::true_type(); }
+
+    template<typename Observable_>
+    using IsAsyncObservable = decltype(detect_async<Observable_>());
 
     template<typename Handle_>
     concept ConceptHandle =

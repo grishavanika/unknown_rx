@@ -23,7 +23,7 @@ struct Observable1
 {
     using value_type = int;
     using error_type = none_tag;
-    using ends_in_subscribe = std::true_type;
+    using is_async = std::false_type;
 
     struct Unsubscriber
     {

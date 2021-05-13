@@ -17,9 +17,8 @@ namespace xrx::detail
 
         using value_type   = typename SourceObservable::value_type;
         using error_type   = typename SourceObservable::error_type;
-        using Unsubscriber = typename SourceObservable::Unsubscriber;
-
-        using ends_in_subscribe = decltype(detect_ends_in_subscribe<SourceObservable>());
+        using is_async = IsAsyncObservable<SourceObservable>;
+        using Unsubscriber = typename SourceObservable::Unsubscriber;;
 
         template<typename Observer>
         struct TakeObserver_ : Observer

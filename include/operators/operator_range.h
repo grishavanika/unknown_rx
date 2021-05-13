@@ -21,9 +21,8 @@ namespace xrx::detail
 
         using value_type   = Integer;
         using error_type   = none_tag;
+        using is_async = std::false_type;
         using Unsubscriber = NoUnsubscription;
-
-        using ends_in_subscribe = std::true_type;
 
         explicit RangeObservable(Integer first, Integer last, std::intmax_t step)
             : _first(first)

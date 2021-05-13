@@ -18,7 +18,7 @@ namespace xrx::detail
         using error_type   = typename SourceObservable::error_type;
         using Unsubscriber = typename SourceObservable::Unsubscriber;
 
-        using ends_in_subscribe = decltype(detect_ends_in_subscribe<SourceObservable>());
+        using is_async = IsAsyncObservable<SourceObservable>;
 
         SourceObservable _source;
 

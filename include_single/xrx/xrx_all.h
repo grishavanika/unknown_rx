@@ -544,11 +544,14 @@ namespace xrx::detail::operator_tag
 namespace xrx::detail
 {
     template<typename Observable_>
-        requires requires { typename Observable_::ends_in_subscribe; }
-    constexpr auto detect_ends_in_subscribe() { return typename Observable_::ends_in_subscribe(); }
+        requires requires { typename Observable_::is_async; }
+    constexpr auto detect_async() { return typename Observable_::is_async(); }
     template<typename Observable_>
-        requires (not requires { typename Observable_::ends_in_subscribe; })
-    constexpr std::false_type detect_ends_in_subscribe() { return std::false_type(); }
+        requires (not requires { typename Observable_::is_async; })
+    constexpr auto detect_async() { return std::true_type(); }
+
+    template<typename Observable_>
+    using IsAsyncObservable = decltype(detect_async<Observable_>());
 
     template<typename Handle_>
     concept ConceptHandle =
@@ -1352,7 +1355,7 @@ namespace xrx::detail
         using error_type   = typename SourceObservable::error_type;
         using Unsubscriber = typename SourceObservable::Unsubscriber;
 
-        using ends_in_subscribe = decltype(detect_ends_in_subscribe<SourceObservable>());
+        using is_async = IsAsyncObservable<SourceObservable>;
 
         SourceObservable _source;
 
@@ -2041,9 +2044,8 @@ namespace xrx::detail
 
         using value_type   = typename SourceObservable::value_type;
         using error_type   = typename SourceObservable::error_type;
-        using Unsubscriber = typename SourceObservable::Unsubscriber;
-
-        using ends_in_subscribe = decltype(detect_ends_in_subscribe<SourceObservable>());
+        using is_async = IsAsyncObservable<SourceObservable>;
+        using Unsubscriber = typename SourceObservable::Unsubscriber;;
 
         template<typename Observer>
         struct TakeObserver_ : Observer
@@ -2119,9 +2121,8 @@ namespace xrx::detail
 
         using value_type   = Integer;
         using error_type   = none_tag;
+        using is_async = std::false_type;
         using Unsubscriber = NoUnsubscription;
-
-        using ends_in_subscribe = std::true_type;
 
         explicit RangeObservable(Integer first, Integer last, std::intmax_t step)
             : _first(first)
@@ -2449,11 +2450,11 @@ namespace xrx::detail
 
 namespace xrx::detail
 {
-    template<typename SourceObservable, bool Endless, bool EndsInUnsubscribe>
+    template<typename SourceObservable, bool Endless, bool IsSourceAsync>
     struct RepeatObservable
     {
-        static_assert(EndsInUnsubscribe
-            , "Asynchronous Observable .repeat() is not implemented yet.");
+        static_assert((not IsSourceAsync)
+            , "Async Observable .repeat() is not implemented yet.");
 
         struct NoUnsubscription
         {
@@ -2463,14 +2464,13 @@ namespace xrx::detail
 
         using value_type = typename SourceObservable::value_type;
         using error_type = typename SourceObservable::error_type;
-        using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
         using Unsubscriber = NoUnsubscription;
+        using is_async = std::bool_constant<IsSourceAsync>;
 
-        static_assert(!EndsInUnsubscribe
-            || !SourceUnsubscriber::has_effect::value
-            , "If Observable is synchronous, its unsubscriber should have no effect.");
-
-        using ends_in_subscribe = std::bool_constant<EndsInUnsubscribe>;
+        using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
+        static_assert(IsSourceAsync
+            or (not SourceUnsubscriber::has_effect())
+            , "If Observable is Sync, its unsubscriber should have no effect.");
 
         SourceObservable _source;
         std::size_t _max_repeats;
@@ -2589,8 +2589,8 @@ namespace xrx::detail
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Repeat
         , SourceObservable source, std::size_t count, std::bool_constant<Endless>)
     {
-        using EndsInUnsubscribe = decltype(detect_ends_in_subscribe<SourceObservable>());
-        using Impl = RepeatObservable<SourceObservable, Endless, EndsInUnsubscribe::value>;
+        using IsAsync_ = IsAsyncObservable<SourceObservable>;
+        using Impl = RepeatObservable<SourceObservable, Endless, IsAsync_::value>;
         return Observable_<Impl>(Impl(std::move(source), count));
     }
 } // namespace xrx::detail

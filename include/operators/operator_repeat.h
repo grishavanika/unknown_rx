@@ -13,11 +13,11 @@
 
 namespace xrx::detail
 {
-    template<typename SourceObservable, bool Endless, bool EndsInUnsubscribe>
+    template<typename SourceObservable, bool Endless, bool IsSourceAsync>
     struct RepeatObservable
     {
-        static_assert(EndsInUnsubscribe
-            , "Asynchronous Observable .repeat() is not implemented yet.");
+        static_assert((not IsSourceAsync)
+            , "Async Observable .repeat() is not implemented yet.");
 
         struct NoUnsubscription
         {
@@ -27,14 +27,13 @@ namespace xrx::detail
 
         using value_type = typename SourceObservable::value_type;
         using error_type = typename SourceObservable::error_type;
-        using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
         using Unsubscriber = NoUnsubscription;
+        using is_async = std::bool_constant<IsSourceAsync>;
 
-        static_assert(!EndsInUnsubscribe
-            || !SourceUnsubscriber::has_effect::value
-            , "If Observable is synchronous, its unsubscriber should have no effect.");
-
-        using ends_in_subscribe = std::bool_constant<EndsInUnsubscribe>;
+        using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
+        static_assert(IsSourceAsync
+            or (not SourceUnsubscriber::has_effect())
+            , "If Observable is Sync, its unsubscriber should have no effect.");
 
         SourceObservable _source;
         std::size_t _max_repeats;
@@ -153,8 +152,8 @@ namespace xrx::detail
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Repeat
         , SourceObservable source, std::size_t count, std::bool_constant<Endless>)
     {
-        using EndsInUnsubscribe = decltype(detect_ends_in_subscribe<SourceObservable>());
-        using Impl = RepeatObservable<SourceObservable, Endless, EndsInUnsubscribe::value>;
+        using IsAsync_ = IsAsyncObservable<SourceObservable>;
+        using Impl = RepeatObservable<SourceObservable, Endless, IsAsync_::value>;
         return Observable_<Impl>(Impl(std::move(source), count));
     }
 } // namespace xrx::detail
