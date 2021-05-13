@@ -192,11 +192,17 @@ namespace xrx::detail
 
         template<typename Value>
         auto on_next(Value&& v) { return _ref->on_next(XRX_FWD(v)); }
+        
         template<typename Error>
-        auto on_error(Error&& e) { return _ref->on_error(XRX_FWD(e)); }
+            requires ConceptWithOnError<Observer, Error>
+        auto on_error(Error&& e)
+        { return _ref->on_error(XRX_FWD(e)); }
+        
+        auto on_error()
+            requires ConceptWithOnError<Observer, void>
+        { return _ref->on_error(); }
+        
         auto on_completed() { return _ref->on_completed(); }
-        auto on_next() { return _ref->on_next(); }
-        auto on_error() { return _ref->on_error(); }
     };
 } // namespace xrx::detail
 

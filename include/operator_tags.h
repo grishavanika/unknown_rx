@@ -136,4 +136,15 @@ namespace xrx::detail::operator_tag
         };
     };
 
+    struct FlatMap
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .flat_map() operator implementation. "
+                  "Missing `operators/operator_flat_map.h` include ?");
+        };
+    };
+
 } // namespace xrx::detail::operator_tag

@@ -18,6 +18,7 @@ namespace xrx::detail
     {
         using value_type = typename std::tuple_element<0, Tuple>::type;
         using error_type = none_tag;
+        using is_async = std::false_type;
         using Unsubscriber = NoopUnsubscriber;
 
         Tuple _tuple;
@@ -31,9 +32,15 @@ namespace xrx::detail
                 return (not action._unsubscribe);
             };
 
-            std::apply([&](auto&&... vs) { (invoke_(observer, XRX_FWD(vs)) && ...); }, std::move(_tuple));
-            // #XXX: should not be called if unsubscribed.
-            (void)on_completed_optional(XRX_FWD(observer));
+            const bool all_processed = std::apply([&](auto&&... vs)
+            {
+                return (invoke_(observer, XRX_FWD(vs)) && ...);
+            }
+                , XRX_MOV(_tuple));
+            if (all_processed)
+            {
+                (void)on_completed_optional(XRX_FWD(observer));
+            }
             return Unsubscriber();
         }
 

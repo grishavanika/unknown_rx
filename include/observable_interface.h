@@ -79,6 +79,12 @@ namespace xrx::detail
             return make_operator(detail::operator_tag::Repeat()
                 , std::move(*this), std::size_t(0), std::true_type()/*infinity*/);
         }
+        template<typename Produce>
+        auto flat_map(Produce&& produce) &&
+        {
+            return make_operator(detail::operator_tag::FlatMap()
+                , std::move(*this), XRX_FWD(produce));
+        }
     };
 } // namespace xrx::detail
 
