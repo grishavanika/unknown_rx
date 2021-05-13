@@ -1,6 +1,7 @@
 #pragma once
 #include "operator_tags.h"
 #include "cpo_make_operator.h"
+#include "utils_fast_FWD.h"
 #include <utility>
 
 namespace xrx::observable
@@ -46,4 +47,10 @@ namespace xrx::observable
             , std::move(v0), std::move(vs)...);
     }
 
+    template<typename Observable1, typename Observable2, typename... ObservablesRest>
+    auto concat(Observable1&& observable1, Observable2&& observable2, ObservablesRest&&... observables)
+    {
+        return ::xrx::detail::make_operator(xrx::detail::operator_tag::Concat()
+            , XRX_MOV(observable1), XRX_MOV(observable2), XRX_MOV(observables)...);
+    }
 } // namespace xrx::observable

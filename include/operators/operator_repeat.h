@@ -3,6 +3,7 @@
 #include "cpo_make_operator.h"
 #include "observable_interface.h"
 #include "utils_observers.h"
+#include "utils_observable.h"
 #include "utils_fast_FWD.h"
 #include <utility>
 #include <type_traits>
@@ -19,15 +20,9 @@ namespace xrx::detail
         static_assert((not IsSourceAsync)
             , "Async Observable .repeat() is not implemented yet.");
 
-        struct NoUnsubscription
-        {
-            using has_effect = std::false_type;
-            constexpr bool detach() const noexcept { return false; }
-        };
-
         using value_type = typename SourceObservable::value_type;
         using error_type = typename SourceObservable::error_type;
-        using Unsubscriber = NoUnsubscription;
+        using Unsubscriber = NoopUnsubscriber;
         using is_async = std::bool_constant<IsSourceAsync>;
 
         using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
@@ -109,12 +104,12 @@ namespace xrx::detail
 
         // Synchronous version.
         template<typename Observer>
-        NoUnsubscription subscribe(Observer&& observer) &&
+        NoopUnsubscriber subscribe(Observer&& observer) &&
         {
             if (_max_repeats == 0)
             {
                 (void)on_completed_optional(XRX_FWD(observer));
-                return NoUnsubscription();
+                return NoopUnsubscriber();
             }
             using ObserverImpl = SyncObserver_<std::remove_reference_t<Observer>>;
             SyncState_ state;
@@ -123,7 +118,7 @@ namespace xrx::detail
             if (state._unsubscribed)
             {
                 // Either unsubscribed or error.
-                return NoUnsubscription();
+                return NoopUnsubscriber();
             }
             assert(state._completed && "Sync. Observable is not completed after .subscribe() end.");
             if (state._values)
@@ -135,13 +130,13 @@ namespace xrx::detail
                         const auto action = on_next_with_action(observer, v);
                         if (action._unsubscribe)
                         {
-                            return NoUnsubscription();
+                            return NoopUnsubscriber();
                         }
                     }
                 }
             }
             on_completed_optional(XRX_MOV(observer));
-            return NoUnsubscription();
+            return NoopUnsubscriber();
         }
 
         RepeatObservable fork() && { return RepeatObservable(std::move(_source), _max_repeats); }

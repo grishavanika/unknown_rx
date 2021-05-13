@@ -3,6 +3,7 @@
 #include "cpo_make_operator.h"
 #include "observable_interface.h"
 #include "utils_observers.h"
+#include "utils_observable.h"
 #include <utility>
 #include <type_traits>
 #include <cstdint>
@@ -13,16 +14,10 @@ namespace xrx::detail
     template<typename Integer, bool Endless>
     struct RangeObservable
     {
-        struct NoUnsubscription
-        {
-            using has_effect = std::false_type;
-            constexpr bool detach() const noexcept { return false; }
-        };
-
         using value_type   = Integer;
         using error_type   = none_tag;
         using is_async = std::false_type;
-        using Unsubscriber = NoUnsubscription;
+        using Unsubscriber = NoopUnsubscriber;
 
         explicit RangeObservable(Integer first, Integer last, std::intmax_t step)
             : _first(first)

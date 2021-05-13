@@ -125,4 +125,15 @@ namespace xrx::detail::operator_tag
         };
     };
 
+    struct Concat
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .concat() operator implementation. "
+                  "Missing `operators/operator_concat.h` include ?");
+        };
+    };
+
 } // namespace xrx::detail::operator_tag

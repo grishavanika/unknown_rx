@@ -3,6 +3,7 @@
 #include "operator_tags.h"
 #include "cpo_make_operator.h"
 #include "utils_observers.h"
+#include "utils_observable.h"
 #include "observable_interface.h"
 #include <utility>
 #include <type_traits>
@@ -33,11 +34,8 @@ namespace xrx::observable
         };
 
         template<>
-        struct CreateUnsubscriber<void>
+        struct CreateUnsubscriber<void> : ::xrx::detail::NoopUnsubscriber
         {
-            using has_effect = std::false_type;
-            bool detach() { return false; }
-
             template<typename F, typename Observer>
             static auto invoke_(F&& on_subscribe, Observer&& observer)
             {

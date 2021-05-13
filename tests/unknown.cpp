@@ -70,12 +70,7 @@ struct InitialSourceObservable_
 {
     using value_type = int;
     using error_type = none_tag;
-
-    struct Unsubscriber
-    {
-        using has_effect = std::false_type;
-        bool detach() { return false; }
-    };
+    using Unsubscriber = NoopUnsubscriber;
 
     template<typename Observer>
     Unsubscriber subscribe(Observer&& observer) &&

@@ -3,6 +3,7 @@
 #include "operators/operator_range.h"
 #include "operators/operator_take.h"
 #include "utils_observers.h"
+#include "utils_observable.h"
 #include "meta_utils.h"
 
 #include <gtest/gtest.h>
@@ -24,12 +25,7 @@ struct Observable1
     using value_type = int;
     using error_type = none_tag;
     using is_async = std::false_type;
-
-    struct Unsubscriber
-    {
-        using has_effect = std::false_type;
-        bool detach() { return false; }
-    };
+    using Unsubscriber = NoopUnsubscriber;
 
     int _value;
 

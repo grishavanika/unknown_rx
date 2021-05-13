@@ -6,6 +6,7 @@ set(xrx_tests_SRC
     "tests_operator_range.cpp"
     "tests_operator_from.cpp"
     "tests_operator_repeat.cpp"
+    "tests_operator_concat.cpp"
     )
 add_executable(tests_xrx ${xrx_tests_SRC})
 set_all_warnings(tests_xrx PRIVATE)

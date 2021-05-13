@@ -3,6 +3,7 @@
 #include "cpo_make_operator.h"
 #include "observable_interface.h"
 #include "utils_observers.h"
+#include "utils_observable.h"
 #include "utils_fast_FWD.h"
 #include <utility>
 #include <type_traits>
@@ -15,28 +16,23 @@ namespace xrx::detail
     template<typename Tuple>
     struct FromObservable
     {
-        struct NoUnsubscription
-        {
-            using has_effect = std::false_type;
-            constexpr bool detach() const noexcept { return false; }
-        };
-
         using value_type = typename std::tuple_element<0, Tuple>::type;
         using error_type = none_tag;
-        using Unsubscriber = NoUnsubscription;
+        using Unsubscriber = NoopUnsubscriber;
 
         Tuple _tuple;
 
         template<typename Observer>
         Unsubscriber subscribe(Observer&& observer) &&
         {
-            auto invoke_ = [](auto&& o, auto&& v)
+            auto invoke_ = [](auto&& observer, auto&& value)
             {
-                const auto action = on_next_with_action(XRX_FWD(o), XRX_FWD(v));
+                const auto action = on_next_with_action(XRX_FWD(observer), XRX_FWD(value));
                 return (not action._unsubscribe);
             };
 
             std::apply([&](auto&&... vs) { (invoke_(observer, XRX_FWD(vs)) && ...); }, std::move(_tuple));
+            // #XXX: should not be called if unsubscribed.
             (void)on_completed_optional(XRX_FWD(observer));
             return Unsubscriber();
         }
