@@ -2,6 +2,7 @@
 #include "operator_tags.h"
 #include "cpo_make_operator.h"
 #include "utils_observers.h"
+#include "concepts_observable.h"
 #include "observable_interface.h"
 #include <type_traits>
 #include <utility>
@@ -17,6 +18,8 @@ namespace xrx::detail
         using value_type   = typename SourceObservable::value_type;
         using error_type   = typename SourceObservable::error_type;
         using Unsubscriber = typename SourceObservable::Unsubscriber;
+
+        using ends_in_subscribe = decltype(detect_ends_in_subscribe<SourceObservable>());
 
         template<typename Observer>
         struct TakeObserver_ : Observer

@@ -23,6 +23,8 @@ namespace xrx::detail
         using error_type   = none_tag;
         using Unsubscriber = NoUnsubscription;
 
+        using ends_in_subscribe = std::true_type;
+
         explicit RangeObservable(Integer first, Integer last, std::intmax_t step)
             : _first(first)
             , _last(last)
@@ -67,7 +69,7 @@ namespace xrx::detail
                 const OnNextAction action = on_next_with_action(observer, Integer(current));
                 if (action._unsubscribe)
                 {
-                    break;
+                    return Unsubscriber();
                 }
                 current = do_step_(current, _step);
             }

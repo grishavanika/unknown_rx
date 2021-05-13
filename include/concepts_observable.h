@@ -5,6 +5,13 @@
 
 namespace xrx::detail
 {
+    template<typename Observable_>
+        requires requires { typename Observable_::ends_in_subscribe; }
+    constexpr auto detect_ends_in_subscribe() { return typename Observable_::ends_in_subscribe(); }
+    template<typename Observable_>
+        requires (not requires { typename Observable_::ends_in_subscribe; })
+    constexpr std::false_type detect_ends_in_subscribe() { return std::false_type(); }
+
     template<typename Handle_>
     concept ConceptHandle =
            std::is_copy_constructible_v<Handle_>

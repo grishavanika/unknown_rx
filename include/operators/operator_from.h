@@ -3,15 +3,12 @@
 #include "cpo_make_operator.h"
 #include "observable_interface.h"
 #include "utils_observers.h"
+#include "utils_fast_FWD.h"
 #include <utility>
 #include <type_traits>
 #include <tuple>
 #include <cstdint>
 #include <cassert>
-
-// https://vittorioromeo.info/index/blog/capturing_perfectly_forwarded_objects_in_lambdas.html
-// https://github.com/SuperV1234/vrm_core/issues/1
-#define XRX_FWD(...) ::std::forward<decltype(__VA_ARGS__)>(__VA_ARGS__)
 
 namespace xrx::detail
 {
@@ -57,5 +54,3 @@ namespace xrx::detail
         return Observable_<Impl>(Impl(Tuple(std::move(v0), std::move(vs)...)));
     }
 } // namespace xrx::detail
-
-#undef XRX_FWD

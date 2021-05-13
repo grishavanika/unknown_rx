@@ -113,4 +113,16 @@ namespace xrx::detail::operator_tag
                   "Missing `operators/operator_from.h` include ?");
         };
     };
+
+    struct Repeat
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .repeat() operator implementation. "
+                  "Missing `operators/operator_repeat.h` include ?");
+        };
+    };
+
 } // namespace xrx::detail::operator_tag

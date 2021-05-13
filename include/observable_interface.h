@@ -18,6 +18,8 @@ namespace xrx::detail
         using error_type   = typename SourceObservable::error_type;
         using Unsubscriber = typename SourceObservable::Unsubscriber;
 
+        using ends_in_subscribe = decltype(detect_ends_in_subscribe<SourceObservable>());
+
         SourceObservable _source;
 
         template<typename Observer>
@@ -65,6 +67,16 @@ namespace xrx::detail
         {
             return make_operator(detail::operator_tag::Take()
                 , std::move(*this), std::size_t(count));
+        }
+        auto repeat(std::size_t count) &&
+        {
+            return make_operator(detail::operator_tag::Repeat()
+                , std::move(*this), std::size_t(count), std::false_type()/*not infinity*/);
+        }
+        auto repeat() &&
+        {
+            return make_operator(detail::operator_tag::Repeat()
+                , std::move(*this), std::size_t(0), std::true_type()/*infinity*/);
         }
     };
 } // namespace xrx::detail
