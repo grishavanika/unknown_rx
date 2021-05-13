@@ -53,13 +53,15 @@ set(xrx_HEADERS
     )
 
 add_library(xrx INTERFACE ${xrx_HEADERS})
-target_include_directories(xrx INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>")
+target_include_directories(xrx INTERFACE "include/")
 
 set(xrx_single_HEADERS
     "include_single/xrx/xrx_all.h"
     )
 
 add_library(xrx_all INTERFACE ${xrx_single_HEADERS})
-target_include_directories(xrx_all INTERFACE "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include_single>")
+target_include_directories(xrx_all INTERFACE "include_single/")
 
 add_subdirectory(tests)
+
+set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT "tests_xrx")

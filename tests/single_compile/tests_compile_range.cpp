@@ -16,12 +16,12 @@ TEST(Compile, Range_Constructor)
 
 TEST(Compile, Range_Subscribe_OnlyOnNext)
 {
-    auto o = make_operator(Range(), 0, 0, 0, std::true_type());
+    auto o = make_operator(Range(), 0, 0, 1, std::false_type());
     o.fork().subscribe([](int) {});
 }
 
 TEST(Compile, Range_Subscribe_OnNextOnCompleted)
 {
-    auto o = make_operator(Range(), 0, 0, 0, std::true_type());
+    auto o = make_operator(Range(), 0, 0, 1, std::false_type());
     o.fork().subscribe(observer::make([](int) {}, [] {}));
 }
