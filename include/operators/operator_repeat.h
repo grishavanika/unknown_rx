@@ -32,7 +32,7 @@ namespace xrx::detail
 
         using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
         static_assert(IsSourceAsync
-            or (not SourceUnsubscriber::has_effect())
+            or (not SourceUnsubscriber::has_effect::value)
             , "If Observable is Sync, its unsubscriber should have no effect.");
 
         SourceObservable _source;

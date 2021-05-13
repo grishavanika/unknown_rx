@@ -64,9 +64,37 @@ namespace xrx::detail
     template<typename SourceObservable, typename F>
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Filter
         , SourceObservable source, F filter)
-            requires std::predicate<F, typename SourceObservable::value_type>
+            requires ConceptObservable<SourceObservable>
+                && std::predicate<F, typename SourceObservable::value_type>
     {
         using Impl = FilterObservable<SourceObservable, F>;
         return Observable_<Impl>(Impl(std::move(source), std::move(filter)));
     }
 } // namespace xrx::detail
+
+namespace xrx
+{
+    namespace detail
+    {
+        template<typename F>
+        struct RememberFilter
+        {
+            F _f;
+
+            template<typename SourceObservable>
+            auto pipe_(SourceObservable source) &&
+                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Filter
+                    , SourceObservable, F>
+            {
+                return make_operator(operator_tag::Filter()
+                    , XRX_MOV(source), XRX_MOV(_f));
+            }
+        };
+    } // namespace detail
+
+    template<typename F>
+    auto filter(F filter)
+    {
+        return detail::RememberFilter<F>(XRX_MOV(filter));
+    }
+} // namespace xrx

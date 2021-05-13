@@ -3,6 +3,7 @@
 #include "concepts_observable.h"
 #include "operator_tags.h"
 #include "cpo_make_operator.h"
+#include "utils_fast_FWD.h"
 
 #include <type_traits>
 
@@ -80,3 +81,10 @@ namespace xrx::detail
         }
     };
 } // namespace xrx::detail
+
+template<typename SourceObservable, typename PipeConnect>
+auto operator|(::xrx::detail::Observable_<SourceObservable>&& source_rvalue, PipeConnect connect)
+    requires requires { XRX_MOV(connect).pipe_(XRX_MOV(source_rvalue)); }
+{
+    return XRX_MOV(connect).pipe_(XRX_MOV(source_rvalue));
+}
