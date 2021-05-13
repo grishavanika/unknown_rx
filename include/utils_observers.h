@@ -184,10 +184,30 @@ namespace xrx::detail
             return std::move(_on_error)();
         }
     };
+
+    template<typename Observer>
+    struct ObserverRef
+    {
+        Observer* _ref = nullptr;
+
+        template<typename Value>
+        auto on_next(Value&& v) { return _ref->on_next(XRX_FWD(v)); }
+        template<typename Error>
+        auto on_error(Error&& e) { return _ref->on_error(XRX_FWD(e)); }
+        auto on_completed() { return _ref->on_completed(); }
+        auto on_next() { return _ref->on_next(); }
+        auto on_error() { return _ref->on_error(); }
+    };
 } // namespace xrx::detail
 
 namespace xrx::observer
 {
+    template<typename Observer_>
+    auto ref(Observer_& observer)
+    {
+        return ::xrx::detail::ObserverRef<Observer_>(&observer);
+    }
+
     template<typename OnNext>
     auto make(OnNext&& on_next)
     {

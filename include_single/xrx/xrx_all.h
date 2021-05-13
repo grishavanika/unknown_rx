@@ -1130,10 +1130,30 @@ namespace xrx::detail
             return std::move(_on_error)();
         }
     };
+
+    template<typename Observer>
+    struct ObserverRef
+    {
+        Observer* _ref = nullptr;
+
+        template<typename Value>
+        auto on_next(Value&& v) { return _ref->on_next(XRX_FWD(v)); }
+        template<typename Error>
+        auto on_error(Error&& e) { return _ref->on_error(XRX_FWD(e)); }
+        auto on_completed() { return _ref->on_completed(); }
+        auto on_next() { return _ref->on_next(); }
+        auto on_error() { return _ref->on_error(); }
+    };
 } // namespace xrx::detail
 
 namespace xrx::observer
 {
+    template<typename Observer_>
+    auto ref(Observer_& observer)
+    {
+        return ::xrx::detail::ObserverRef<Observer_>(&observer);
+    }
+
     template<typename OnNext>
     auto make(OnNext&& on_next)
     {
@@ -1418,6 +1438,31 @@ namespace xrx::detail
         }
     };
 } // namespace xrx::detail
+
+namespace xrx
+{
+    namespace detail
+    {
+        template<typename Observer>
+        struct RememberSubscribe
+        {
+            Observer _observer;
+
+            template<typename SourceObservable>
+            auto pipe_(SourceObservable source) &&
+                requires requires { XRX_MOV(source).subscribe(XRX_MOV(_observer)); }
+            {
+                return XRX_MOV(source).subscribe(XRX_MOV(_observer));
+            }
+        };
+    } // namespace detail
+
+    template<typename Observer>
+    inline auto subscribe(Observer observer)
+    {
+        return detail::RememberSubscribe<Observer>(XRX_MOV(observer));
+    }
+} // namespace xrx
 
 template<typename SourceObservable, typename PipeConnect>
 auto operator|(::xrx::detail::Observable_<SourceObservable>&& source_rvalue, PipeConnect connect)
@@ -1864,12 +1909,44 @@ namespace xrx::detail
     template<typename SourceObservable, bool Endless>
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Repeat
         , SourceObservable source, std::size_t count, std::bool_constant<Endless>)
+            requires ConceptObservable<SourceObservable>
     {
         using IsAsync_ = IsAsyncObservable<SourceObservable>;
         using Impl = RepeatObservable<SourceObservable, Endless, IsAsync_::value>;
         return Observable_<Impl>(Impl(std::move(source), count));
     }
 } // namespace xrx::detail
+
+namespace xrx
+{
+    namespace detail
+    {
+        template<bool Endless>
+        struct RememberRepeat
+        {
+            std::size_t _count = 0;
+
+            template<typename SourceObservable>
+            auto pipe_(SourceObservable source) &&
+                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Repeat
+                    , SourceObservable, std::size_t, std::bool_constant<Endless>>
+            {
+                return make_operator(operator_tag::Repeat()
+                    , XRX_MOV(source), _count, std::bool_constant<Endless>());
+            }
+        };
+    } // namespace detail
+
+    inline auto repeat()
+    {
+        return detail::RememberRepeat<true/*endless*/>(0);
+    }
+
+    inline auto repeat(std::size_t count)
+    {
+        return detail::RememberRepeat<false/*not endless*/>(count);
+    }
+} // namespace xrx
 
 // Header: operators/operator_observe_on.h.
 
@@ -2127,7 +2204,7 @@ namespace xrx
     namespace detail
     {
         template<typename F>
-        struct Remember
+        struct RememberFilter
         {
             F _f;
 
@@ -2145,7 +2222,7 @@ namespace xrx
     template<typename F>
     auto filter(F filter)
     {
-        return detail::Remember<F>(XRX_MOV(filter));
+        return detail::RememberFilter<F>(XRX_MOV(filter));
     }
 } // namespace xrx
 
@@ -2157,6 +2234,7 @@ namespace xrx
 // #include "utils_observers.h"
 // #include "concepts_observable.h"
 // #include "observable_interface.h"
+// #include "utils_observers.h"
 #include <type_traits>
 #include <utility>
 
@@ -2195,7 +2273,7 @@ namespace xrx::detail
                     _disconnected.raise();
                     return OnNextAction{._unsubscribe = true};
                 }
-                return xrx::detail::ensure_action_state(
+                return ::xrx::detail::ensure_action_state(
                     ::xrx::detail::on_next_with_action(observer(), std::forward<Value>(v))
                     , _disconnected);
             }
@@ -2216,11 +2294,36 @@ namespace xrx::detail
     template<typename SourceObservable>
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Take
         , SourceObservable source, std::size_t count)
+            requires ConceptObservable<SourceObservable>
     {
         using Impl = TakeObservable<SourceObservable>;
         return Observable_<Impl>(Impl(std::move(source), count));
     }
 } // namespace xrx::detail
+
+namespace xrx
+{
+    namespace detail
+    {
+        struct RememberTake
+        {
+            std::size_t _count = 0;
+
+            template<typename SourceObservable>
+            auto pipe_(SourceObservable source) &&
+                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Take
+                    , SourceObservable, std::size_t>
+            {
+                return make_operator(operator_tag::Take(), XRX_MOV(source), _count);
+            }
+        };
+    } // namespace detail
+
+    inline auto take(std::size_t count)
+    {
+        return detail::RememberTake(count);
+    }
+} // namespace xrx
 
 // Header: operators/operator_transform.h.
 
@@ -2293,6 +2396,33 @@ namespace xrx::detail
         return Observable_<Impl>(Impl(std::move(source), std::move(transform)));
     }
 } // namespace xrx::detail
+
+namespace xrx
+{
+    namespace detail
+    {
+        template<typename F>
+        struct RememberTransform
+        {
+            F _transform;
+
+            template<typename SourceObservable>
+            auto pipe_(SourceObservable source) &&
+                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Transform
+                    , SourceObservable, F>
+            {
+                return make_operator(operator_tag::Transform()
+                    , XRX_MOV(source), XRX_MOV(_transform));
+            }
+        };
+    } // namespace detail
+
+    template<typename F>
+    auto transform(F transform_)
+    {
+        return detail::RememberTransform<F>(XRX_MOV(transform_));
+    }
+} // namespace xrx
 
 // Header: operators/operator_create.h.
 
@@ -3064,7 +3194,30 @@ namespace xrx::detail
     template<typename SourceObservable>
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Publish
         , SourceObservable source)
+            requires ConceptObservable<SourceObservable>
     {
         return ConnectObservable_<SourceObservable>(std::move(source));
     }
 } // namespace xrx::detail
+
+namespace xrx
+{
+    namespace detail
+    {
+        struct RememberPublish
+        {
+            template<typename SourceObservable>
+            auto pipe_(SourceObservable source) &&
+                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Publish
+                    , SourceObservable>
+            {
+                return make_operator(operator_tag::Publish(), XRX_MOV(source));
+            }
+        };
+    } // namespace detail
+
+    inline auto publish()
+    {
+        return detail::RememberPublish();
+    }
+} // namespace xrx

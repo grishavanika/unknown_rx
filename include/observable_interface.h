@@ -82,6 +82,31 @@ namespace xrx::detail
     };
 } // namespace xrx::detail
 
+namespace xrx
+{
+    namespace detail
+    {
+        template<typename Observer>
+        struct RememberSubscribe
+        {
+            Observer _observer;
+
+            template<typename SourceObservable>
+            auto pipe_(SourceObservable source) &&
+                requires requires { XRX_MOV(source).subscribe(XRX_MOV(_observer)); }
+            {
+                return XRX_MOV(source).subscribe(XRX_MOV(_observer));
+            }
+        };
+    } // namespace detail
+
+    template<typename Observer>
+    inline auto subscribe(Observer observer)
+    {
+        return detail::RememberSubscribe<Observer>(XRX_MOV(observer));
+    }
+} // namespace xrx
+
 template<typename SourceObservable, typename PipeConnect>
 auto operator|(::xrx::detail::Observable_<SourceObservable>&& source_rvalue, PipeConnect connect)
     requires requires { XRX_MOV(connect).pipe_(XRX_MOV(source_rvalue)); }

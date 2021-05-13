@@ -67,3 +67,30 @@ namespace xrx::detail
         return Observable_<Impl>(Impl(std::move(source), std::move(transform)));
     }
 } // namespace xrx::detail
+
+namespace xrx
+{
+    namespace detail
+    {
+        template<typename F>
+        struct RememberTransform
+        {
+            F _transform;
+
+            template<typename SourceObservable>
+            auto pipe_(SourceObservable source) &&
+                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Transform
+                    , SourceObservable, F>
+            {
+                return make_operator(operator_tag::Transform()
+                    , XRX_MOV(source), XRX_MOV(_transform));
+            }
+        };
+    } // namespace detail
+
+    template<typename F>
+    auto transform(F transform_)
+    {
+        return detail::RememberTransform<F>(XRX_MOV(transform_));
+    }
+} // namespace xrx

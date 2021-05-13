@@ -4,6 +4,7 @@
 #include "utils_observers.h"
 #include "concepts_observable.h"
 #include "observable_interface.h"
+#include "utils_observers.h"
 #include <type_traits>
 #include <utility>
 
@@ -42,7 +43,7 @@ namespace xrx::detail
                     _disconnected.raise();
                     return OnNextAction{._unsubscribe = true};
                 }
-                return xrx::detail::ensure_action_state(
+                return ::xrx::detail::ensure_action_state(
                     ::xrx::detail::on_next_with_action(observer(), std::forward<Value>(v))
                     , _disconnected);
             }
@@ -63,8 +64,33 @@ namespace xrx::detail
     template<typename SourceObservable>
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Take
         , SourceObservable source, std::size_t count)
+            requires ConceptObservable<SourceObservable>
     {
         using Impl = TakeObservable<SourceObservable>;
         return Observable_<Impl>(Impl(std::move(source), count));
     }
 } // namespace xrx::detail
+
+namespace xrx
+{
+    namespace detail
+    {
+        struct RememberTake
+        {
+            std::size_t _count = 0;
+
+            template<typename SourceObservable>
+            auto pipe_(SourceObservable source) &&
+                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Take
+                    , SourceObservable, std::size_t>
+            {
+                return make_operator(operator_tag::Take(), XRX_MOV(source), _count);
+            }
+        };
+    } // namespace detail
+
+    inline auto take(std::size_t count)
+    {
+        return detail::RememberTake(count);
+    }
+} // namespace xrx

@@ -49,6 +49,19 @@ struct Observable1
     Observable1 fork() { return *this; }
 };
 
+TEST(Repeat, Pipe)
+{
+    Observable_<Observable1> o(Observable1(42));
+    ObserverMock observer;
+
+    EXPECT_CALL(observer, on_next(42)).Times(0);
+
+    EXPECT_CALL(observer, on_completed()).Times(1);
+    EXPECT_CALL(observer, on_error()).Times(0);
+
+    o.fork() | repeat(0) | subscribe(observer::ref(observer));
+}
+
 TEST(Repeat, SingleElement_RepeatedZeroTimes)
 {
     Observable_<Observable1> o(Observable1(42));
@@ -106,7 +119,7 @@ TEST(Repeat, SingleElement_Terminated)
         return unsubscribe(true);
     }
         , [&]() { observer.on_completed(); }
-        , [&]() {observer.on_error();} ));
+        , [&]() { observer.on_error(); }));
 }
 
 TEST(Repeat, TwoElemens_RepeatedZeroTime)
@@ -165,8 +178,5 @@ TEST(Repeat, Terminated_OnFirstPass)
     observable::range(3, 4)
         .repeat(2)
         .take(1)
-        .subscribe(observer::make(
-            [&](int v) {observer.on_next(v); }
-          , [&]()      {observer.on_completed(); }
-          , [&]()      {observer.on_error(); }));
+        .subscribe(observer::ref(observer));
 }

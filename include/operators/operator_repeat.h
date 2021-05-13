@@ -151,9 +151,41 @@ namespace xrx::detail
     template<typename SourceObservable, bool Endless>
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Repeat
         , SourceObservable source, std::size_t count, std::bool_constant<Endless>)
+            requires ConceptObservable<SourceObservable>
     {
         using IsAsync_ = IsAsyncObservable<SourceObservable>;
         using Impl = RepeatObservable<SourceObservable, Endless, IsAsync_::value>;
         return Observable_<Impl>(Impl(std::move(source), count));
     }
 } // namespace xrx::detail
+
+namespace xrx
+{
+    namespace detail
+    {
+        template<bool Endless>
+        struct RememberRepeat
+        {
+            std::size_t _count = 0;
+
+            template<typename SourceObservable>
+            auto pipe_(SourceObservable source) &&
+                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Repeat
+                    , SourceObservable, std::size_t, std::bool_constant<Endless>>
+            {
+                return make_operator(operator_tag::Repeat()
+                    , XRX_MOV(source), _count, std::bool_constant<Endless>());
+            }
+        };
+    } // namespace detail
+
+    inline auto repeat()
+    {
+        return detail::RememberRepeat<true/*endless*/>(0);
+    }
+
+    inline auto repeat(std::size_t count)
+    {
+        return detail::RememberRepeat<false/*not endless*/>(count);
+    }
+} // namespace xrx

@@ -277,7 +277,30 @@ namespace xrx::detail
     template<typename SourceObservable>
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Publish
         , SourceObservable source)
+            requires ConceptObservable<SourceObservable>
     {
         return ConnectObservable_<SourceObservable>(std::move(source));
     }
 } // namespace xrx::detail
+
+namespace xrx
+{
+    namespace detail
+    {
+        struct RememberPublish
+        {
+            template<typename SourceObservable>
+            auto pipe_(SourceObservable source) &&
+                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Publish
+                    , SourceObservable>
+            {
+                return make_operator(operator_tag::Publish(), XRX_MOV(source));
+            }
+        };
+    } // namespace detail
+
+    inline auto publish()
+    {
+        return detail::RememberPublish();
+    }
+} // namespace xrx
