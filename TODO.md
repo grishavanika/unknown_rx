@@ -1,4 +1,8 @@
 
+ - Do not use ::xrx::observer::make() in Observables implementation. Leads to bigger observer's size.
+ - Finaly decide if reference types as value_type for Observables are possible/supportable.
+   Currently there is a mess with XRX_MOV, XRX_FWD in non-template context.
+ - Make all Observable copy c-tor/copy assignment as private. Only fork() can be used to copy.
  - Allocator-aware ? See if every allocation operator/action can take an allocator as optional parameter.
  - Observable<void, void> (i.e, Value = void -> on_next()) should be supported.
  - Make sure library supports move-only Observers.

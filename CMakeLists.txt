@@ -52,6 +52,7 @@ set(xrx_HEADERS
     "include/operators/operator_repeat.h"
     "include/operators/operator_concat.h"
     "include/operators/operator_flat_map.h"
+    "include/operators/operator_window.h"
     "include/debug/assert_flag.h"
     "include/debug/assert_mutex.h"
     )

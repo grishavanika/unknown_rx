@@ -147,4 +147,15 @@ namespace xrx::detail::operator_tag
         };
     };
 
+    struct Window
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .window() operator implementation. "
+                  "Missing `operators/operator_window.h` include ?");
+        };
+    };
+
 } // namespace xrx::detail::operator_tag

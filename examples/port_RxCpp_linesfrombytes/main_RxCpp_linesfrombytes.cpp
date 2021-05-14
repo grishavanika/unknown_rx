@@ -84,15 +84,22 @@ int main()
                 | repeat(dist(gen));
             auto delim = from(std::uint8_t('\r'));
             return concat(body, delim);
-        });
+            })
+        | window(17);
 
     // WIP. To be continued.
     bytes.fork()
-        | transform([](std::uint8_t v) { return char(v); })
-        | subscribe([](char ch)
+        | transform([](auto observable)
     {
-        if (ch == '\r') ch = '\n';
-        std::cout.put(ch);
+        observable.fork() | subscribe([](char ch)
+        {
+            if (ch == '\r') ch = '\n';
+            std::cout.put(ch);
+        });
+        return 0;
+    })
+        | subscribe([](int)
+    {
     });
     XRX_PRINT_ALLOCS_COUNT("bytes");
 }

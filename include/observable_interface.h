@@ -36,54 +36,59 @@ namespace xrx::detail
         auto subscribe_on(Scheduler&& scheduler) &&
         {
             return make_operator(detail::operator_tag::SubscribeOn()
-                , std::move(*this), std::forward<Scheduler>(scheduler));
+                , XRX_MOV(*this), std::forward<Scheduler>(scheduler));
         }
 
         template<typename Scheduler>
         auto observe_on(Scheduler&& scheduler) &&
         {
             return make_operator(detail::operator_tag::ObserveOn()
-                , std::move(*this), std::forward<Scheduler>(scheduler));
+                , XRX_MOV(*this), std::forward<Scheduler>(scheduler));
         }
 
         auto publish() &&
         {
             return make_operator(detail::operator_tag::Publish()
-                , std::move(*this));
+                , XRX_MOV(*this));
         }
 
         template<typename F>
         auto filter(F&& f) &&
         {
             return make_operator(detail::operator_tag::Filter()
-                , std::move(*this), std::forward<F>(f));
+                , XRX_MOV(*this), std::forward<F>(f));
         }
         template<typename F>
         auto transform(F&& f) &&
         {
             return make_operator(detail::operator_tag::Transform()
-                , std::move(*this), std::forward<F>(f));
+                , XRX_MOV(*this), std::forward<F>(f));
         }
         auto take(std::size_t count) &&
         {
             return make_operator(detail::operator_tag::Take()
-                , std::move(*this), std::size_t(count));
+                , XRX_MOV(*this), std::size_t(count));
         }
         auto repeat(std::size_t count) &&
         {
             return make_operator(detail::operator_tag::Repeat()
-                , std::move(*this), std::size_t(count), std::false_type()/*not infinity*/);
+                , XRX_MOV(*this), std::size_t(count), std::false_type()/*not infinity*/);
         }
         auto repeat() &&
         {
             return make_operator(detail::operator_tag::Repeat()
-                , std::move(*this), std::size_t(0), std::true_type()/*infinity*/);
+                , XRX_MOV(*this), std::size_t(0), std::true_type()/*infinity*/);
         }
         template<typename Produce>
         auto flat_map(Produce&& produce) &&
         {
             return make_operator(detail::operator_tag::FlatMap()
-                , std::move(*this), XRX_FWD(produce));
+                , XRX_MOV(*this), XRX_FWD(produce));
+        }
+        auto window(std::size_t count) &&
+        {
+            return make_operator(detail::operator_tag::Window()
+                , XRX_MOV(*this), std::size_t(count));
         }
     };
 } // namespace xrx::detail

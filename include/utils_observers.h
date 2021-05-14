@@ -1,6 +1,7 @@
 #pragma once
 #include "concepts_observer.h"
 #include "debug/assert_flag.h"
+#include "utils_fast_FWD.h"
 
 #include <type_traits>
 #include <utility>
