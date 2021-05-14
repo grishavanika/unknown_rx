@@ -1384,6 +1384,122 @@ namespace xrx
             return _observer->on_completed();
         }
     };
+
+    template<typename Value>
+    struct AnyObserver<Value, void>
+    {
+        struct ObserverConcept
+        {
+            virtual ~ObserverConcept() = default;
+#if (X_ANY_OBSERVER_SUPPORTS_COPY())
+            virtual std::unique_ptr<ObserverConcept> copy_() const = 0;
+#endif
+            virtual ::xrx::detail::OnNextAction on_next(Value v) = 0;
+            virtual void on_error() = 0;
+            virtual void on_completed() = 0;
+        };
+
+        template<typename ConcreateObserver>
+        struct Observer : ObserverConcept
+        {
+            Observer(const Observer&) = delete;
+            Observer(Observer&&) = delete;
+            Observer& operator=(const Observer&) = delete;
+            Observer& operator=(Observer&&) = delete;
+
+#if (X_ANY_OBSERVER_SUPPORTS_COPY())
+            virtual std::unique_ptr<ObserverConcept> copy_() const override
+            {
+                return std::make_unique<Observer>(_observer);
+            }
+#endif
+
+            virtual ::xrx::detail::OnNextAction on_next(Value v) override
+            {
+                return ::xrx::detail::on_next_with_action(_observer, std::forward<Value>(v));
+            }
+
+            virtual void on_error() override
+            {
+                return ::xrx::detail::on_error_optional(std::move(_observer));
+            }
+
+            virtual void on_completed()
+            {
+                return ::xrx::detail::on_completed_optional(std::move(_observer));
+            }
+
+            explicit Observer(ConcreateObserver o)
+                : _observer(std::move(o))
+            {
+            }
+
+            ConcreateObserver _observer;
+        };
+
+        /*explicit*/ AnyObserver() = default;
+
+        template<typename ConcreateObserver>
+            requires (!detail::IsAnyObserver<ConcreateObserver>::value)
+        /*explicit*/ AnyObserver(ConcreateObserver o)
+            : _observer(std::make_unique<Observer<ConcreateObserver>>(std::move(o)))
+        {
+        }
+
+#if (X_ANY_OBSERVER_SUPPORTS_COPY())
+        AnyObserver(const AnyObserver& rhs)
+            : _observer((assert(rhs._observer), rhs._observer->copy_()))
+        {
+        }
+        AnyObserver& operator=(const AnyObserver& rhs)
+        {
+            if (this != &rhs)
+            {
+                assert(rhs._observer);
+                _observer = rhs._observer->copy_();
+            }
+            return *this;
+        }
+#endif
+        AnyObserver(AnyObserver&& rhs) noexcept
+            : _observer(std::move(rhs._observer))
+        {
+        }
+        AnyObserver& operator=(AnyObserver&& rhs) noexcept
+        {
+            if (this != &rhs)
+            {
+                _observer = std::move(rhs._observer);
+            }
+            return *this;
+        }
+
+        explicit operator bool() const
+        {
+            return !!_observer;
+        }
+
+        std::unique_ptr<ObserverConcept> _observer;
+
+        ::xrx::detail::OnNextAction on_next(Value v)
+        {
+            assert(_observer);
+            return _observer->on_next(std::forward<Value>(v));
+        }
+
+        void on_error()
+        {
+            assert(_observer);
+            return _observer->on_error();
+        }
+
+        void on_completed()
+        {
+            assert(_observer);
+            return _observer->on_completed();
+        }
+    };
+
 } // namespace xrx
 
 #undef X_ANY_OBSERVER_SUPPORTS_COPY
@@ -1938,23 +2054,31 @@ namespace xrx::detail
             template<typename Value>
             OnNextAction on_next(Value&& v)
             {
+                assert(_max > 0);
+                assert(_taken < _max);
                 _disconnected.check_not_set();
-                if (++_taken > _max)
+                const auto action = ::xrx::detail::ensure_action_state(
+                    ::xrx::detail::on_next_with_action(observer(), XRX_FWD(v))
+                    , _disconnected);
+                if (++_taken >= _max)
                 {
-                    ::xrx::detail::on_completed_optional(std::move(observer()));
+                    ::xrx::detail::on_completed_optional(XRX_MOV(observer()));
                     _disconnected.raise();
                     return OnNextAction{._unsubscribe = true};
                 }
-                return ::xrx::detail::ensure_action_state(
-                    ::xrx::detail::on_next_with_action(observer(), std::forward<Value>(v))
-                    , _disconnected);
+                return action;
             }
         };
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        decltype(auto) subscribe(Observer observer) &&
+        Unsubscriber subscribe(Observer observer) &&
         {
+            if (_count == 0)
+            {
+                (void)::xrx::detail::on_completed_optional(XRX_MOV(observer));
+                return Unsubscriber();
+            }
             using TakeObserver_ = TakeObserver_<Observer>;
             return std::move(_source).subscribe(TakeObserver_(std::move(observer), _count));
         }
@@ -3417,7 +3541,7 @@ namespace xrx
 
 namespace xrx
 {
-    template<typename Value, typename Error>
+    template<typename Value, typename Error = void>
     struct Subject_
     {
         using Subscriptions = detail::HandleVector<AnyObserver<Value, Error>>;
@@ -3457,6 +3581,11 @@ namespace xrx
         {
         }
 
+        explicit Subject_(std::shared_ptr<SharedImpl_> impl)
+            : _shared(std::move(impl))
+        {
+        }
+
         struct SourceObservable
         {
             using value_type   = Subject_::value_type;
@@ -3491,12 +3620,12 @@ namespace xrx
             return as_observable().subscribe(std::forward<Observer>(observer));
         }
 
-        detail::Observable_<SourceObservable> as_observable() const
+        ::xrx::detail::Observable_<SourceObservable> as_observable()
         {
-            return Observable_<SourceObservable>(SourceObservable(_shared));
+            return ::xrx::detail::Observable_<SourceObservable>(SourceObservable(_shared));
         }
 
-        Subject_ as_observer() const
+        Subject_ as_observer()
         {
             return Subject_(_shared);
         }
@@ -3524,7 +3653,8 @@ namespace xrx
             // else: already completed
         }
 
-        void on_error(Error e)
+        template<typename... Es>
+        void on_error(Es&&... errors)
         {
             if (_shared)
             {
@@ -3532,7 +3662,15 @@ namespace xrx
                 _shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
                 {
                     auto _ = debug::ScopeUnlock(lock);
-                    observer.on_error(e);
+                    if constexpr (sizeof...(errors) == 0)
+                    {
+                        observer.on_error();
+                    }
+                    else
+                    {
+                        static_assert(sizeof...(errors) == 1);
+                        observer.on_error(XRX_FWD(errors)...);
+                    }
                 });
                 _shared.reset(); // done.
             }

@@ -9,7 +9,7 @@
 
 namespace xrx
 {
-    template<typename Value, typename Error>
+    template<typename Value, typename Error = void>
     struct Subject_
     {
         using Subscriptions = detail::HandleVector<AnyObserver<Value, Error>>;
@@ -49,6 +49,11 @@ namespace xrx
         {
         }
 
+        explicit Subject_(std::shared_ptr<SharedImpl_> impl)
+            : _shared(std::move(impl))
+        {
+        }
+
         struct SourceObservable
         {
             using value_type   = Subject_::value_type;
@@ -83,12 +88,12 @@ namespace xrx
             return as_observable().subscribe(std::forward<Observer>(observer));
         }
 
-        detail::Observable_<SourceObservable> as_observable() const
+        ::xrx::detail::Observable_<SourceObservable> as_observable()
         {
-            return Observable_<SourceObservable>(SourceObservable(_shared));
+            return ::xrx::detail::Observable_<SourceObservable>(SourceObservable(_shared));
         }
 
-        Subject_ as_observer() const
+        Subject_ as_observer()
         {
             return Subject_(_shared);
         }
@@ -116,7 +121,8 @@ namespace xrx
             // else: already completed
         }
 
-        void on_error(Error e)
+        template<typename... Es>
+        void on_error(Es&&... errors)
         {
             if (_shared)
             {
@@ -124,7 +130,15 @@ namespace xrx
                 _shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
                 {
                     auto _ = debug::ScopeUnlock(lock);
-                    observer.on_error(e);
+                    if constexpr (sizeof...(errors) == 0)
+                    {
+                        observer.on_error();
+                    }
+                    else
+                    {
+                        static_assert(sizeof...(errors) == 1);
+                        observer.on_error(XRX_FWD(errors)...);
+                    }
                 });
                 _shared.reset(); // done.
             }

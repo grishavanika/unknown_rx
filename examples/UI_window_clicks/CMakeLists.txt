@@ -1,0 +1,11 @@
+set(all_HRDs "stub_window.h" "utils.h")
+set(all_SRCs "main_UI_window_clicks.cpp")
+
+add_executable(UI_window_clicks WIN32 ${all_HRDs} ${all_SRCs})
+set_all_warnings(UI_window_clicks PRIVATE)
+target_compile_definitions(UI_window_clicks PRIVATE UNICODE _UNICODE)
+target_link_libraries(UI_window_clicks PRIVATE xrx_all)
+if (${gcc_on_msvc})
+    # Make GCC aware about wmain()
+    set_target_properties(UI_window_clicks PROPERTIES LINK_FLAGS -municode)
+endif()

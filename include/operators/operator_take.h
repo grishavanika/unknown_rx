@@ -36,23 +36,31 @@ namespace xrx::detail
             template<typename Value>
             OnNextAction on_next(Value&& v)
             {
+                assert(_max > 0);
+                assert(_taken < _max);
                 _disconnected.check_not_set();
-                if (++_taken > _max)
+                const auto action = ::xrx::detail::ensure_action_state(
+                    ::xrx::detail::on_next_with_action(observer(), XRX_FWD(v))
+                    , _disconnected);
+                if (++_taken >= _max)
                 {
-                    ::xrx::detail::on_completed_optional(std::move(observer()));
+                    ::xrx::detail::on_completed_optional(XRX_MOV(observer()));
                     _disconnected.raise();
                     return OnNextAction{._unsubscribe = true};
                 }
-                return ::xrx::detail::ensure_action_state(
-                    ::xrx::detail::on_next_with_action(observer(), std::forward<Value>(v))
-                    , _disconnected);
+                return action;
             }
         };
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        decltype(auto) subscribe(Observer observer) &&
+        Unsubscriber subscribe(Observer observer) &&
         {
+            if (_count == 0)
+            {
+                (void)::xrx::detail::on_completed_optional(XRX_MOV(observer));
+                return Unsubscriber();
+            }
             using TakeObserver_ = TakeObserver_<Observer>;
             return std::move(_source).subscribe(TakeObserver_(std::move(observer), _count));
         }
