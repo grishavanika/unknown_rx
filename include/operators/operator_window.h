@@ -6,7 +6,10 @@
 #include "observable_interface.h"
 #include "utils_observers.h"
 #include "utils_observable.h"
+#include "utils_containers.h"
+#include "utils_defines.h"
 #include <type_traits>
+#include <algorithm>
 #include <vector>
 #include <utility>
 
@@ -23,26 +26,31 @@ namespace xrx::detail
         using is_async = std::false_type;
         using Unsubscriber = NoopUnsubscriber;
 
-        std::vector<value_type> _values;
+        using Storage = SmallVector<value_type, 1>;
+        Storage _values;
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
         NoopUnsubscriber subscribe(Observer observer) &&
         {
-            for (value_type v : _values)
+            const bool all = _values.for_each([&](value_type v) XRX_FORCEINLINE_LAMBDA()
             {
-                const auto action = on_next_with_action(observer, v);
+                const auto action = on_next_with_action(observer, XRX_MOV(v));
                 if (action._unsubscribe)
                 {
-                    return NoopUnsubscriber();
+                    return false;
                 }
+                return true;
+            });
+            if (all)
+            {
+                (void)on_completed_optional(XRX_MOV(observer));
             }
-            (void)on_completed_optional(XRX_MOV(observer));
             return NoopUnsubscriber();
         }
 
-        WindowSyncObservable fork() && { return WindowSyncObservable(XRX_MOV(_values)); }
-        WindowSyncObservable fork() &  { return WindowSyncObservable(_values); }
+        WindowSyncObservable fork() && { return WindowSyncObservable(XRX_MOV(*this)); }
+        WindowSyncObservable fork() &  { return WindowSyncObservable(*this); }
     };
 
     template<typename SourceObservable>
@@ -72,40 +80,43 @@ namespace xrx::detail
             bool unsubscribed = false;
             bool end_with_error = false;
             bool completed = false;
-            std::vector<source_value> _values;
-            _values.reserve(_count);
+            using Storage = ObservableValue_::Storage;
+            Storage values;
             auto unsubscribe = XRX_FWD(_source).subscribe(::xrx::observer::make(
-                    [&](source_value value)
+                    [&](source_value value) XRX_FORCEINLINE_LAMBDA()
             {
                 assert(not unsubscribed);
-                if (_values.size() < _count)
+                if (values._size < _count)
                 {
-                    _values.push_back(XRX_MOV(value));
+                    if (values._size == 0)
+                    {
+                        values = Storage(_count);
+                    }
+                    values.push_back(XRX_MOV(value));
                 }
-                assert(_values.size() <= _count);
-                if (_values.size() == _count)
+                assert(values._size <= _count);
+                if (values._size == _count)
                 {
                     const auto action = on_next_with_action(observer
-                        , value_type(ObservableValue_(XRX_MOV(_values))));
+                        , value_type(ObservableValue_(XRX_MOV(values))));
                     if (action._unsubscribe)
                     {
                         unsubscribed = true;
                         return ::xrx::unsubscribe(true);
                     }
-                    _values.reserve(_count);
                 }
                 return ::xrx::unsubscribe(false);
             }
-                , [&]()
+                , [&]() XRX_FORCEINLINE_LAMBDA()
             {
                 assert(not unsubscribed);
                 completed = true;
 
                 bool finalize_ = true;
-                if (_values.size() > 0)
+                if (values._size > 0)
                 {
                     const auto action = on_next_with_action(observer
-                        , value_type(ObservableValue_(XRX_MOV(_values))));
+                        , value_type(ObservableValue_(XRX_MOV(values))));
                     finalize_ = (not action._unsubscribe);
                 }
                 if (finalize_)
@@ -113,7 +124,7 @@ namespace xrx::detail
                     (void)on_completed_optional(XRX_MOV(observer));
                 }
             }
-                , [&](source_error error)
+                , [&](source_error error) XRX_FORCEINLINE_LAMBDA()
             {
                 assert(not unsubscribed);
                 end_with_error = true;

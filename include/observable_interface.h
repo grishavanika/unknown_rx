@@ -30,7 +30,10 @@ namespace xrx::detail
             return std::move(_source).subscribe(std::forward<Observer>(observer));
         }
 
-        Observable_ fork() { return Observable_(_source.fork()); }
+        Observable_&& fork() &&      { return XRX_MOV(*this); }
+        Observable_   fork() &       { return Observable_(_source.fork()); }
+        Observable_&& fork_move() && { return XRX_MOV(*this); }
+        Observable_   fork_move() &  { return XRX_MOV(*this); }
 
         template<typename Scheduler>
         auto subscribe_on(Scheduler&& scheduler) &&

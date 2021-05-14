@@ -2,9 +2,14 @@
 #include <type_traits>
 #include <vector>
 #include <limits>
+#include <algorithm>
 
 #include <cstdint>
 #include <cassert>
+#include <cstring>
+
+#include "utils_fast_FWD.h"
+#include "utils_defines.h"
 
 namespace xrx::detail
 {
@@ -126,6 +131,167 @@ namespace xrx::detail
                 }
             }
             return nullptr;
+        }
+    };
+
+    template<typename T, std::size_t Size = 1>
+    struct SmallVector
+    {
+        using Element = std::aligned_storage_t<sizeof(T), alignof(T)>;
+        Element _static[Size];
+        T* _dynamic;
+        std::size_t _size;
+        std::size_t _capacity;
+
+        XRX_FORCEINLINE() std::size_t size() const { return _size; }
+        XRX_FORCEINLINE() std::size_t dynamic_capacity() const { return _capacity; }
+
+        XRX_FORCEINLINE() explicit SmallVector(std::size_t max_capacity = 0) noexcept // #XXX: lie.
+            // : _static()
+            : _dynamic(nullptr)
+            , _size(0)
+            , _capacity(0)
+        {
+            if (max_capacity > Size)
+            {
+                _capacity = (max_capacity - Size);
+                _dynamic = new T[_capacity];
+            }
+        }
+
+        XRX_FORCEINLINE() ~SmallVector() noexcept
+        {
+            if constexpr (not std::is_trivial_v<T>)
+            {
+                for (std::size_t i = 0, count = (std::min)(Size, _size); i < count; ++i)
+                {
+                    void* memory = &_static[i];
+                    static_cast<T*>(memory)->~T();
+                }
+            }
+            if (_dynamic)
+            {
+                delete[] _dynamic;
+            }
+        }
+
+        XRX_FORCEINLINE() SmallVector(const SmallVector& rhs) noexcept
+            // : _static()
+            : _dynamic(nullptr)
+            , _size(rhs._size)
+            , _capacity(rhs._capacity)
+        {
+            if constexpr (std::is_trivial_v<T>)
+            {
+                std::memcpy(&_static, rhs._static, (std::min)(Size, _size) * sizeof(T));
+            }
+            else
+            {
+                for (std::size_t i = 0, count = (std::min)(Size, _size); i < count; ++i)
+                {
+                    void* memory = &_static[i];
+                    (void)new(memory) T(rhs._static[i]);
+                }
+            }
+            if (rhs._capacity > 0)
+            {
+                _dynamic = new T[_capacity];
+                if (rhs._size > Size)
+                {
+                    assert(rhs._dynamic);
+                    std::copy(rhs._dynamic, rhs._dynamic + rhs._size - Size, _dynamic);
+                }
+            }
+        }
+
+        XRX_FORCEINLINE() SmallVector(SmallVector&& rhs) noexcept
+            // : _static()
+            : _dynamic(nullptr)
+            , _size(rhs._size)
+            , _capacity(rhs._capacity)
+        {
+            if constexpr (std::is_trivial_v<T>)
+            {
+                std::memcpy(&_static, rhs._static, (std::min)(Size, _size) * sizeof(T));
+            }
+            else
+            {
+                for (std::size_t i = 0, count = (std::min)(Size, _size); i < count; ++i)
+                {
+                    void* memory = &_static[i];
+                    (void)new(memory) T(rhs._static[i]);
+                }
+            }
+            _dynamic = rhs._dynamic;
+            rhs._dynamic = nullptr;
+            if constexpr (not std::is_trivial_v<T>)
+            {
+                for (std::size_t i = 0, count = (std::min)(Size, rhs._size); i < count; ++i)
+                {
+                    void* memory = &rhs._static[i];
+                    static_cast<T*>(memory)->~T();
+                }
+            }
+            rhs._size = 0;
+            rhs._capacity = 0;
+        }
+
+        SmallVector& operator=(const SmallVector& rhs) = delete;
+
+        XRX_FORCEINLINE() SmallVector& operator=(SmallVector&& rhs)
+        {
+            if (this == &rhs)
+            {
+                return *this;
+            }
+            this->~SmallVector();
+            new(static_cast<void*>(this)) SmallVector(XRX_MOV(rhs));
+            return *this;
+        }
+
+        template<typename U>
+        XRX_FORCEINLINE() void push_back(U&& v)
+        {
+            if (_size < Size)
+            {
+                void* memory = &_static[_size];
+                (void)new(memory) T(XRX_FWD(v));
+                ++_size;
+            }
+            else if (_size < (_capacity + Size))
+            {
+                assert(_dynamic);
+                _dynamic[_size - Size] = XRX_FWD(v);
+                ++_size;
+            }
+            else
+            {
+                assert(false && "SmallVector<> overflow.");
+            }
+        }
+
+        template<typename F>
+        XRX_FORCEINLINE() bool for_each(F&& f)
+        {
+            for (std::size_t i = 0, count = (std::min)(Size, _size); i < count; ++i)
+            {
+                void* memory = &_static[i];
+                if (not f(*static_cast<T*>(memory)))
+                {
+                    return false;
+                }
+            }
+            if (_size >= Size)
+            {
+                for (std::size_t i = 0, count = (_size - Size); i < count; ++i)
+                {
+                    if (not f(_dynamic[i]))
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
         }
     };
 } // namespace xrx::detail
