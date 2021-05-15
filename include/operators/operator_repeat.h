@@ -35,7 +35,6 @@ namespace xrx::detail
 
         struct SyncState_
         {
-            // #XXX: what if value_type is reference ?
             using Values = std::vector<value_type>;
 
             std::optional<Values> _values;

@@ -109,6 +109,9 @@ namespace xrx::observable
                         }
                     }
 
+                    // #XXX: we should pass our own observer.
+                    // And do check if unsubscribe happened while this
+                    // .subscribe() is in progress.
                     SourceUnsubscriber unsubscriber = std::move(source_).subscribe(std::move(observer_));
 
                     if (in_progress)

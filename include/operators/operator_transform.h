@@ -108,6 +108,6 @@ namespace xrx
     auto transform(XRX_RVALUE(F&&) transform_)
     {
         using F_ = std::remove_reference_t<F>;
-        return detail::RememberTransform<F>(XRX_MOV(transform_));
+        return detail::RememberTransform<F_>(XRX_MOV(transform_));
     }
 } // namespace xrx

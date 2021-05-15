@@ -57,6 +57,7 @@ set(xrx_HEADERS
     "include/operators/operator_flat_map.h"
     "include/operators/operator_window.h"
     "include/debug/assert_mutex.h"
+    "include/utils_ref_tracking_observer.h"
     )
 
 add_library(xrx INTERFACE ${xrx_HEADERS})
