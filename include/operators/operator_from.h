@@ -26,9 +26,9 @@ namespace xrx::detail
         template<typename Observer>
         Unsubscriber subscribe(Observer&& observer) &&
         {
-            auto invoke_ = [](auto&& observer, auto&& value)
+            auto invoke_ = [](auto& observer, auto&& value)
             {
-                const auto action = on_next_with_action(XRX_FWD(observer), XRX_FWD(value));
+                const auto action = on_next_with_action(observer, XRX_FWD(value));
                 return (not action._unsubscribe);
             };
 
@@ -44,16 +44,20 @@ namespace xrx::detail
             return Unsubscriber();
         }
 
-        FromObservable fork() && { return FromObservable(std::move(_tuple)); }
+        FromObservable fork() && { return FromObservable(XRX_MOV(_tuple)); }
         FromObservable fork() &  { return FromObservable(_tuple); }
     };
 
     template<typename V, typename... Vs>
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::From
-        , V v0, Vs... vs)
+        , V&& v0, Vs&&... vs)
     {
-        using Tuple = std::tuple<V, Vs...>;
+        static_assert((not std::is_lvalue_reference_v<V>)
+                  && ((not std::is_lvalue_reference_v<Vs>) && ...)
+            , ".from(Vs...) requires Vs to be value-like type.");
+
+        using Tuple = std::tuple<std::remove_reference_t<V>, std::remove_reference_t<Vs>...>;
         using Impl = FromObservable<Tuple>;
-        return Observable_<Impl>(Impl(Tuple(std::move(v0), std::move(vs)...)));
+        return Observable_<Impl>(Impl(Tuple(XRX_MOV(v0), XRX_MOV(vs)...)));
     }
 } // namespace xrx::detail

@@ -1,5 +1,9 @@
 add_subdirectory(single_compile)
 
+set(xrx_tests_HDR
+    "debug_copy_move.h"
+    "noop_archetypes.h"
+    )
 set(xrx_tests_SRC
     "unknown.cpp"
     "tests_concepts_observer.cpp"
@@ -11,7 +15,7 @@ set(xrx_tests_SRC
     "tests_operator_window.cpp"
     "tests_utils_containers.cpp"
     )
-add_executable(tests_xrx ${xrx_tests_SRC})
+add_executable(tests_xrx ${xrx_tests_SRC} ${xrx_tests_HDR})
 set_all_warnings(tests_xrx PRIVATE)
 target_link_libraries(tests_xrx PRIVATE GTest_Integrated)
 target_link_libraries(tests_xrx PRIVATE xrx)

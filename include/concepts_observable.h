@@ -63,6 +63,7 @@ namespace xrx::detail
         && ConceptHandle<ObservableLike_>
         && requires(ObservableLike_ observable)
     {
+        // #TODO: value_type and error_type should not be references.
         typename ObservableLike_::value_type;
         typename ObservableLike_::error_type;
         typename ObservableLike_::Unsubscriber;

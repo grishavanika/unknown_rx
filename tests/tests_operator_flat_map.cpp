@@ -28,7 +28,7 @@ TEST(FlatMap, CollapseSingleRangeWithSingleElement)
     EXPECT_CALL(observer, on_error()).Times(0);
 
     observable::from(1)
-        | flat_map([](int v) { return observable::from(v); })
+        | flat_map([](int v) { return observable::from(int(v)); })
         | subscribe(observer::ref(observer));
 }
 

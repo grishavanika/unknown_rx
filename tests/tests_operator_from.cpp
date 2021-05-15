@@ -1,6 +1,7 @@
 #include "observables_factory.h"
 #include "operators/operator_from.h"
 #include "utils_observers.h"
+#include "debug_copy_move.h"
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
@@ -46,4 +47,31 @@ TEST(From, AllRangePassedToOnNext)
 
     observable::from(42, 43, 44, 45, 46, 47)
         .subscribe(observer);
+}
+
+TEST(From, CopyMoveTrack_SingleElement_Ideal)
+{
+    using debug::CopyMoveTrack;
+
+    observable::from(CopyMoveTrack(42))
+        .subscribe([](CopyMoveTrack&& v)
+    {
+        printf("[from %i] %i\n", v._id, v._user);
+    });
+}
+
+TEST(From, CopyMoveTrack_SingleElement_ForkOnce)
+{
+    using debug::CopyMoveTrack;
+
+    auto o = observable::from(CopyMoveTrack(42));
+    printf("[fork move] start\n");
+    {
+        o.fork_move()
+            .subscribe([](CopyMoveTrack&& v)
+        {
+            printf("[from %i] %i\n", v._id, v._user);
+        });
+    }
+    printf("[fork move] end\n");
 }

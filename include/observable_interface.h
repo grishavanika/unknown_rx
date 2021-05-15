@@ -18,8 +18,12 @@ namespace xrx::detail
         using value_type   = typename SourceObservable::value_type;
         using error_type   = typename SourceObservable::error_type;
         using Unsubscriber = typename SourceObservable::Unsubscriber;
-
         using is_async = IsAsyncObservable<SourceObservable>;
+
+        static_assert(not std::is_reference_v<value_type>
+            , "Observable<> does not support emitting values of reference type.");
+        static_assert(not std::is_reference_v<error_type>
+            , "Observable<> does not support emitting error of reference type.");
 
         SourceObservable _source;
 

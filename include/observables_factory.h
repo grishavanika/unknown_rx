@@ -41,10 +41,10 @@ namespace xrx::observable
     }
 
     template<typename V, typename... Vs>
-    auto from(V v0, Vs... vs)
+    auto from(V&& v0, Vs&&... vs)
     {
         return ::xrx::detail::make_operator(xrx::detail::operator_tag::From()
-            , std::move(v0), std::move(vs)...);
+            , XRX_FWD(v0), XRX_FWD(vs)...);
     }
 
     template<typename Observable1, typename Observable2, typename... ObservablesRest>
