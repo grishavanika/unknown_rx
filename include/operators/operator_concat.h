@@ -47,6 +47,8 @@ namespace xrx::detail
 
             XRX_FORCEINLINE() auto on_next(XRX_RVALUE(value_type&&) value)
             {
+                assert(not _state->_end_with_error);
+                assert(not _state->_completed);
                 assert(not _state->_unsubscribed);
                 const auto action = on_next_with_action(*_destination, XRX_MOV(value));
                 _state->_unsubscribed = action._stop;
@@ -54,20 +56,23 @@ namespace xrx::detail
             }
             XRX_FORCEINLINE() void on_completed()
             {
+                assert(not _state->_end_with_error);
+                assert(not _state->_completed);
+                assert(not _state->_unsubscribed);
                 _state->_completed = true; // on_completed(): nothing to do, move to next observable.
             }
             template<typename... VoidOrError>
-            XRX_FORCEINLINE() auto on_error(XRX_RVALUE(VoidOrError&&)... e)
+            XRX_FORCEINLINE() void on_error(XRX_RVALUE(VoidOrError&&)... e)
             {
-                _state->end_with_error = true;
                 if constexpr ((sizeof...(e)) == 0)
                 {
-                    return on_error_optional(XRX_MOV(*_destination));
+                    on_error_optional(XRX_MOV(*_destination));
                 }
                 else
                 {
-                    return on_error_optional(XRX_MOV(*_destination), XRX_MOV(e...));
+                    on_error_optional(XRX_MOV(*_destination), XRX_MOV(e...));
                 }
+                _state->end_with_error = true;
             }
         };
 
