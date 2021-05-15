@@ -21,7 +21,7 @@ struct NotRealScheduler
     template<typename F, typename State>
     int tick_every(clock_point, clock_duration, F f, State state)
     {
-        assert(not _request);
+        assert(_request);
         *_request = [f_ = XRX_MOV(f), state_ = XRX_MOV(state)]() mutable
         {
             f_(state_);

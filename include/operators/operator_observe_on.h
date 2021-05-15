@@ -18,10 +18,13 @@ namespace xrx::observable
             , typename DestinationObserver_>
         struct ObserveOnObserver_
         {
-            // Needs to have shared state so destination Observer
-            // can be only move_construcrible.
-            // Also, on_next() and on_completed() calls need to target same Observer.
-            // #TODO: don't do this if Observer is stateless.
+            // Shared state, so when cancel happens we can
+            // terminate task that should-be-canceled,
+            // but was already scheduled.
+            // #TODO: can this be done without shared state
+            // or, perhaps, without creating a task per each item ?
+            // Maybe we can Scheduler to schedule whole source Observable ?
+            // (This should minimize amount of state/overhead per item).
             struct Shared_
             {
                 Scheduler _sheduler;
@@ -31,12 +34,14 @@ namespace xrx::observable
             };
             std::shared_ptr<Shared_> _shared;
             
-            static std::shared_ptr<Shared_> make_state(Scheduler scheduler, DestinationObserver_ target)
+            static std::shared_ptr<Shared_> make_state(
+                XRX_RVALUE(Scheduler&&) scheduler
+                , XRX_RVALUE(DestinationObserver_&&) target)
             {
-                return std::make_shared<Shared_>(std::move(scheduler), std::move(target));
+                return std::make_shared<Shared_>(XRX_MOV(scheduler), XRX_MOV(target));
             }
 
-            ::xrx::unsubscribe on_next(Value v)
+            ::xrx::unsubscribe on_next(XRX_RVALUE(Value&&) v)
             {
                 if (_shared->_unsubscribed)
                 {
@@ -44,14 +49,14 @@ namespace xrx::observable
                 }
                 auto self = _shared;
                 const auto handle = self->_sheduler.task_post(
-                    [self, v_ = std::forward<Value>(v)]() mutable
+                    [self, v_ = XRX_MOV(v)]() mutable
                 {
                     if (self->_unsubscribed)
                     {
                         return;
                     }
                     const auto action = ::xrx::detail::on_next_with_action(
-                        self->_target, std::forward<Value>(v_));
+                        self->_target, XRX_MOV(v_));
                     if (action._stop)
                     {
                         self->_unsubscribed = true;
@@ -60,8 +65,9 @@ namespace xrx::observable
                 (void)handle;
                 return ::xrx::unsubscribe(false);
             }
-            // #TODO: support void Error.
-            void on_error(Error e)
+
+            template<typename... VoidOrError>
+            void on_error(XRX_RVALUE(VoidOrError&&)... e)
             {
                 if constexpr (::xrx::detail::ConceptWithOnError<DestinationObserver_, Error>)
                 {
@@ -70,19 +76,41 @@ namespace xrx::observable
                         return;
                     }
                     auto self = _shared;
-                    const auto handle = self->_sheduler.task_post(
-                        [self, e_ = std::forward<Error>(e)]() mutable
+
+                    if constexpr ((sizeof...(e)) == 0)
                     {
-                        if (not self->_unsubscribed)
+                        const auto handle = self->_sheduler.task_post(
+                            [self]() mutable
                         {
-                            (void)::xrx::detail::on_error(self->_target, std::forward<Error>(e_));
-                        }
-                    });
-                    (void)handle;
+                            if (not self->_unsubscribed)
+                            {
+                                (void)::xrx::detail::on_error(XRX_MOV(self->_target));
+                            }
+                        });
+                        (void)handle;
+                    }
+                    else
+                    {
+                        const auto handle = self->_sheduler.task_post(
+                            [self, es = std::make_tuple(XRX_MOV(e)...)]() mutable
+                        {
+                            if (not self->_unsubscribed)
+                            {
+                                std::apply([&](auto&&... error) // error is rvalue.
+                                {
+                                    (void)::xrx::detail::on_error(
+                                        XRX_MOV(self->_target), XRX_FWD(error)...);
+                                }
+                                    , XRX_MOV(es));
+                            }
+                        });
+                        (void)handle;
+                    }
                 }
                 else
                 {
-                    (void)e;
+                    // Observer does not actually supports errors,
+                    // just don't schedule empty task.
                 }
             }
             void on_completed()
@@ -112,10 +140,22 @@ namespace xrx::observable
         {
             using value_type = typename SourceObservable::value_type;
             using error_type = typename SourceObservable::error_type;
-            using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
+            // Even if `SourceObservable` is NOT Async, every item 
+            // from it will be re-scheduled thru some abstract interface.
+            // At the end of our .subscribe() we can't know at compile time
+            // if all scheduled items where processed.
+            using is_async = std::true_type;
+
+            SourceObservable _source;
+            // #TODO: define concept for `StreamScheduler`, see stream_scheduler().
+            Scheduler _scheduler;
+
+            auto fork() && { return ObserveOnObservable_(XRX_MOV(_source), XRX_MOV(_scheduler)); }
+            auto fork() &  { return ObserveOnObservable_(_source.fork(), _scheduler); }
 
             struct Unsubscriber
             {
+                using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
                 using has_effect = std::true_type;
 
                 SourceUnsubscriber _unsubscriber;
@@ -128,31 +168,31 @@ namespace xrx::observable
                     if (_unsubscribed)
                     {
                         *_unsubscribed = true;
-                        return _unsubscriber.detach();
                     }
-                    return false;
+                    return _unsubscriber.detach();
                 }
             };
 
-            SourceObservable _source;
-            // #TODO: define concept for `StreamScheduler`, see stream_scheduler().
-            Scheduler _scheduler;
-
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, value_type>
-            Unsubscriber subscribe(Observer observer) &&
+            Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
                 using ObserverImpl_ = ObserveOnObserver_<value_type, error_type, Scheduler, Observer>;
-                auto shared = ObserverImpl_::make_state(std::move(_scheduler), std::move(observer));
-                auto handle = std::move(_source).subscribe(ObserverImpl_(shared));
+                auto shared = ObserverImpl_::make_state(XRX_MOV(_scheduler), XRX_MOV(observer));
+                
+                // #XXX: here, in theory, if `_source` Observable is Sync.
+                // AND we know amount of items it can emit (not infinity),
+                // we can cache all of them and then scheduler only _few_
+                // tasks, each of which will emit several items per task.
+                // (Instead of scheduling task per item).
+                auto handle = XRX_MOV(_source).subscribe(ObserverImpl_(shared));
+
                 Unsubscriber unsubscriber;
-                unsubscriber._unsubscribed = std::shared_ptr<std::atomic_bool>(shared, &shared->_unsubscribed);
                 unsubscriber._unsubscriber = handle;
+                // Share only stop flag with unsubscriber.
+                unsubscriber._unsubscribed = {shared, &shared->_unsubscribed};
                 return unsubscriber;
             }
-
-            auto fork() && { return ObserveOnObservable_(std::move(_source), std::move(_scheduler)); }
-            auto fork() &  { return ObserveOnObservable_(_source.fork(), _scheduler); }
         };
     } // namespace detail
 } // namespace xrx::observable
@@ -160,13 +200,17 @@ namespace xrx::observable
 namespace xrx::detail::operator_tag
 {
     template<typename SourceObservable, typename Scheduler>
-    auto tag_invoke(::xrx::tag_t<::xrx::detail::make_operator>, xrx::detail::operator_tag::ObserveOn
-        , SourceObservable source, Scheduler scheduler)
+    auto tag_invoke(::xrx::tag_t<::xrx::detail::make_operator>
+        , xrx::detail::operator_tag::ObserveOn
+        , XRX_RVALUE(SourceObservable&&) source, XRX_RVALUE(Scheduler&&) scheduler)
     {
-        using Impl = ::xrx::observable::detail::ObserveOnObservable_<SourceObservable, Scheduler>;
+        static_assert(not std::is_lvalue_reference_v<SourceObservable>);
+        static_assert(not std::is_lvalue_reference_v<Scheduler>);
+        using Source_ = std::remove_reference_t<SourceObservable>;
+        using Scheduler_ = std::remove_reference_t<Scheduler>;
+        using Impl = ::xrx::observable::detail::ObserveOnObservable_<Source_, Scheduler_>;
         // #TODO: add overload that directly accepts `StreamScheduler` so
         // client can pass more narrow interface.
-        auto stream = std::move(scheduler).stream_scheduler();
-        return Observable_<Impl>(Impl(std::move(source), std::move(stream)));
+        return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(scheduler).stream_scheduler()));
     }
 } // namespace xrx::detail::operator_tag
