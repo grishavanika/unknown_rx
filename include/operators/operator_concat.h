@@ -17,7 +17,7 @@ namespace xrx::detail
     struct ConcatObservable;
 
     template<typename Tuple>
-    struct ConcatObservable<Tuple, false/*synchronous*/>
+    struct ConcatObservable<Tuple, false/*Sync*/>
     {
         static_assert(std::tuple_size_v<Tuple> >= 2);
         using ObservablePrototype = typename std::tuple_element<0, Tuple>::type;
@@ -27,39 +27,63 @@ namespace xrx::detail
         using is_async = std::false_type;
         using Unsubscriber = NoopUnsubscriber;
 
-        // #XXX: check that all Unsubscribers from all Observables do not have effect.
-
         Tuple _tuple;
 
-        ConcatObservable fork() && { return ConcatObservable(std::move(_tuple)); }
+        ConcatObservable fork() && { return ConcatObservable(XRX_MOV(_tuple)); }
         ConcatObservable fork() &  { return ConcatObservable(_tuple); }
+
+        struct State
+        {
+            bool _unsubscribed = false;
+            bool _end_with_error = false;
+            bool _completed = false;
+        };
+
+        template<typename Observer>
+        struct OneObserver
+        {
+            Observer* _destination = nullptr;
+            State* _state = nullptr;
+
+            XRX_FORCEINLINE() auto on_next(XRX_RVALUE(value_type&&) value)
+            {
+                assert(not _state->_unsubscribed);
+                const auto action = on_next_with_action(*_destination, XRX_MOV(value));
+                _state->_unsubscribed = action._stop;
+                return action;
+            }
+            XRX_FORCEINLINE() void on_completed()
+            {
+                _state->_completed = true; // on_completed(): nothing to do, move to next observable.
+            }
+            template<typename... VoidOrError>
+            XRX_FORCEINLINE() auto on_error(XRX_RVALUE(VoidOrError&&)... e)
+            {
+                _state->end_with_error = true;
+                if constexpr ((sizeof...(e)) == 0)
+                {
+                    return on_error_optional(XRX_MOV(*_destination));
+                }
+                else
+                {
+                    return on_error_optional(XRX_MOV(*_destination), XRX_MOV(e...));
+                }
+            }
+        };
 
         template<typename Observer>
         NoopUnsubscriber subscribe(Observer&& observer) &&
         {
+            using Observer_ = std::remove_reference_t<Observer>;
             auto invoke_ = [](auto&& observer, auto&& observable)
             {
-                bool unsubscribed = false;
-                bool end_with_error = false;
-                bool completed = false;
-                auto unsubscribe = XRX_FWD(observable).subscribe(observer::make(
-                      [&](value_type value)
-                {
-                    assert(not unsubscribed);
-                    const auto action = on_next_with_action(observer, XRX_FWD(value));
-                    unsubscribed = action._stop;
-                    return action;
-                }
-                    , [&]() { completed = true; } // on_completed(): nothing to do, move to next observable.
-                    , [&](error_type error)
-                {
-                    end_with_error = true;
-                    return on_error_optional(observer, XRX_FWD(error));
-                }));
+                State state;
+                auto unsubscribe = XRX_FWD(observable).subscribe(
+                    OneObserver<Observer_>(&observer, &state));
                 static_assert(not decltype(unsubscribe)::has_effect::value
                     , "Sync Observable should not have unsubscribe.");
-                const bool stop = (unsubscribed || end_with_error);
-                assert((completed || stop)
+                const bool stop = (state._unsubscribed || state._end_with_error);
+                assert((state._completed || stop)
                     && "Sync Observable should be ended after .subscribe() return.");
                 return (not stop);
             };
@@ -112,7 +136,9 @@ namespace xrx::detail
 
     template<typename Observable1, typename Observable2, typename... ObservablesRest>
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Concat
-        , Observable1 observable1, Observable2 observable2, ObservablesRest... observables)
+        , XRX_RVALUE(Observable1&&) observable1
+        , XRX_RVALUE(Observable2&&) observable2
+        , XRX_RVALUE(ObservablesRest&&)... observables)
             requires  (AreConcatCompatible<Observable1, Observable2>::value
                    && (AreConcatCompatible<Observable1, ObservablesRest>::value && ...))
     {
@@ -121,8 +147,14 @@ namespace xrx::detail
             or ( IsAsyncObservable<Observable2>())
             or ((IsAsyncObservable<ObservablesRest>()) or ...);
 
-        using Tuple = std::tuple<Observable1, Observable2, ObservablesRest...>;
+        using Tuple = std::tuple<
+            std::remove_reference_t<Observable1>
+            , std::remove_reference_t<Observable2>
+            , std::remove_reference_t<ObservablesRest>...>;
         using Impl = ConcatObservable<Tuple, IsAnyAsync>;
-        return Observable_<Impl>(Impl(Tuple(XRX_MOV(observable1), XRX_MOV(observable2), XRX_MOV(observables)...)));
+        return Observable_<Impl>(Impl(Tuple(
+            XRX_MOV(observable1)
+            , XRX_MOV(observable2)
+            , XRX_MOV(observables)...)));
     }
 } // namespace xrx::detail
