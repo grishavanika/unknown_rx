@@ -83,7 +83,7 @@ namespace xrx
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, Value>
-        Unsubscriber subscribe(Observer&& observer) const
+        Unsubscriber subscribe(Observer&& observer)
         {
             return as_observable().subscribe(std::forward<Observer>(observer));
         }

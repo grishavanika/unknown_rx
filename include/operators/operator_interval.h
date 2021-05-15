@@ -40,15 +40,18 @@ namespace xrx::observable
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, value_type>
-            Unsubscriber subscribe(Observer observer) &&
+            Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
+                static_assert(not std::is_lvalue_reference_v<Observer>);
+                using Observer_ = std::remove_reference_t<Observer>;
+
                 const clock_duration period(_period);
                 // To get zero tick at first. #TODO: revisit this logic.
                 const clock_point start_from = (clock::now() - period);
                 
                 struct State
                 {
-                    Observer _observer;
+                    Observer_ _observer;
                     value_type _ticks = 0;
                 };
 
@@ -56,18 +59,16 @@ namespace xrx::observable
                     , [](State& state) mutable
                 {
                     const value_type now = state._ticks++;
-                    const auto action = ::xrx::detail::on_next_with_action(state._observer, now);
+                    const auto action = ::xrx::detail::on_next_with_action(state._observer, value_type(now));
                     return action._stop;
                 }
-                    , State(std::move(observer), value_type(0)));
+                    , State(XRX_MOV(observer), value_type(0)));
 
                 return Unsubscriber(handle, std::move(_scheduler));
             }
 
-            auto fork()
-            {
-                return IntervalObservable_(_period, _scheduler);
-            }
+            auto fork() && { return IntervalObservable_(XRX_MOV(_period), XRX_MOV(_scheduler)); }
+            auto fork() &  { return IntervalObservable_(_period, _scheduler); }
         };
     } // namespace detail
 } // namespace xrx::observable
@@ -75,10 +76,12 @@ namespace xrx::observable
 namespace xrx::detail::operator_tag
 {
     template<typename Duration, typename Scheduler>
-    auto tag_invoke(::xrx::tag_t<::xrx::detail::make_operator>, xrx::detail::operator_tag::Interval
-        , Duration period, Scheduler scheduler)
+    auto tag_invoke(::xrx::tag_t<::xrx::detail::make_operator>
+        , xrx::detail::operator_tag::Interval
+        , Duration period, XRX_RVALUE(Scheduler&&) scheduler)
     {
-        using Impl = ::xrx::observable::detail::IntervalObservable_<Duration, Scheduler>;
-        return Observable_<Impl>(Impl(std::move(period), std::move(scheduler)));
+        using Scheduler_ = std::remove_reference_t<Scheduler>;
+        using Impl = ::xrx::observable::detail::IntervalObservable_<Duration, Scheduler_>;
+        return Observable_<Impl>(Impl(XRX_MOV(period), XRX_MOV(scheduler)));
     }
 } // namespace xrx::detail::operator_tag

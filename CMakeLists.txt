@@ -58,6 +58,7 @@ set(xrx_HEADERS
     "include/operators/operator_window.h"
     "include/debug/assert_mutex.h"
     "include/utils_ref_tracking_observer.h"
+    "include/simple_scheduler_event_loop.h"
     )
 
 add_library(xrx INTERFACE ${xrx_HEADERS})

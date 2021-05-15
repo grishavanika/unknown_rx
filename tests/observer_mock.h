@@ -3,14 +3,17 @@
 
 #include <gmock/gmock.h>
 
-struct ObserverMock
+template<typename Value>
+struct ObserverMockAny
 {
-    MOCK_METHOD(void, on_next, (int));
+    MOCK_METHOD(void, on_next, (Value));
     MOCK_METHOD(void, on_completed, ());
     MOCK_METHOD(void, on_error, ());
 
     auto ref() & { return ::xrx::observer::ref(*this); }
 };
+
+using ObserverMock = ObserverMockAny<int>;
 
 struct ObserverMock_Error
 {

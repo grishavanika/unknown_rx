@@ -4,6 +4,39 @@
 // powershell -File tools/generate_single_header.ps1
 // 
 
+// Header: utils_fast_fwd.h.
+
+// #pragma once
+#include <utility>
+
+// #XXX: this needs to be without include-guard
+// and in something like XRX_prelude.h header
+// so it can be undefined in XRX_conclusion.h.
+// #XXX: do with static_cast<>. Get read of <utility> include.
+// https://vittorioromeo.info/index/blog/capturing_perfectly_forwarded_objects_in_lambdas.html
+// https://github.com/SuperV1234/vrm_core/issues/1
+#define XRX_FWD(...) ::std::forward<decltype(__VA_ARGS__)>(__VA_ARGS__)
+#define XRX_MOV(...) ::std::move(__VA_ARGS__)
+
+// Just an annotation that T&& should be rvalue reference
+// (because of constraints from other places).
+// XRX_MOV() can be used.
+#define XRX_RVALUE(...) __VA_ARGS__
+
+// Header: utils_observable.h.
+
+// #pragma once
+#include <type_traits>
+
+namespace xrx::detail
+{
+    struct NoopUnsubscriber
+    {
+        using has_effect = std::false_type;
+        constexpr bool detach() const noexcept { return false; }
+    };
+} // namespace xrx::detail
+
 // Header: debug/assert_mutex.h.
 
 // #pragma once
@@ -81,19 +114,17 @@ namespace xrx::debug
 } // namespace xrx::debug
 
 
-// Header: utils_observable.h.
+// Header: utils_defines.h.
 
 // #pragma once
-#include <type_traits>
 
-namespace xrx::detail
-{
-    struct NoopUnsubscriber
-    {
-        using has_effect = std::false_type;
-        constexpr bool detach() const noexcept { return false; }
-    };
-} // namespace xrx::detail
+#if defined(_MSC_VER)
+  #define XRX_FORCEINLINE() __forceinline
+  #define XRX_FORCEINLINE_LAMBDA()
+#else
+  #define XRX_FORCEINLINE() __attribute__((always_inline))
+  #define XRX_FORCEINLINE_LAMBDA() __attribute__((always_inline))
+#endif
 
 // Header: tag_invoke.hpp.
 
@@ -183,37 +214,6 @@ concept tag_invocable =
      sizeof(_tag_invoke::yes_type));
 } // namespace xrx
 // #ZZZ: modification.
-
-// Header: utils_fast_fwd.h.
-
-// #pragma once
-#include <utility>
-
-// #XXX: this needs to be without include-guard
-// and in something like XRX_prelude.h header
-// so it can be undefined in XRX_conclusion.h.
-// #XXX: do with static_cast<>. Get read of <utility> include.
-// https://vittorioromeo.info/index/blog/capturing_perfectly_forwarded_objects_in_lambdas.html
-// https://github.com/SuperV1234/vrm_core/issues/1
-#define XRX_FWD(...) ::std::forward<decltype(__VA_ARGS__)>(__VA_ARGS__)
-#define XRX_MOV(...) ::std::move(__VA_ARGS__)
-
-// Just an annotation that T&& should be rvalue reference
-// (because of constraints from other places).
-// XRX_MOV() can be used.
-#define XRX_RVALUE(...) __VA_ARGS__
-
-// Header: utils_defines.h.
-
-// #pragma once
-
-#if defined(_MSC_VER)
-  #define XRX_FORCEINLINE() __forceinline
-  #define XRX_FORCEINLINE_LAMBDA()
-#else
-  #define XRX_FORCEINLINE() __attribute__((always_inline))
-  #define XRX_FORCEINLINE_LAMBDA() __attribute__((always_inline))
-#endif
 
 // Header: meta_utils.h.
 
@@ -399,88 +399,6 @@ namespace xrx::detail::operator_tag
 
 } // namespace xrx::detail::operator_tag
 
-// Header: concepts_observable.h.
-
-// #pragma once
-// #include "meta_utils.h"
-#include <type_traits>
-#include <concepts>
-
-namespace xrx::detail
-{
-    template<typename Observable_>
-        requires requires { typename Observable_::is_async; }
-    constexpr auto detect_async() { return typename Observable_::is_async(); }
-    template<typename Observable_>
-        requires (not requires { typename Observable_::is_async; })
-    constexpr auto detect_async() { return std::true_type(); }
-
-    template<typename Observable_>
-    using IsAsyncObservable = decltype(detect_async<Observable_>());
-
-    template<typename Handle_>
-    concept ConceptHandle =
-           std::is_copy_constructible_v<Handle_>
-        && std::is_move_constructible_v<Handle_>;
-    // #TODO: revisit is_copy/move_assignable.
-
-    template<typename Unsubscriber_>
-    concept ConceptUnsubscriber =
-           ConceptHandle<Unsubscriber_>
-        && requires(Unsubscriber_ unsubscriber)
-    {
-        // MSVC fails to compile ConceptObservable<> if this line
-        // is enabled (because of subscribe() -> ConceptObservable<> check.
-        // typename Unsubscriber_::has_effect;
-
-        { unsubscriber.detach() } -> std::convertible_to<bool>;
-    };
-
-    template<typename Value, typename Error>
-    struct ObserverArchetype
-    {
-        void on_next(Value);
-        void on_error(Error);
-        void on_completed();
-    };
-
-    template<typename Value>
-    struct ObserverArchetype<Value, void>
-    {
-        void on_next(Value);
-        void on_error();
-        void on_completed();
-    };
-
-    template<typename Value>
-    struct ObserverArchetype<Value, none_tag>
-    {
-        void on_next(Value);
-        void on_error();
-        void on_completed();
-    };
-
-    template<typename ObservableLike_>
-    concept ConceptObservable =
-           (not std::is_reference_v<ObservableLike_>)
-        && ConceptHandle<ObservableLike_>
-        && requires(ObservableLike_ observable)
-    {
-        // #TODO: value_type and error_type should not be references.
-        typename ObservableLike_::value_type;
-        typename ObservableLike_::error_type;
-        typename ObservableLike_::Unsubscriber;
-
-        { std::declval<ObservableLike_>().subscribe(ObserverArchetype<
-              typename ObservableLike_::value_type
-            , typename ObservableLike_::error_type>()) }
-                -> ConceptUnsubscriber<>;
-        // #TODO: should return Self - ConceptObservable<> ?
-        { std::declval<ObservableLike_&>().fork() }
-            -> ConceptHandle<>;
-    };
-} // namespace xrx::detail
-
 // Header: tag_invoke_with_extension.h.
 
 // #pragma once
@@ -577,6 +495,88 @@ namespace xrx::detail
     };
 } // namespace xrx::detail
 
+
+// Header: concepts_observable.h.
+
+// #pragma once
+// #include "meta_utils.h"
+#include <type_traits>
+#include <concepts>
+
+namespace xrx::detail
+{
+    template<typename Observable_>
+        requires requires { typename Observable_::is_async; }
+    constexpr auto detect_async() { return typename Observable_::is_async(); }
+    template<typename Observable_>
+        requires (not requires { typename Observable_::is_async; })
+    constexpr auto detect_async() { return std::true_type(); }
+
+    template<typename Observable_>
+    using IsAsyncObservable = decltype(detect_async<Observable_>());
+
+    template<typename Handle_>
+    concept ConceptHandle =
+           std::is_copy_constructible_v<Handle_>
+        && std::is_move_constructible_v<Handle_>;
+    // #TODO: revisit is_copy/move_assignable.
+
+    template<typename Unsubscriber_>
+    concept ConceptUnsubscriber =
+           ConceptHandle<Unsubscriber_>
+        && requires(Unsubscriber_ unsubscriber)
+    {
+        // MSVC fails to compile ConceptObservable<> if this line
+        // is enabled (because of subscribe() -> ConceptObservable<> check.
+        // typename Unsubscriber_::has_effect;
+
+        { unsubscriber.detach() } -> std::convertible_to<bool>;
+    };
+
+    template<typename Value, typename Error>
+    struct ObserverArchetype
+    {
+        void on_next(Value);
+        void on_error(Error);
+        void on_completed();
+    };
+
+    template<typename Value>
+    struct ObserverArchetype<Value, void>
+    {
+        void on_next(Value);
+        void on_error();
+        void on_completed();
+    };
+
+    template<typename Value>
+    struct ObserverArchetype<Value, none_tag>
+    {
+        void on_next(Value);
+        void on_error();
+        void on_completed();
+    };
+
+    template<typename ObservableLike_>
+    concept ConceptObservable =
+           (not std::is_reference_v<ObservableLike_>)
+        && ConceptHandle<ObservableLike_>
+        && requires(ObservableLike_ observable)
+    {
+        // #TODO: value_type and error_type should not be references.
+        typename ObservableLike_::value_type;
+        typename ObservableLike_::error_type;
+        typename ObservableLike_::Unsubscriber;
+
+        { std::declval<ObservableLike_>().subscribe(ObserverArchetype<
+              typename ObservableLike_::value_type
+            , typename ObservableLike_::error_type>()) }
+                -> ConceptUnsubscriber<>;
+        // #TODO: should return Self - ConceptObservable<> ?
+        { std::declval<ObservableLike_&>().fork() }
+            -> ConceptHandle<>;
+    };
+} // namespace xrx::detail
 
 // Header: utils_containers.h.
 
@@ -1103,6 +1103,280 @@ namespace xrx
           && detail::ConceptWithOnCompleted<Observer>
           && detail::ConceptWithOnError<Observer, Error>;
 } // namespace xrx
+
+// Header: simple_scheduler_event_loop.h.
+
+// #pragma once
+// #include "utils_containers.h"
+// #include "utils_fast_FWD.h"
+// #include "debug/assert_mutex.h"
+
+#include <functional>
+#include <memory>
+#include <chrono>
+#include <mutex>
+#include <concepts>
+#include <cassert>
+
+namespace xrx::debug
+{
+    // Some debug code to play around `Scheduler` concept.
+    // Not a final interface/API.
+    // 
+    struct EventLoop
+    {
+        using clock = std::chrono::steady_clock;
+        using clock_duration = clock::duration;
+        using clock_point = clock::time_point;
+
+        struct IActionCallback
+        {
+            clock_point _start_from;
+            clock_point _last_tick;
+            clock_duration _period;
+
+            virtual ~IActionCallback() = default;
+            virtual bool invoke() = 0;
+        };
+
+        template<typename F, typename State>
+        struct ActionCallback_ : IActionCallback
+        {
+            F _f;
+            State _state;
+
+            explicit ActionCallback_(XRX_RVALUE(F&&) f, XRX_RVALUE(State&&) state)
+                : _f(XRX_MOV(f))
+                , _state(XRX_MOV(state))
+            {
+            }
+
+            virtual bool invoke() override
+            {
+                return _f(_state);
+            }
+        };
+        // Need to be able to copy when executing - to release a lock, hence shared_ptr<>.
+        // Can be avoided if request to remove/cancel is delayed to next frame ?
+        // This way we can use std::function<> only, probably.
+        using TickAction = std::shared_ptr<IActionCallback>;
+
+        template<typename F, typename State>
+        static std::unique_ptr<IActionCallback> make_action(
+            clock_point start_from, clock_duration period
+            , XRX_RVALUE(F&&) f, XRX_RVALUE(State&&) state)
+        {
+            static_assert(not std::is_lvalue_reference_v<F>);
+            static_assert(not std::is_lvalue_reference_v<State>);
+            using Action_ = ActionCallback_<std::remove_reference_t<F>, std::remove_reference_t<State>>;
+            auto action = std::make_unique<Action_>(XRX_MOV(f), XRX_MOV(state));
+            action->_start_from = start_from;
+            action->_last_tick = {};
+            action->_period = period;
+            return action;
+        }
+
+        using TickActions = ::xrx::detail::HandleVector<TickAction>;
+        using ActionHandle = typename TickActions::Handle;
+        TickActions _tick_actions;
+        mutable AssertMutex<> _assert_mutex_tick;
+
+        using TaskCallback = std::function<void ()>;
+        using Tasks = ::xrx::detail::HandleVector<TaskCallback>;
+        using TaskHandle = typename Tasks::Handle;
+        Tasks _tasks;
+        mutable AssertMutex<> _assert_mutex_tasks;
+
+        template<typename F, typename State>
+            requires std::convertible_to<std::invoke_result_t<F, State&>, bool>
+        ActionHandle tick_every(clock_point start_from, clock_duration period, F&& f, State&& state)
+        {
+            auto _ = std::lock_guard(_assert_mutex_tick);
+            const ActionHandle handle = _tick_actions.push_back(make_action(
+                start_from
+                , clock_duration(period)
+                , XRX_FWD(f)
+                , XRX_FWD(state)));
+            return handle;
+        }
+
+        bool tick_cancel(ActionHandle handle)
+        {
+            auto _ = std::lock_guard(_assert_mutex_tick);
+            return _tick_actions.erase(handle);
+        }
+
+        template<typename F>
+        TaskHandle task_post(F&& task)
+        {
+            const TaskHandle handle = _tasks.push_back(TaskCallback(XRX_FWD(task)));
+            return handle;
+        }
+
+        bool task_cancel(TaskHandle handle)
+        {
+            return _tasks.erase(handle);
+        }
+
+        std::size_t poll_one_task()
+        {
+            TaskCallback task;
+            {
+                auto _ = std::lock_guard(_assert_mutex_tasks);
+                if (_tasks.size() == 0)
+                {
+                    return 0;
+                }
+                for (std::size_t i = 0; i < _tasks._values.size(); ++i)
+                {
+                    const TaskHandle handle(_tasks._values[i]._version, std::uint32_t(i));
+                    if (handle)
+                    {
+                        TaskCallback* callback = _tasks.get(handle);
+                        assert(callback);
+                        task = XRX_MOV(*callback);
+                        _tasks.erase(handle);
+                        break; // find & execute first task.
+                    }
+                }
+            }
+            if (task)
+            {
+                XRX_MOV(task)();
+                return 1;
+            }
+            return 0;
+        }
+
+        std::size_t poll_one()
+        {
+            ActionHandle to_execute;
+            {
+                auto _ = std::lock_guard(_assert_mutex_tick);
+                clock_duration smallest = clock_duration::max();
+                _tick_actions.for_each([&](TickAction& action, ActionHandle handle)
+                {
+                    const clock_duration point = (action->_last_tick + action->_period).time_since_epoch();
+                    if (point < smallest)
+                    {
+                        smallest = point;
+                        to_execute = handle;
+                    }
+                });
+            }
+            if (not to_execute)
+            {
+                return poll_one_task();
+            }
+
+            clock_point desired_point;
+            {
+                auto _ = std::lock_guard(_assert_mutex_tick);
+                TickAction* action = _tick_actions.get(to_execute);
+                if (not action)
+                {
+                    // Someone just removed it.
+                    return 0;
+                }
+                desired_point = ((*action)->_last_tick + (*action)->_period);
+            }
+        
+            // #TODO: resume this one when new item arrives
+            // (with probably closer-to-execute time point).
+            std::this_thread::sleep_until(desired_point); // no-op if time in the past.
+
+            TickAction invoke_action;
+            bool do_remove = false;
+            {
+                auto _ = std::lock_guard(_assert_mutex_tick);
+                if (TickAction* action = _tick_actions.get(to_execute))
+                {
+                    invoke_action = *action; // copy shared.
+                }
+            }
+            if (invoke_action)
+            {
+                // Notice: we don't have lock.
+                do_remove = invoke_action->invoke();
+            }
+            if (do_remove)
+            {
+                const bool removed = tick_cancel(to_execute);
+                assert(removed);
+                return 1;
+            }
+            auto _ = std::lock_guard(_assert_mutex_tick);
+            // Action can removed from the inside of callback.
+            if (TickAction* action_modified = _tick_actions.get(to_execute))
+            {
+                (*action_modified)->_last_tick = clock::now();
+            }
+            return 1;
+        }
+
+        std::size_t work_count() const
+        {
+            // std::scoped_lock<> requires .try_lock() ?
+            auto ticks_lock = std::lock_guard(_assert_mutex_tick);
+            auto tasks_lock = std::lock_guard(_assert_mutex_tasks);
+            return (_tick_actions.size() + _tasks.size());
+        }
+
+        struct Scheduler
+        {
+            using clock = EventLoop::clock;
+            using clock_duration = EventLoop::clock_duration;
+            using clock_point = EventLoop::clock_point;
+            using ActionHandle = EventLoop::ActionHandle;
+            using TaskHandle = EventLoop::TaskHandle;
+
+            EventLoop* _event_loop = nullptr;
+
+            template<typename F, typename State>
+            ActionHandle tick_every(clock_point start_from, clock_duration period, F&& f, State&& state)
+            {
+                assert(_event_loop);
+                return _event_loop->tick_every(
+                    XRX_MOV(start_from)
+                    , XRX_MOV(period)
+                    , XRX_FWD(f)
+                    , XRX_FWD(state));
+            }
+
+            bool tick_cancel(ActionHandle handle)
+            {
+                assert(_event_loop);
+                return _event_loop->tick_cancel(handle);
+            }
+
+            template<typename F>
+            TaskHandle task_post(F&& task)
+            {
+                assert(_event_loop);
+                return _event_loop->task_post(XRX_FWD(task));
+            }
+
+            bool task_cancel(TaskHandle handle)
+            {
+                assert(_event_loop);
+                return _event_loop->task_cancel(handle);
+            }
+
+            // Scheduler for which every task is ordered.
+            // #TODO: looks like too big restriction.
+            // on_next() can go in whatever order, but on_complete and on_error
+            // should be last one.
+            Scheduler stream_scheduler() { return *this; }
+        };
+
+        Scheduler scheduler()
+        {
+            return Scheduler{this};
+        }
+    };
+} // namespace xrx::debug
+
+
 
 // Header: observables_factory.h.
 
@@ -2373,93 +2647,6 @@ namespace xrx::detail::operator_tag
     }
 } // namespace xrx::detail::operator_tag
 
-// Header: operators/operator_interval.h.
-
-// #pragma once
-// #include "meta_utils.h"
-// #include "operator_tags.h"
-// #include "cpo_make_operator.h"
-// #include "observable_interface.h"
-// #include "utils_observers.h"
-#include <utility>
-#include <chrono>
-#include <cstdint>
-
-namespace xrx::observable
-{
-    namespace detail
-    {
-        template<typename Duration, typename Scheduler>
-        struct IntervalObservable_
-        {
-            using value_type = std::uint64_t;
-            using error_type = ::xrx::detail::none_tag;
-            using clock = typename Scheduler::clock;
-            using clock_duration = typename Scheduler::clock_duration;
-            using clock_point = typename Scheduler::clock_point;
-            using Handle = typename Scheduler::ActionHandle;
-
-            struct Unsubscriber
-            {
-                using has_effect = std::true_type;
-
-                Handle _handle;
-                Scheduler _scheduler;
-
-                bool detach()
-                {
-                    return _scheduler.tick_cancel(_handle);
-                }
-            };
-
-            Duration _period;
-            Scheduler _scheduler;
-
-            template<typename Observer>
-                requires ConceptValueObserverOf<Observer, value_type>
-            Unsubscriber subscribe(Observer observer) &&
-            {
-                const clock_duration period(_period);
-                // To get zero tick at first. #TODO: revisit this logic.
-                const clock_point start_from = (clock::now() - period);
-                
-                struct State
-                {
-                    Observer _observer;
-                    value_type _ticks = 0;
-                };
-
-                const Handle handle = _scheduler.tick_every(start_from, period
-                    , [](State& state) mutable
-                {
-                    const value_type now = state._ticks++;
-                    const auto action = ::xrx::detail::on_next_with_action(state._observer, now);
-                    return action._stop;
-                }
-                    , State(std::move(observer), value_type(0)));
-
-                return Unsubscriber(handle, std::move(_scheduler));
-            }
-
-            auto fork()
-            {
-                return IntervalObservable_(_period, _scheduler);
-            }
-        };
-    } // namespace detail
-} // namespace xrx::observable
-
-namespace xrx::detail::operator_tag
-{
-    template<typename Duration, typename Scheduler>
-    auto tag_invoke(::xrx::tag_t<::xrx::detail::make_operator>, xrx::detail::operator_tag::Interval
-        , Duration period, Scheduler scheduler)
-    {
-        using Impl = ::xrx::observable::detail::IntervalObservable_<Duration, Scheduler>;
-        return Observable_<Impl>(Impl(std::move(period), std::move(scheduler)));
-    }
-} // namespace xrx::detail::operator_tag
-
 // Header: operators/operator_take.h.
 
 // #pragma once
@@ -2562,6 +2749,264 @@ namespace xrx
         return detail::RememberTake(count);
     }
 } // namespace xrx
+
+// Header: operators/operator_interval.h.
+
+// #pragma once
+// #include "meta_utils.h"
+// #include "operator_tags.h"
+// #include "cpo_make_operator.h"
+// #include "observable_interface.h"
+// #include "utils_observers.h"
+#include <utility>
+#include <chrono>
+#include <cstdint>
+
+namespace xrx::observable
+{
+    namespace detail
+    {
+        template<typename Duration, typename Scheduler>
+        struct IntervalObservable_
+        {
+            using value_type = std::uint64_t;
+            using error_type = ::xrx::detail::none_tag;
+            using clock = typename Scheduler::clock;
+            using clock_duration = typename Scheduler::clock_duration;
+            using clock_point = typename Scheduler::clock_point;
+            using Handle = typename Scheduler::ActionHandle;
+
+            struct Unsubscriber
+            {
+                using has_effect = std::true_type;
+
+                Handle _handle;
+                Scheduler _scheduler;
+
+                bool detach()
+                {
+                    return _scheduler.tick_cancel(_handle);
+                }
+            };
+
+            Duration _period;
+            Scheduler _scheduler;
+
+            template<typename Observer>
+                requires ConceptValueObserverOf<Observer, value_type>
+            Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+            {
+                static_assert(not std::is_lvalue_reference_v<Observer>);
+                using Observer_ = std::remove_reference_t<Observer>;
+
+                const clock_duration period(_period);
+                // To get zero tick at first. #TODO: revisit this logic.
+                const clock_point start_from = (clock::now() - period);
+                
+                struct State
+                {
+                    Observer_ _observer;
+                    value_type _ticks = 0;
+                };
+
+                const Handle handle = _scheduler.tick_every(start_from, period
+                    , [](State& state) mutable
+                {
+                    const value_type now = state._ticks++;
+                    const auto action = ::xrx::detail::on_next_with_action(state._observer, value_type(now));
+                    return action._stop;
+                }
+                    , State(XRX_MOV(observer), value_type(0)));
+
+                return Unsubscriber(handle, std::move(_scheduler));
+            }
+
+            auto fork() && { return IntervalObservable_(XRX_MOV(_period), XRX_MOV(_scheduler)); }
+            auto fork() &  { return IntervalObservable_(_period, _scheduler); }
+        };
+    } // namespace detail
+} // namespace xrx::observable
+
+namespace xrx::detail::operator_tag
+{
+    template<typename Duration, typename Scheduler>
+    auto tag_invoke(::xrx::tag_t<::xrx::detail::make_operator>
+        , xrx::detail::operator_tag::Interval
+        , Duration period, XRX_RVALUE(Scheduler&&) scheduler)
+    {
+        using Scheduler_ = std::remove_reference_t<Scheduler>;
+        using Impl = ::xrx::observable::detail::IntervalObservable_<Duration, Scheduler_>;
+        return Observable_<Impl>(Impl(XRX_MOV(period), XRX_MOV(scheduler)));
+    }
+} // namespace xrx::detail::operator_tag
+
+// Header: operators/operator_concat.h.
+
+// #pragma once
+// #include "operator_tags.h"
+// #include "cpo_make_operator.h"
+// #include "observable_interface.h"
+// #include "utils_observers.h"
+// #include "utils_observable.h"
+// #include "utils_fast_FWD.h"
+#include <utility>
+#include <type_traits>
+#include <tuple>
+#include <cstdint>
+#include <cassert>
+
+namespace xrx::detail
+{
+    template<typename Tuple, bool IsAsync>
+    struct ConcatObservable;
+
+    template<typename Tuple>
+    struct ConcatObservable<Tuple, false/*Sync*/>
+    {
+        static_assert(std::tuple_size_v<Tuple> >= 2);
+        using ObservablePrototype = typename std::tuple_element<0, Tuple>::type;
+
+        using value_type = typename ObservablePrototype::value_type;
+        using error_type = typename ObservablePrototype::error_type;
+        using is_async = std::false_type;
+        using Unsubscriber = NoopUnsubscriber;
+
+        Tuple _tuple;
+
+        ConcatObservable fork() && { return ConcatObservable(XRX_MOV(_tuple)); }
+        ConcatObservable fork() &  { return ConcatObservable(_tuple); }
+
+        struct State
+        {
+            bool _unsubscribed = false;
+            bool _end_with_error = false;
+            bool _completed = false;
+        };
+
+        template<typename Observer>
+        struct OneObserver
+        {
+            Observer* _destination = nullptr;
+            State* _state = nullptr;
+
+            XRX_FORCEINLINE() auto on_next(XRX_RVALUE(value_type&&) value)
+            {
+                assert(not _state->_end_with_error);
+                assert(not _state->_completed);
+                assert(not _state->_unsubscribed);
+                const auto action = on_next_with_action(*_destination, XRX_MOV(value));
+                _state->_unsubscribed = action._stop;
+                return action;
+            }
+            XRX_FORCEINLINE() void on_completed()
+            {
+                assert(not _state->_end_with_error);
+                assert(not _state->_completed);
+                assert(not _state->_unsubscribed);
+                _state->_completed = true; // on_completed(): nothing to do, move to next observable.
+            }
+            template<typename... VoidOrError>
+            XRX_FORCEINLINE() void on_error(XRX_RVALUE(VoidOrError&&)... e)
+            {
+                if constexpr ((sizeof...(e)) == 0)
+                {
+                    on_error_optional(XRX_MOV(*_destination));
+                }
+                else
+                {
+                    on_error_optional(XRX_MOV(*_destination), XRX_MOV(e...));
+                }
+                _state->end_with_error = true;
+            }
+        };
+
+        template<typename Observer>
+        NoopUnsubscriber subscribe(Observer&& observer) &&
+        {
+            using Observer_ = std::remove_reference_t<Observer>;
+            auto invoke_ = [](auto&& observer, auto&& observable)
+            {
+                State state;
+                auto unsubscribe = XRX_FWD(observable).subscribe(
+                    OneObserver<Observer_>(&observer, &state));
+                static_assert(not decltype(unsubscribe)::has_effect::value
+                    , "Sync Observable should not have unsubscribe.");
+                const bool stop = (state._unsubscribed || state._end_with_error);
+                assert((state._completed || stop)
+                    && "Sync Observable should be ended after .subscribe() return.");
+                return (not stop);
+            };
+
+            const bool all_processed = std::apply([&](auto&&... observables)
+            {
+                return (invoke_(observer, XRX_FWD(observables)) && ...);
+            }
+                , XRX_MOV(_tuple));
+            if (all_processed)
+            {
+                on_completed_optional(observer);
+            }
+            return NoopUnsubscriber();
+        }
+    };
+
+    template<typename Observable1, typename Observable2, bool>
+    struct HaveSameStreamTypes
+    {
+        static constexpr bool value =
+               std::is_same_v<typename Observable1::value_type
+                            , typename Observable2::value_type>
+            && std::is_same_v<typename Observable1::error_type
+                            , typename Observable2::error_type>;
+    };
+
+    template<typename Observable1, typename Observable2>
+    struct HaveSameStreamTypes<Observable1, Observable2
+        , false> // not Observables.
+            : std::false_type
+    {
+    };
+
+    // AreConcatCompatible<> is a combination of different workarounds
+    // for MSVC and GCC. We just need to check if value_type (+error_type) are same
+    // for both types, if they are Observables.
+    template<typename Observable1, typename Observable2>
+    struct AreConcatCompatible
+    {
+        static constexpr bool are_observables =
+               ConceptObservable<Observable1>
+            && ConceptObservable<Observable2>;
+        static constexpr bool value =
+            HaveSameStreamTypes<
+                Observable1
+              , Observable2
+              , are_observables>::value;
+    };
+
+    template<typename Observable1, typename Observable2, typename... ObservablesRest>
+    auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Concat
+        , XRX_RVALUE(Observable1&&) observable1
+        , XRX_RVALUE(Observable2&&) observable2
+        , XRX_RVALUE(ObservablesRest&&)... observables)
+            requires  (AreConcatCompatible<Observable1, Observable2>::value
+                   && (AreConcatCompatible<Observable1, ObservablesRest>::value && ...))
+    {
+        constexpr bool IsAnyAsync = false
+            or ( IsAsyncObservable<Observable1>())
+            or ( IsAsyncObservable<Observable2>())
+            or ((IsAsyncObservable<ObservablesRest>()) or ...);
+
+        using Tuple = std::tuple<
+            std::remove_reference_t<Observable1>
+            , std::remove_reference_t<Observable2>
+            , std::remove_reference_t<ObservablesRest>...>;
+        using Impl = ConcatObservable<Tuple, IsAnyAsync>;
+        return Observable_<Impl>(Impl(Tuple(
+            XRX_MOV(observable1)
+            , XRX_MOV(observable2)
+            , XRX_MOV(observables)...)));
+    }
+} // namespace xrx::detail
 
 // Header: operators/operator_repeat.h.
 
@@ -3199,174 +3644,6 @@ namespace xrx
     }
 } // namespace xrx
 
-// Header: operators/operator_concat.h.
-
-// #pragma once
-// #include "operator_tags.h"
-// #include "cpo_make_operator.h"
-// #include "observable_interface.h"
-// #include "utils_observers.h"
-// #include "utils_observable.h"
-// #include "utils_fast_FWD.h"
-#include <utility>
-#include <type_traits>
-#include <tuple>
-#include <cstdint>
-#include <cassert>
-
-namespace xrx::detail
-{
-    template<typename Tuple, bool IsAsync>
-    struct ConcatObservable;
-
-    template<typename Tuple>
-    struct ConcatObservable<Tuple, false/*Sync*/>
-    {
-        static_assert(std::tuple_size_v<Tuple> >= 2);
-        using ObservablePrototype = typename std::tuple_element<0, Tuple>::type;
-
-        using value_type = typename ObservablePrototype::value_type;
-        using error_type = typename ObservablePrototype::error_type;
-        using is_async = std::false_type;
-        using Unsubscriber = NoopUnsubscriber;
-
-        Tuple _tuple;
-
-        ConcatObservable fork() && { return ConcatObservable(XRX_MOV(_tuple)); }
-        ConcatObservable fork() &  { return ConcatObservable(_tuple); }
-
-        struct State
-        {
-            bool _unsubscribed = false;
-            bool _end_with_error = false;
-            bool _completed = false;
-        };
-
-        template<typename Observer>
-        struct OneObserver
-        {
-            Observer* _destination = nullptr;
-            State* _state = nullptr;
-
-            XRX_FORCEINLINE() auto on_next(XRX_RVALUE(value_type&&) value)
-            {
-                assert(not _state->_end_with_error);
-                assert(not _state->_completed);
-                assert(not _state->_unsubscribed);
-                const auto action = on_next_with_action(*_destination, XRX_MOV(value));
-                _state->_unsubscribed = action._stop;
-                return action;
-            }
-            XRX_FORCEINLINE() void on_completed()
-            {
-                assert(not _state->_end_with_error);
-                assert(not _state->_completed);
-                assert(not _state->_unsubscribed);
-                _state->_completed = true; // on_completed(): nothing to do, move to next observable.
-            }
-            template<typename... VoidOrError>
-            XRX_FORCEINLINE() void on_error(XRX_RVALUE(VoidOrError&&)... e)
-            {
-                if constexpr ((sizeof...(e)) == 0)
-                {
-                    on_error_optional(XRX_MOV(*_destination));
-                }
-                else
-                {
-                    on_error_optional(XRX_MOV(*_destination), XRX_MOV(e...));
-                }
-                _state->end_with_error = true;
-            }
-        };
-
-        template<typename Observer>
-        NoopUnsubscriber subscribe(Observer&& observer) &&
-        {
-            using Observer_ = std::remove_reference_t<Observer>;
-            auto invoke_ = [](auto&& observer, auto&& observable)
-            {
-                State state;
-                auto unsubscribe = XRX_FWD(observable).subscribe(
-                    OneObserver<Observer_>(&observer, &state));
-                static_assert(not decltype(unsubscribe)::has_effect::value
-                    , "Sync Observable should not have unsubscribe.");
-                const bool stop = (state._unsubscribed || state._end_with_error);
-                assert((state._completed || stop)
-                    && "Sync Observable should be ended after .subscribe() return.");
-                return (not stop);
-            };
-
-            const bool all_processed = std::apply([&](auto&&... observables)
-            {
-                return (invoke_(observer, XRX_FWD(observables)) && ...);
-            }
-                , XRX_MOV(_tuple));
-            if (all_processed)
-            {
-                on_completed_optional(observer);
-            }
-            return NoopUnsubscriber();
-        }
-    };
-
-    template<typename Observable1, typename Observable2, bool>
-    struct HaveSameStreamTypes
-    {
-        static constexpr bool value =
-               std::is_same_v<typename Observable1::value_type
-                            , typename Observable2::value_type>
-            && std::is_same_v<typename Observable1::error_type
-                            , typename Observable2::error_type>;
-    };
-
-    template<typename Observable1, typename Observable2>
-    struct HaveSameStreamTypes<Observable1, Observable2
-        , false> // not Observables.
-            : std::false_type
-    {
-    };
-
-    // AreConcatCompatible<> is a combination of different workarounds
-    // for MSVC and GCC. We just need to check if value_type (+error_type) are same
-    // for both types, if they are Observables.
-    template<typename Observable1, typename Observable2>
-    struct AreConcatCompatible
-    {
-        static constexpr bool are_observables =
-               ConceptObservable<Observable1>
-            && ConceptObservable<Observable2>;
-        static constexpr bool value =
-            HaveSameStreamTypes<
-                Observable1
-              , Observable2
-              , are_observables>::value;
-    };
-
-    template<typename Observable1, typename Observable2, typename... ObservablesRest>
-    auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Concat
-        , XRX_RVALUE(Observable1&&) observable1
-        , XRX_RVALUE(Observable2&&) observable2
-        , XRX_RVALUE(ObservablesRest&&)... observables)
-            requires  (AreConcatCompatible<Observable1, Observable2>::value
-                   && (AreConcatCompatible<Observable1, ObservablesRest>::value && ...))
-    {
-        constexpr bool IsAnyAsync = false
-            or ( IsAsyncObservable<Observable1>())
-            or ( IsAsyncObservable<Observable2>())
-            or ((IsAsyncObservable<ObservablesRest>()) or ...);
-
-        using Tuple = std::tuple<
-            std::remove_reference_t<Observable1>
-            , std::remove_reference_t<Observable2>
-            , std::remove_reference_t<ObservablesRest>...>;
-        using Impl = ConcatObservable<Tuple, IsAnyAsync>;
-        return Observable_<Impl>(Impl(Tuple(
-            XRX_MOV(observable1)
-            , XRX_MOV(observable2)
-            , XRX_MOV(observables)...)));
-    }
-} // namespace xrx::detail
-
 // Header: operators/operator_from.h.
 
 // #pragma once
@@ -3432,6 +3709,261 @@ namespace xrx::detail
         return Observable_<Impl>(Impl(Tuple(XRX_MOV(v0), XRX_MOV(vs)...)));
     }
 } // namespace xrx::detail
+
+// Header: operators/operator_create.h.
+
+// #pragma once
+// #include "concepts_observable.h"
+// #include "operator_tags.h"
+// #include "cpo_make_operator.h"
+// #include "utils_observers.h"
+// #include "utils_observable.h"
+// #include "observable_interface.h"
+// #include "utils_ref_tracking_observer.h"
+#include <utility>
+#include <type_traits>
+
+namespace xrx::observable
+{
+    template<typename X> struct Show_;
+
+    namespace detail
+    {
+        template<typename Unsubscriber_>
+        struct SubscribeDispatch
+        {
+            static_assert(::xrx::detail::ConceptUnsubscriber<Unsubscriber_>);
+            using Unsubscriber = Unsubscriber_;
+
+            template<typename F, typename Observer>
+            static auto invoke_(F&& on_subscribe, Observer&& observer)
+            {
+                return XRX_FWD(on_subscribe)(XRX_FWD(observer));
+            }
+        };
+
+        template<>
+        struct SubscribeDispatch<void>
+        {
+            using Unsubscriber = ::xrx::detail::NoopUnsubscriber;
+
+            template<typename F, typename Observer>
+            static Unsubscriber invoke_(F&& on_subscribe, Observer&& observer)
+            {
+                using Observer_ = std::remove_reference_t<Observer>;
+                using RefObserver = ::xrx::detail::RefTrackingObserver_<Observer_>;
+                ::xrx::detail::RefObserverState state;
+                (void)XRX_FWD(on_subscribe)(RefObserver(&observer, &state));
+                assert(state.is_finalized());
+                return Unsubscriber();
+            }
+        };
+
+        template<typename Return_>
+        constexpr auto detect_if_async_return()
+        {
+            if constexpr (std::is_same_v<Return_, void>)
+            {
+                // Assume consumer does not remember reference to observer and simply
+                // returns nothing. Should be documented that stream must be complete at
+                // return point.
+                return std::false_type();
+            }
+            else if constexpr (::xrx::detail::ConceptUnsubscriber<Return_>)
+            {
+                // Assume completed if returned unsubscriber with no effect.
+                using has_effect = typename Return_::has_effect;
+                return has_effect();
+            }
+            else
+            {
+                static_assert(::xrx::detail::AlwaysFalse<Return_>()
+                    , "Custom observable in .create() returns unknown type. "
+                      "Either void or Unsubscriber should be returned.");
+            }
+        };
+
+        template<typename Value, typename Error, typename F>
+        struct CustomObservable_
+        {
+            F _on_subscribe;
+
+            using value_type = Value;
+            using error_type = Error;
+
+            using ObserverArchetype = ::xrx::detail::ObserverArchetype<Value, Error>;
+            using Return_ = decltype(XRX_MOV(_on_subscribe)(ObserverArchetype()));
+            using is_async = decltype(detect_if_async_return<Return_>());
+            // is_async can be false for non-void Return_ where Unsubscribed is no-op.
+            // In this case we should assume that stream is completed after
+            // .subscribe() end. Using CustomUnsubscriber<void> will validate those assumptions.
+            using ReturnIfAsync = std::conditional_t<is_async::value
+                , Return_
+                , void>;
+            using SubscribeDispatch_ = SubscribeDispatch<ReturnIfAsync>;
+            using Unsubscriber = typename SubscribeDispatch_::Unsubscriber;
+
+            auto fork() && { return CustomObservable_(XRX_MOV(_on_subscribe)); }
+            auto fork() &  { return CustomObservable_(_on_subscribe); }
+
+            template<typename Observer>
+                requires ConceptValueObserverOf<Observer, value_type>
+            Unsubscriber subscribe(Observer observer) &&
+            {
+                return SubscribeDispatch_::invoke_(XRX_MOV(_on_subscribe), XRX_MOV(observer));
+            }
+        };
+    } // namespace detail
+} // namespace xrx::observable
+
+namespace xrx::detail::operator_tag
+{
+    template<typename Value, typename Error, typename F
+        , typename ObserverArchetype = ::xrx::detail::ObserverArchetype<Value, Error>>
+    auto tag_invoke(::xrx::tag_t<::xrx::detail::make_operator>
+        , ::xrx::detail::operator_tag::Create<Value, Error>
+        , XRX_RVALUE(F&&) on_subscribe)
+            requires requires(ObserverArchetype observer)
+        {
+            on_subscribe(XRX_MOV(observer));
+        }
+    {
+        static_assert(not std::is_lvalue_reference_v<F>);
+        static_assert(not std::is_same_v<Value, void>);
+        static_assert(not std::is_reference_v<Value>);
+        using F_ = std::remove_reference_t<F>;
+        using Impl = ::xrx::observable::detail::CustomObservable_<Value, Error, F_>;
+        return Observable_<Impl>(Impl(XRX_MOV(on_subscribe)));
+    }
+} // namespace xrx::detail::operator_tag
+
+// Header: operators/operator_filter.h.
+
+// #pragma once
+// #include "concepts_observer.h"
+// #include "operator_tags.h"
+// #include "cpo_make_operator.h"
+// #include "utils_observers.h"
+// #include "utils_observable.h"
+// #include "utils_fast_FWD.h"
+// #include "utils_defines.h"
+// #include "utils_wrappers.h"
+// #include "observable_interface.h"
+#include <utility>
+#include <concepts>
+
+namespace xrx::detail
+{
+    template<typename SourceObservable, typename Filter>
+    struct FilterObservable
+    {
+        static_assert(not std::is_reference_v<SourceObservable>);
+        static_assert(not std::is_reference_v<Filter>);
+
+        using value_type   = typename SourceObservable::value_type;
+        using error_type   = typename SourceObservable::error_type;
+        using is_async     = IsAsyncObservable<SourceObservable>;
+        using Unsubscriber = typename SourceObservable::Unsubscriber;
+
+        SourceObservable _source;
+        Filter _filter;
+
+        template<typename T>
+        using MaybeRef_ = MaybeRef<T, is_async::value>;
+
+        template<typename Observer>
+        struct FilterObserver
+        {
+            MaybeRef_<Observer> _observer;
+            MaybeRef_<Filter> _filter;
+
+            XRX_FORCEINLINE() OnNextAction on_next(XRX_RVALUE(value_type&&) v)
+            {
+                if (_filter.get()(v))
+                {
+                    return ::xrx::detail::on_next_with_action(_observer.get(), XRX_MOV(v));
+                }
+                return OnNextAction();
+            }
+
+            XRX_FORCEINLINE() auto on_completed()
+            {
+                return on_completed_optional(XRX_MOV(_observer.get()));
+            }
+
+            template<typename... VoidOrError>
+            XRX_FORCEINLINE() auto on_error(XRX_RVALUE(VoidOrError&&)... e)
+            {
+                if constexpr ((sizeof...(e)) == 0)
+                {
+                    return on_error_optional(XRX_MOV(_observer.get()));
+                }
+                else
+                {
+                    return on_error_optional(XRX_MOV(_observer.get()), XRX_MOV(e...));
+                }
+            }
+        };
+
+        FilterObservable fork() && { return FilterObservable(XRX_MOV(_source), XRX_MOV(_filter)); }
+        FilterObservable fork() &  { return FilterObservable(_source.fork(), _filter); }
+
+        template<typename Observer>
+            requires ConceptValueObserverOf<Observer, value_type>
+        decltype(auto) subscribe(XRX_RVALUE(Observer&&) observer) &&
+        {
+            static_assert(not std::is_lvalue_reference_v<Observer>);
+            using Observer_ = std::remove_reference_t<Observer>;
+            using FilterObserver = FilterObserver<Observer_>;
+            return XRX_MOV(_source).subscribe(FilterObserver(
+                XRX_MOV_IF_ASYNC(observer), XRX_MOV_IF_ASYNC(_filter)));
+        }
+    };
+
+    template<typename SourceObservable, typename F>
+    auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Filter
+        , XRX_RVALUE(SourceObservable&&) source, XRX_RVALUE(F&&) filter)
+            requires ConceptObservable<SourceObservable>
+                && std::predicate<F, typename SourceObservable::value_type>
+    {
+        static_assert(not std::is_lvalue_reference_v<SourceObservable>);
+        static_assert(not std::is_lvalue_reference_v<F>);
+        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
+        using F_ = std::remove_reference_t<F>;
+        using Impl = FilterObservable<SourceObservable_, F_>;
+        return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(filter)));
+    }
+} // namespace xrx::detail
+
+namespace xrx
+{
+    namespace detail
+    {
+        template<typename F>
+        struct RememberFilter
+        {
+            F _f;
+
+            template<typename SourceObservable>
+            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
+                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Filter
+                    , SourceObservable, F>
+            {
+                static_assert(not std::is_lvalue_reference_v<SourceObservable>);
+                return make_operator(operator_tag::Filter()
+                    , XRX_MOV(source), XRX_MOV(_f));
+            }
+        };
+    } // namespace detail
+
+    template<typename F>
+    auto filter(XRX_RVALUE(F&&) filter)
+    {
+        static_assert(not std::is_lvalue_reference_v<F>);
+        using F_ = std::remove_reference_t<F>;
+        return detail::RememberFilter<F_>(XRX_MOV(filter));
+    }
+} // namespace xrx
 
 // Header: operators/operator_window.h.
 
@@ -3614,261 +4146,6 @@ namespace xrx
         return detail::RememberWindow(count);
     }
 } // namespace xrx
-
-// Header: operators/operator_filter.h.
-
-// #pragma once
-// #include "concepts_observer.h"
-// #include "operator_tags.h"
-// #include "cpo_make_operator.h"
-// #include "utils_observers.h"
-// #include "utils_observable.h"
-// #include "utils_fast_FWD.h"
-// #include "utils_defines.h"
-// #include "utils_wrappers.h"
-// #include "observable_interface.h"
-#include <utility>
-#include <concepts>
-
-namespace xrx::detail
-{
-    template<typename SourceObservable, typename Filter>
-    struct FilterObservable
-    {
-        static_assert(not std::is_reference_v<SourceObservable>);
-        static_assert(not std::is_reference_v<Filter>);
-
-        using value_type   = typename SourceObservable::value_type;
-        using error_type   = typename SourceObservable::error_type;
-        using is_async     = IsAsyncObservable<SourceObservable>;
-        using Unsubscriber = typename SourceObservable::Unsubscriber;
-
-        SourceObservable _source;
-        Filter _filter;
-
-        template<typename T>
-        using MaybeRef_ = MaybeRef<T, is_async::value>;
-
-        template<typename Observer>
-        struct FilterObserver
-        {
-            MaybeRef_<Observer> _observer;
-            MaybeRef_<Filter> _filter;
-
-            XRX_FORCEINLINE() OnNextAction on_next(XRX_RVALUE(value_type&&) v)
-            {
-                if (_filter.get()(v))
-                {
-                    return ::xrx::detail::on_next_with_action(_observer.get(), XRX_MOV(v));
-                }
-                return OnNextAction();
-            }
-
-            XRX_FORCEINLINE() auto on_completed()
-            {
-                return on_completed_optional(XRX_MOV(_observer.get()));
-            }
-
-            template<typename... VoidOrError>
-            XRX_FORCEINLINE() auto on_error(XRX_RVALUE(VoidOrError&&)... e)
-            {
-                if constexpr ((sizeof...(e)) == 0)
-                {
-                    return on_error_optional(XRX_MOV(_observer.get()));
-                }
-                else
-                {
-                    return on_error_optional(XRX_MOV(_observer.get()), XRX_MOV(e...));
-                }
-            }
-        };
-
-        FilterObservable fork() && { return FilterObservable(XRX_MOV(_source), XRX_MOV(_filter)); }
-        FilterObservable fork() &  { return FilterObservable(_source.fork(), _filter); }
-
-        template<typename Observer>
-            requires ConceptValueObserverOf<Observer, value_type>
-        decltype(auto) subscribe(XRX_RVALUE(Observer&&) observer) &&
-        {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
-            using Observer_ = std::remove_reference_t<Observer>;
-            using FilterObserver = FilterObserver<Observer_>;
-            return XRX_MOV(_source).subscribe(FilterObserver(
-                XRX_MOV_IF_ASYNC(observer), XRX_MOV_IF_ASYNC(_filter)));
-        }
-    };
-
-    template<typename SourceObservable, typename F>
-    auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Filter
-        , XRX_RVALUE(SourceObservable&&) source, XRX_RVALUE(F&&) filter)
-            requires ConceptObservable<SourceObservable>
-                && std::predicate<F, typename SourceObservable::value_type>
-    {
-        static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-        static_assert(not std::is_lvalue_reference_v<F>);
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using F_ = std::remove_reference_t<F>;
-        using Impl = FilterObservable<SourceObservable_, F_>;
-        return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(filter)));
-    }
-} // namespace xrx::detail
-
-namespace xrx
-{
-    namespace detail
-    {
-        template<typename F>
-        struct RememberFilter
-        {
-            F _f;
-
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Filter
-                    , SourceObservable, F>
-            {
-                static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-                return make_operator(operator_tag::Filter()
-                    , XRX_MOV(source), XRX_MOV(_f));
-            }
-        };
-    } // namespace detail
-
-    template<typename F>
-    auto filter(XRX_RVALUE(F&&) filter)
-    {
-        static_assert(not std::is_lvalue_reference_v<F>);
-        using F_ = std::remove_reference_t<F>;
-        return detail::RememberFilter<F_>(XRX_MOV(filter));
-    }
-} // namespace xrx
-
-// Header: operators/operator_create.h.
-
-// #pragma once
-// #include "concepts_observable.h"
-// #include "operator_tags.h"
-// #include "cpo_make_operator.h"
-// #include "utils_observers.h"
-// #include "utils_observable.h"
-// #include "observable_interface.h"
-// #include "utils_ref_tracking_observer.h"
-#include <utility>
-#include <type_traits>
-
-namespace xrx::observable
-{
-    template<typename X> struct Show_;
-
-    namespace detail
-    {
-        template<typename Unsubscriber_>
-        struct SubscribeDispatch
-        {
-            static_assert(::xrx::detail::ConceptUnsubscriber<Unsubscriber_>);
-            using Unsubscriber = Unsubscriber_;
-
-            template<typename F, typename Observer>
-            static auto invoke_(F&& on_subscribe, Observer&& observer)
-            {
-                return XRX_FWD(on_subscribe)(XRX_FWD(observer));
-            }
-        };
-
-        template<>
-        struct SubscribeDispatch<void>
-        {
-            using Unsubscriber = ::xrx::detail::NoopUnsubscriber;
-
-            template<typename F, typename Observer>
-            static Unsubscriber invoke_(F&& on_subscribe, Observer&& observer)
-            {
-                using Observer_ = std::remove_reference_t<Observer>;
-                using RefObserver = ::xrx::detail::RefTrackingObserver_<Observer_>;
-                ::xrx::detail::RefObserverState state;
-                (void)XRX_FWD(on_subscribe)(RefObserver(&observer, &state));
-                assert(state.is_finalized());
-                return Unsubscriber();
-            }
-        };
-
-        template<typename Return_>
-        constexpr auto detect_if_async_return()
-        {
-            if constexpr (std::is_same_v<Return_, void>)
-            {
-                // Assume consumer does not remember reference to observer and simply
-                // returns nothing. Should be documented that stream must be complete at
-                // return point.
-                return std::false_type();
-            }
-            else if constexpr (::xrx::detail::ConceptUnsubscriber<Return_>)
-            {
-                // Assume completed if returned unsubscriber with no effect.
-                using has_effect = typename Return_::has_effect;
-                return has_effect();
-            }
-            else
-            {
-                static_assert(::xrx::detail::AlwaysFalse<Return_>()
-                    , "Custom observable in .create() returns unknown type. "
-                      "Either void or Unsubscriber should be returned.");
-            }
-        };
-
-        template<typename Value, typename Error, typename F>
-        struct CustomObservable_
-        {
-            F _on_subscribe;
-
-            using value_type = Value;
-            using error_type = Error;
-
-            using ObserverArchetype = ::xrx::detail::ObserverArchetype<Value, Error>;
-            using Return_ = decltype(XRX_MOV(_on_subscribe)(ObserverArchetype()));
-            using is_async = decltype(detect_if_async_return<Return_>());
-            // is_async can be false for non-void Return_ where Unsubscribed is no-op.
-            // In this case we should assume that stream is completed after
-            // .subscribe() end. Using CustomUnsubscriber<void> will validate those assumptions.
-            using ReturnIfAsync = std::conditional_t<is_async::value
-                , Return_
-                , void>;
-            using SubscribeDispatch_ = SubscribeDispatch<ReturnIfAsync>;
-            using Unsubscriber = typename SubscribeDispatch_::Unsubscriber;
-
-            auto fork() && { return CustomObservable_(XRX_MOV(_on_subscribe)); }
-            auto fork() &  { return CustomObservable_(_on_subscribe); }
-
-            template<typename Observer>
-                requires ConceptValueObserverOf<Observer, value_type>
-            Unsubscriber subscribe(Observer observer) &&
-            {
-                return SubscribeDispatch_::invoke_(XRX_MOV(_on_subscribe), XRX_MOV(observer));
-            }
-        };
-    } // namespace detail
-} // namespace xrx::observable
-
-namespace xrx::detail::operator_tag
-{
-    template<typename Value, typename Error, typename F
-        , typename ObserverArchetype = ::xrx::detail::ObserverArchetype<Value, Error>>
-    auto tag_invoke(::xrx::tag_t<::xrx::detail::make_operator>
-        , ::xrx::detail::operator_tag::Create<Value, Error>
-        , XRX_RVALUE(F&&) on_subscribe)
-            requires requires(ObserverArchetype observer)
-        {
-            on_subscribe(XRX_MOV(observer));
-        }
-    {
-        static_assert(not std::is_lvalue_reference_v<F>);
-        static_assert(not std::is_same_v<Value, void>);
-        static_assert(not std::is_reference_v<Value>);
-        using F_ = std::remove_reference_t<F>;
-        using Impl = ::xrx::observable::detail::CustomObservable_<Value, Error, F_>;
-        return Observable_<Impl>(Impl(XRX_MOV(on_subscribe)));
-    }
-} // namespace xrx::detail::operator_tag
 
 // Header: operators/operator_publish.h.
 
@@ -4266,7 +4543,7 @@ namespace xrx
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, Value>
-        Unsubscriber subscribe(Observer&& observer) const
+        Unsubscriber subscribe(Observer&& observer)
         {
             return as_observable().subscribe(std::forward<Observer>(observer));
         }

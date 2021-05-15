@@ -4,7 +4,6 @@ set(single_compile_SRCS
     "tests_compile_take.cpp"
     "tests_compile_subscribe_on.cpp"
     "tests_compile_publish.cpp"
-    "tests_compile_interval.cpp"
     "tests_compile_observe_on.cpp"
     )
 add_executable(tests_single_compile ${single_compile_SRCS})
