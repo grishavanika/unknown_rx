@@ -33,6 +33,7 @@ namespace xrx::detail
         decltype(auto) subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             static_assert(not std::is_lvalue_reference_v<Observer>);
+            // #XXX: we can require nothing if is_async == false, I guess.
             static_assert(std::is_move_constructible_v<Observer>);
             return XRX_MOV(_source).subscribe(XRX_MOV(observer));
         }
@@ -43,17 +44,19 @@ namespace xrx::detail
         Observable_   fork_move() &  { return XRX_MOV(*this); }
 
         template<typename Scheduler>
-        auto subscribe_on(Scheduler&& scheduler) &&
+        auto subscribe_on(XRX_RVALUE(Scheduler&&) scheduler) &&
         {
+            static_assert(not std::is_lvalue_reference_v<Scheduler>);
             return make_operator(detail::operator_tag::SubscribeOn()
-                , XRX_MOV(*this), std::forward<Scheduler>(scheduler));
+                , XRX_MOV(*this), XRX_MOV(scheduler));
         }
 
         template<typename Scheduler>
-        auto observe_on(Scheduler&& scheduler) &&
+        auto observe_on(XRX_RVALUE(Scheduler&&) scheduler) &&
         {
+            static_assert(not std::is_lvalue_reference_v<Scheduler>);
             return make_operator(detail::operator_tag::ObserveOn()
-                , XRX_MOV(*this), std::forward<Scheduler>(scheduler));
+                , XRX_MOV(*this), XRX_MOV(scheduler));
         }
 
         auto publish() &&
@@ -66,13 +69,13 @@ namespace xrx::detail
         auto filter(F&& f) &&
         {
             return make_operator(detail::operator_tag::Filter()
-                , XRX_MOV(*this), std::forward<F>(f));
+                , XRX_MOV(*this), XRX_FWD(f));
         }
         template<typename F>
         auto transform(F&& f) &&
         {
             return make_operator(detail::operator_tag::Transform()
-                , XRX_MOV(*this), std::forward<F>(f));
+                , XRX_MOV(*this), XRX_FWD(f));
         }
         auto take(std::size_t count) &&
         {

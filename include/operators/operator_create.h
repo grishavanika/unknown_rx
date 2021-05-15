@@ -78,7 +78,7 @@ namespace xrx::detail::operator_tag
     template<typename Value, typename Error, typename F
         , typename ObserverArchetype = ::xrx::detail::ObserverArchetype<Value, Error>>
     auto tag_invoke(::xrx::tag_t<::xrx::detail::make_operator>
-        , xrx::detail::operator_tag::Create<Value, Error>
+        , ::xrx::detail::operator_tag::Create<Value, Error>
         , F on_subscribe)
             requires requires(ObserverArchetype observer)
         {

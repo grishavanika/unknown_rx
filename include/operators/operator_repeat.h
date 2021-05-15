@@ -123,15 +123,28 @@ namespace xrx::detail
             assert(state._completed && "Sync. Observable is not completed after .subscribe() end.");
             if (state._values)
             {
-                for (std::size_t i = 1; i < _max_repeats; ++i)
+                // Emit all values (N - 1) times by copying from what we remembered.
+                // Last emit iteration will move all the values.
+                for (std::size_t i = 1; i < _max_repeats - 1; ++i)
                 {
                     for (const value_type& v : *state._values)
                     {
-                        const auto action = on_next_with_action(observer, v);
+                        const auto action = on_next_with_action(observer
+                            , value_type(v)); // copy.
                         if (action._stop)
                         {
                             return NoopUnsubscriber();
                         }
+                    }
+                }
+
+                // Move values, we don't need them anymore.
+                for (value_type& v : *state._values)
+                {
+                    const auto action = on_next_with_action(observer, XRX_MOV(v));
+                    if (action._stop)
+                    {
+                        return NoopUnsubscriber();
                     }
                 }
             }

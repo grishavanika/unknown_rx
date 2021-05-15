@@ -7,18 +7,21 @@
 namespace xrx::observable
 {
     template<typename Duration, typename Scheduler>
-    auto interval(Duration period, Scheduler scheduler)
+    auto interval(Duration period, XRX_RVALUE(Scheduler&&) scheduler)
     {
+        static_assert(not std::is_lvalue_reference_v<Scheduler>);
         return ::xrx::detail::make_operator(xrx::detail::operator_tag::Interval()
-            , std::move(period), std::move(scheduler));
+            , XRX_MOV(period), XRX_MOV(scheduler));
     }
 
     template<typename Value, typename Error = void, typename F>
-    auto create(F on_subscribe)
+    auto create(XRX_RVALUE(F&&) on_subscribe)
     {
+        static_assert(not std::is_same_v<Value, void>);
+        static_assert(not std::is_lvalue_reference_v<F>);
         using Tag_ = xrx::detail::operator_tag::Create<Value, Error>;
         return ::xrx::detail::make_operator(Tag_()
-            , std::move(on_subscribe));
+            , XRX_MOV(on_subscribe));
     }
 
     template<typename Integer>
@@ -48,8 +51,11 @@ namespace xrx::observable
     }
 
     template<typename Observable1, typename Observable2, typename... ObservablesRest>
-    auto concat(Observable1&& observable1, Observable2&& observable2, ObservablesRest&&... observables)
+    auto concat(XRX_RVALUE(Observable1&&) observable1, XRX_RVALUE(Observable2&&) observable2, XRX_RVALUE(ObservablesRest&&)... observables)
     {
+        static_assert(not std::is_lvalue_reference_v<Observable1>);
+        static_assert(not std::is_lvalue_reference_v<Observable2>);
+        static_assert(((not std::is_lvalue_reference_v<ObservablesRest>) && ...));
         return ::xrx::detail::make_operator(xrx::detail::operator_tag::Concat()
             , XRX_MOV(observable1), XRX_MOV(observable2), XRX_MOV(observables)...);
     }

@@ -1115,18 +1115,21 @@ namespace xrx
 namespace xrx::observable
 {
     template<typename Duration, typename Scheduler>
-    auto interval(Duration period, Scheduler scheduler)
+    auto interval(Duration period, XRX_RVALUE(Scheduler&&) scheduler)
     {
+        static_assert(not std::is_lvalue_reference_v<Scheduler>);
         return ::xrx::detail::make_operator(xrx::detail::operator_tag::Interval()
-            , std::move(period), std::move(scheduler));
+            , XRX_MOV(period), XRX_MOV(scheduler));
     }
 
     template<typename Value, typename Error = void, typename F>
-    auto create(F on_subscribe)
+    auto create(XRX_RVALUE(F&&) on_subscribe)
     {
+        static_assert(not std::is_same_v<Value, void>);
+        static_assert(not std::is_lvalue_reference_v<F>);
         using Tag_ = xrx::detail::operator_tag::Create<Value, Error>;
         return ::xrx::detail::make_operator(Tag_()
-            , std::move(on_subscribe));
+            , XRX_MOV(on_subscribe));
     }
 
     template<typename Integer>
@@ -1156,8 +1159,11 @@ namespace xrx::observable
     }
 
     template<typename Observable1, typename Observable2, typename... ObservablesRest>
-    auto concat(Observable1&& observable1, Observable2&& observable2, ObservablesRest&&... observables)
+    auto concat(XRX_RVALUE(Observable1&&) observable1, XRX_RVALUE(Observable2&&) observable2, XRX_RVALUE(ObservablesRest&&)... observables)
     {
+        static_assert(not std::is_lvalue_reference_v<Observable1>);
+        static_assert(not std::is_lvalue_reference_v<Observable2>);
+        static_assert(((not std::is_lvalue_reference_v<ObservablesRest>) && ...));
         return ::xrx::detail::make_operator(xrx::detail::operator_tag::Concat()
             , XRX_MOV(observable1), XRX_MOV(observable2), XRX_MOV(observables)...);
     }
@@ -1729,6 +1735,7 @@ namespace xrx::detail
         decltype(auto) subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             static_assert(not std::is_lvalue_reference_v<Observer>);
+            // #XXX: we can require nothing if is_async == false, I guess.
             static_assert(std::is_move_constructible_v<Observer>);
             return XRX_MOV(_source).subscribe(XRX_MOV(observer));
         }
@@ -1739,17 +1746,19 @@ namespace xrx::detail
         Observable_   fork_move() &  { return XRX_MOV(*this); }
 
         template<typename Scheduler>
-        auto subscribe_on(Scheduler&& scheduler) &&
+        auto subscribe_on(XRX_RVALUE(Scheduler&&) scheduler) &&
         {
+            static_assert(not std::is_lvalue_reference_v<Scheduler>);
             return make_operator(detail::operator_tag::SubscribeOn()
-                , XRX_MOV(*this), std::forward<Scheduler>(scheduler));
+                , XRX_MOV(*this), XRX_MOV(scheduler));
         }
 
         template<typename Scheduler>
-        auto observe_on(Scheduler&& scheduler) &&
+        auto observe_on(XRX_RVALUE(Scheduler&&) scheduler) &&
         {
+            static_assert(not std::is_lvalue_reference_v<Scheduler>);
             return make_operator(detail::operator_tag::ObserveOn()
-                , XRX_MOV(*this), std::forward<Scheduler>(scheduler));
+                , XRX_MOV(*this), XRX_MOV(scheduler));
         }
 
         auto publish() &&
@@ -1762,13 +1771,13 @@ namespace xrx::detail
         auto filter(F&& f) &&
         {
             return make_operator(detail::operator_tag::Filter()
-                , XRX_MOV(*this), std::forward<F>(f));
+                , XRX_MOV(*this), XRX_FWD(f));
         }
         template<typename F>
         auto transform(F&& f) &&
         {
             return make_operator(detail::operator_tag::Transform()
-                , XRX_MOV(*this), std::forward<F>(f));
+                , XRX_MOV(*this), XRX_FWD(f));
         }
         auto take(std::size_t count) &&
         {
@@ -2616,7 +2625,7 @@ namespace xrx::detail
     struct ConcatObservable;
 
     template<typename Tuple>
-    struct ConcatObservable<Tuple, false/*synchronous*/>
+    struct ConcatObservable<Tuple, false/*Sync*/>
     {
         static_assert(std::tuple_size_v<Tuple> >= 2);
         using ObservablePrototype = typename std::tuple_element<0, Tuple>::type;
@@ -2626,39 +2635,63 @@ namespace xrx::detail
         using is_async = std::false_type;
         using Unsubscriber = NoopUnsubscriber;
 
-        // #XXX: check that all Unsubscribers from all Observables do not have effect.
-
         Tuple _tuple;
 
-        ConcatObservable fork() && { return ConcatObservable(std::move(_tuple)); }
+        ConcatObservable fork() && { return ConcatObservable(XRX_MOV(_tuple)); }
         ConcatObservable fork() &  { return ConcatObservable(_tuple); }
+
+        struct State
+        {
+            bool _unsubscribed = false;
+            bool _end_with_error = false;
+            bool _completed = false;
+        };
+
+        template<typename Observer>
+        struct OneObserver
+        {
+            Observer* _destination = nullptr;
+            State* _state = nullptr;
+
+            XRX_FORCEINLINE() auto on_next(XRX_RVALUE(value_type&&) value)
+            {
+                assert(not _state->_unsubscribed);
+                const auto action = on_next_with_action(*_destination, XRX_MOV(value));
+                _state->_unsubscribed = action._stop;
+                return action;
+            }
+            XRX_FORCEINLINE() void on_completed()
+            {
+                _state->_completed = true; // on_completed(): nothing to do, move to next observable.
+            }
+            template<typename... VoidOrError>
+            XRX_FORCEINLINE() auto on_error(XRX_RVALUE(VoidOrError&&)... e)
+            {
+                _state->end_with_error = true;
+                if constexpr ((sizeof...(e)) == 0)
+                {
+                    return on_error_optional(XRX_MOV(*_destination));
+                }
+                else
+                {
+                    return on_error_optional(XRX_MOV(*_destination), XRX_MOV(e...));
+                }
+            }
+        };
 
         template<typename Observer>
         NoopUnsubscriber subscribe(Observer&& observer) &&
         {
+            using Observer_ = std::remove_reference_t<Observer>;
             auto invoke_ = [](auto&& observer, auto&& observable)
             {
-                bool unsubscribed = false;
-                bool end_with_error = false;
-                bool completed = false;
-                auto unsubscribe = XRX_FWD(observable).subscribe(observer::make(
-                      [&](value_type value)
-                {
-                    assert(not unsubscribed);
-                    const auto action = on_next_with_action(observer, XRX_FWD(value));
-                    unsubscribed = action._stop;
-                    return action;
-                }
-                    , [&]() { completed = true; } // on_completed(): nothing to do, move to next observable.
-                    , [&](error_type error)
-                {
-                    end_with_error = true;
-                    return on_error_optional(observer, XRX_FWD(error));
-                }));
+                State state;
+                auto unsubscribe = XRX_FWD(observable).subscribe(
+                    OneObserver<Observer_>(&observer, &state));
                 static_assert(not decltype(unsubscribe)::has_effect::value
                     , "Sync Observable should not have unsubscribe.");
-                const bool stop = (unsubscribed || end_with_error);
-                assert((completed || stop)
+                const bool stop = (state._unsubscribed || state._end_with_error);
+                assert((state._completed || stop)
                     && "Sync Observable should be ended after .subscribe() return.");
                 return (not stop);
             };
@@ -2711,7 +2744,9 @@ namespace xrx::detail
 
     template<typename Observable1, typename Observable2, typename... ObservablesRest>
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Concat
-        , Observable1 observable1, Observable2 observable2, ObservablesRest... observables)
+        , XRX_RVALUE(Observable1&&) observable1
+        , XRX_RVALUE(Observable2&&) observable2
+        , XRX_RVALUE(ObservablesRest&&)... observables)
             requires  (AreConcatCompatible<Observable1, Observable2>::value
                    && (AreConcatCompatible<Observable1, ObservablesRest>::value && ...))
     {
@@ -2720,9 +2755,15 @@ namespace xrx::detail
             or ( IsAsyncObservable<Observable2>())
             or ((IsAsyncObservable<ObservablesRest>()) or ...);
 
-        using Tuple = std::tuple<Observable1, Observable2, ObservablesRest...>;
+        using Tuple = std::tuple<
+            std::remove_reference_t<Observable1>
+            , std::remove_reference_t<Observable2>
+            , std::remove_reference_t<ObservablesRest>...>;
         using Impl = ConcatObservable<Tuple, IsAnyAsync>;
-        return Observable_<Impl>(Impl(Tuple(XRX_MOV(observable1), XRX_MOV(observable2), XRX_MOV(observables)...)));
+        return Observable_<Impl>(Impl(Tuple(
+            XRX_MOV(observable1)
+            , XRX_MOV(observable2)
+            , XRX_MOV(observables)...)));
     }
 } // namespace xrx::detail
 
@@ -2898,7 +2939,7 @@ namespace xrx::detail::operator_tag
     template<typename Value, typename Error, typename F
         , typename ObserverArchetype = ::xrx::detail::ObserverArchetype<Value, Error>>
     auto tag_invoke(::xrx::tag_t<::xrx::detail::make_operator>
-        , xrx::detail::operator_tag::Create<Value, Error>
+        , ::xrx::detail::operator_tag::Create<Value, Error>
         , F on_subscribe)
             requires requires(ObserverArchetype observer)
         {
@@ -3037,15 +3078,28 @@ namespace xrx::detail
             assert(state._completed && "Sync. Observable is not completed after .subscribe() end.");
             if (state._values)
             {
-                for (std::size_t i = 1; i < _max_repeats; ++i)
+                // Emit all values (N - 1) times by copying from what we remembered.
+                // Last emit iteration will move all the values.
+                for (std::size_t i = 1; i < _max_repeats - 1; ++i)
                 {
                     for (const value_type& v : *state._values)
                     {
-                        const auto action = on_next_with_action(observer, v);
+                        const auto action = on_next_with_action(observer
+                            , value_type(v)); // copy.
                         if (action._stop)
                         {
                             return NoopUnsubscriber();
                         }
+                    }
+                }
+
+                // Move values, we don't need them anymore.
+                for (value_type& v : *state._values)
+                {
+                    const auto action = on_next_with_action(observer, XRX_MOV(v));
+                    if (action._stop)
+                    {
+                        return NoopUnsubscriber();
                     }
                 }
             }

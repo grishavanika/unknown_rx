@@ -83,7 +83,7 @@ int main()
             auto body = from(std::uint8_t('A' + i))
                 | repeat(dist(gen));
             auto delim = from(std::uint8_t('\r'));
-            return concat(body, delim);
+            return concat(std::move(body), std::move(delim));
             })
         | window(17);
 
