@@ -1,6 +1,7 @@
 #pragma once
 #include "tag_invoke_with_extension.h"
 #include "meta_utils.h"
+#include "utils_defines.h"
 
 #include <utility>
 #include <type_traits>
@@ -24,28 +25,28 @@ namespace xrx::detail
     {
         // on_next() with single argument T
         template<typename S, typename T>
-        constexpr decltype(auto) resolve1_(S&& s, T&& v, priority_tag<2>) const
+        XRX_FORCEINLINE() constexpr decltype(auto) resolve1_(S&& s, T&& v, priority_tag<2>) const
             noexcept(noexcept(tag_invoke(*this, std::forward<S>(s), std::forward<T>(v))))
                requires tag_invocable<on_next_fn, S, T>
         {
             return tag_invoke(*this, std::forward<S>(s), std::forward<T>(v));
         }
         template<typename S, typename T>
-        constexpr auto resolve1_(S&& s, T&& v, priority_tag<1>) const
+        XRX_FORCEINLINE() constexpr auto resolve1_(S&& s, T&& v, priority_tag<1>) const
             noexcept(noexcept(std::forward<S>(s).on_next(std::forward<T>(v))))
                 -> decltype(std::forward<S>(s).on_next(std::forward<T>(v)))
         {
             return std::forward<S>(s).on_next(std::forward<T>(v));
         }
         template<typename S, typename T>
-        constexpr decltype(auto) resolve1_(S&& s, T&& v, priority_tag<0>) const
+        XRX_FORCEINLINE() constexpr decltype(auto) resolve1_(S&& s, T&& v, priority_tag<0>) const
             noexcept(noexcept(std::invoke(std::forward<S>(s), std::forward<T>(v))))
                 requires std::invocable<S, T>
         {
             return std::invoke(std::forward<S>(s), std::forward<T>(v));
         }
         template<typename S, typename T>
-        [[nodiscard]] constexpr auto operator()(S&& s, T&& v) const
+        XRX_FORCEINLINE() /*[[nodiscard]]*/ constexpr auto operator()(S&& s, T&& v) const
             noexcept(noexcept(resolve1_(std::forward<S>(s), std::forward<T>(v), priority_tag<2>())))
                 -> decltype(resolve1_(std::forward<S>(s), std::forward<T>(v), priority_tag<2>()))
         {
@@ -53,28 +54,28 @@ namespace xrx::detail
         }
         // on_next() with no argument.
         template<typename S>
-        constexpr decltype(auto) resolve0_(S&& s, priority_tag<2>) const
+        XRX_FORCEINLINE() constexpr decltype(auto) resolve0_(S&& s, priority_tag<2>) const
             noexcept(noexcept(tag_invoke(*this, std::forward<S>(s))))
                 requires tag_invocable<on_next_fn, S>
         {
             return tag_invoke(*this, std::forward<S>(s));
         }
         template<typename S>
-        constexpr auto resolve0_(S&& s, priority_tag<1>) const
+        XRX_FORCEINLINE() constexpr auto resolve0_(S&& s, priority_tag<1>) const
             noexcept(noexcept(std::forward<S>(s).on_next()))
                 -> decltype(std::forward<S>(s).on_next())
         {
             return std::forward<S>(s).on_next();
         }
         template<typename S>
-        constexpr decltype(auto) resolve0_(S&& s, priority_tag<0>) const
+        XRX_FORCEINLINE() constexpr decltype(auto) resolve0_(S&& s, priority_tag<0>) const
             noexcept(noexcept(std::invoke(std::forward<S>(s))))
                 requires std::invocable<S>
         {
             return std::invoke(std::forward<S>(s));
         }
         template<typename S>
-        [[nodiscard]] constexpr auto operator()(S&& s) const
+        XRX_FORCEINLINE() /*[[nodiscard]]*/ constexpr auto operator()(S&& s) const
             noexcept(noexcept(resolve0_(std::forward<S>(s), priority_tag<2>())))
                 -> decltype(resolve0_(std::forward<S>(s), priority_tag<2>()))
         {
@@ -87,21 +88,21 @@ namespace xrx::detail
     struct on_completed_fn
     {
         template<typename S>
-        constexpr decltype(auto) resolve0_(S&& s, priority_tag<1>) const
+        XRX_FORCEINLINE() constexpr decltype(auto) resolve0_(S&& s, priority_tag<1>) const
             noexcept(noexcept(tag_invoke(*this, std::forward<S>(s))))
                 requires tag_invocable<on_completed_fn, S>
         {
             return tag_invoke(*this, std::forward<S>(s));
         }
         template<typename S>
-        constexpr auto resolve0_(S&& s, priority_tag<0>) const
+        XRX_FORCEINLINE() constexpr auto resolve0_(S&& s, priority_tag<0>) const
             noexcept(noexcept(std::forward<S>(s).on_completed()))
                 -> decltype(std::forward<S>(s).on_completed())
         {
             return std::forward<S>(s).on_completed();
         }
         template<typename S>
-        constexpr auto operator()(S&& s) const
+        XRX_FORCEINLINE() constexpr auto operator()(S&& s) const
             noexcept(noexcept(resolve0_(std::forward<S>(s), priority_tag<1>())))
                 -> decltype(resolve0_(std::forward<S>(s), priority_tag<1>()))
         {
@@ -115,21 +116,21 @@ namespace xrx::detail
     {
         // on_error() with single argument.
         template<typename S, typename E>
-        constexpr decltype(auto) resolve1_(S&& s, E&& e, priority_tag<1>) const
+        XRX_FORCEINLINE() constexpr decltype(auto) resolve1_(S&& s, E&& e, priority_tag<1>) const
             noexcept(noexcept(tag_invoke(*this, std::forward<S>(s), std::forward<E>(e))))
                 requires tag_invocable<on_error_fn, S, E>
         {
             return tag_invoke(*this, std::forward<S>(s), std::forward<E>(e));
         }
         template<typename S, typename E>
-        constexpr auto resolve1_(S&& s, E&& e, priority_tag<0>) const
+        XRX_FORCEINLINE() constexpr auto resolve1_(S&& s, E&& e, priority_tag<0>) const
             noexcept(noexcept(std::forward<S>(s).on_error(std::forward<E>(e))))
                 -> decltype(std::forward<S>(s).on_error(std::forward<E>(e)))
         {
             return std::forward<S>(s).on_error(std::forward<E>(e));
         }
         template<typename S, typename E>
-        constexpr auto operator()(S&& s, E&& e) const
+        XRX_FORCEINLINE() constexpr auto operator()(S&& s, E&& e) const
             noexcept(noexcept(resolve1_(std::forward<S>(s), std::forward<E>(e), priority_tag<1>())))
                 -> decltype(resolve1_(std::forward<S>(s), std::forward<E>(e), priority_tag<1>()))
         {
@@ -137,21 +138,21 @@ namespace xrx::detail
         }
         // on_error() with no argument.
         template<typename S>
-        constexpr decltype(auto) resolve0_(S&& s, priority_tag<1>) const
+        XRX_FORCEINLINE() constexpr decltype(auto) resolve0_(S&& s, priority_tag<1>) const
             noexcept(noexcept(tag_invoke(*this, std::forward<S>(s))))
                 requires tag_invocable<on_error_fn, S>
         {
             return tag_invoke(*this, std::forward<S>(s));
         }
         template<typename S>
-        constexpr auto resolve0_(S&& s, priority_tag<0>) const
+        XRX_FORCEINLINE() constexpr auto resolve0_(S&& s, priority_tag<0>) const
             noexcept(noexcept(std::forward<S>(s).on_error()))
                 -> decltype(std::forward<S>(s).on_error())
         {
             return std::forward<S>(s).on_error();
         }
         template<typename S>
-        constexpr auto operator()(S&& s) const
+        XRX_FORCEINLINE() constexpr auto operator()(S&& s) const
             noexcept(noexcept(resolve0_(std::forward<S>(s), priority_tag<1>())))
                 -> decltype(resolve0_(std::forward<S>(s), priority_tag<1>()))
         {

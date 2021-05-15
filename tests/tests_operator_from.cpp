@@ -4,17 +4,9 @@
 #include "debug_copy_move.h"
 
 #include <gtest/gtest.h>
-#include <gmock/gmock.h>
+#include "observer_mock.h"
 using namespace testing;
-
 using namespace xrx;
-
-struct ObserverMock
-{
-    MOCK_METHOD(void, on_next, (int));
-    MOCK_METHOD(void, on_completed, ());
-    MOCK_METHOD(void, on_error, ());
-};
 
 TEST(From, SingleElement_InvokedOnce)
 {
@@ -27,7 +19,7 @@ TEST(From, SingleElement_InvokedOnce)
     EXPECT_CALL(observer, on_error()).Times(0);
 
     observable::from(42)
-        .subscribe(observer);
+        .subscribe(observer.ref());
 }
 
 TEST(From, AllRangePassedToOnNext)
@@ -46,7 +38,7 @@ TEST(From, AllRangePassedToOnNext)
     EXPECT_CALL(observer, on_error()).Times(0);
 
     observable::from(42, 43, 44, 45, 46, 47)
-        .subscribe(observer);
+        .subscribe(observer.ref());
 }
 
 TEST(From, CopyMoveTrack_SingleElement_Ideal)

@@ -3,17 +3,10 @@
 #include "utils_observers.h"
 
 #include <gtest/gtest.h>
-#include <gmock/gmock.h>
+#include "observer_mock.h"
 using namespace testing;
 
 using namespace xrx;
-
-struct ObserverMock
-{
-    MOCK_METHOD(void, on_next, (int));
-    MOCK_METHOD(void, on_completed, ());
-    MOCK_METHOD(void, on_error, ());
-};
 
 TEST(Range, WhenBoundariesAreEqual_InvokedOnce)
 {
@@ -27,7 +20,7 @@ TEST(Range, WhenBoundariesAreEqual_InvokedOnce)
         EXPECT_CALL(observer, on_error()).Times(0);
 
         observable::range(0, 0)
-            .subscribe(observer);
+            .subscribe(observer.ref());
     }
     {
         ObserverMock observer;
@@ -39,7 +32,7 @@ TEST(Range, WhenBoundariesAreEqual_InvokedOnce)
         EXPECT_CALL(observer, on_error()).Times(0);
 
         observable::range(0, 0, 1)
-            .subscribe(observer);
+            .subscribe(observer.ref());
     }
     {
         ObserverMock observer;
@@ -51,7 +44,7 @@ TEST(Range, WhenBoundariesAreEqual_InvokedOnce)
         EXPECT_CALL(observer, on_error()).Times(0);
 
         observable::range(0, 0, -1)
-            .subscribe(observer);
+            .subscribe(observer.ref());
     }
 }
 
@@ -66,7 +59,7 @@ TEST(Range, BoundariesAreInclusive_DirectionRight)
     EXPECT_CALL(observer, on_error()).Times(0);
 
     observable::range(0, 10)
-        .subscribe(observer);
+        .subscribe(observer.ref());
 }
 
 TEST(Range, BoundariesAreInclusive_DirectionLeft)
@@ -80,5 +73,5 @@ TEST(Range, BoundariesAreInclusive_DirectionLeft)
     EXPECT_CALL(observer, on_error()).Times(0);
 
     observable::range(10, 0, -1)
-        .subscribe(observer);
+        .subscribe(observer.ref());
 }

@@ -12,6 +12,7 @@ namespace xrx::detail
     template<typename SourceObservable>
     struct Observable_
     {
+        static_assert(not std::is_reference_v<SourceObservable>);
         static_assert(ConceptObservable<SourceObservable>
             , "SourceObservable should satisfy Observable concept.");
 
@@ -29,9 +30,11 @@ namespace xrx::detail
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        decltype(auto) subscribe(Observer&& observer) &&
+        decltype(auto) subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
-            return std::move(_source).subscribe(std::forward<Observer>(observer));
+            static_assert(not std::is_lvalue_reference_v<Observer>);
+            static_assert(std::is_move_constructible_v<Observer>);
+            return XRX_MOV(_source).subscribe(XRX_MOV(observer));
         }
 
         Observable_&& fork() &&      { return XRX_MOV(*this); }

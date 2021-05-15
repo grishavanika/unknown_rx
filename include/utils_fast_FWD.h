@@ -10,3 +10,7 @@
 #define XRX_FWD(...) ::std::forward<decltype(__VA_ARGS__)>(__VA_ARGS__)
 #define XRX_MOV(...) ::std::move(__VA_ARGS__)
 
+// Just an annotation that T&& should be rvalue reference
+// (because of constraints from other places).
+// XRX_MOV() can be used.
+#define XRX_RVALUE(...) __VA_ARGS__

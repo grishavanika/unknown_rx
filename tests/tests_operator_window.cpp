@@ -4,17 +4,10 @@
 #include "observable_interface.h"
 
 #include <gtest/gtest.h>
-#include <gmock/gmock.h>
+#include "observer_mock.h"
 using namespace testing;
 using namespace ::xrx;
 using namespace ::xrx::detail;
-
-struct ObserverMock
-{
-    MOCK_METHOD(void, on_next, (int));
-    MOCK_METHOD(void, on_completed, ());
-    MOCK_METHOD(void, on_error, ());
-};
 
 TEST(Window, SimpleSequence_SplitInTwo)
 {
@@ -34,7 +27,7 @@ TEST(Window, SimpleSequence_SplitInTwo)
         | window(2)
         | subscribe([&](auto part)
     {
-        part.fork().subscribe(observer::ref(observer));
+        part.fork().subscribe(observer.ref());
     });
 }
 
@@ -57,6 +50,6 @@ TEST(Window, SimpleSequence_EmitedAll_WhenFinalPartIsNotComplete)
         | window(3)
         | subscribe([&](auto part)
     {
-        part.fork().subscribe(observer::ref(observer));
+        part.fork().subscribe(observer.ref());
     });
 }

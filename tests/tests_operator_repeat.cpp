@@ -7,18 +7,10 @@
 #include "meta_utils.h"
 
 #include <gtest/gtest.h>
-#include <gmock/gmock.h>
+#include "observer_mock.h"
 using namespace testing;
-
 using namespace xrx;
 using namespace xrx::detail;
-
-struct ObserverMock
-{
-    MOCK_METHOD(void, on_next, (int));
-    MOCK_METHOD(void, on_completed, ());
-    MOCK_METHOD(void, on_error, ());
-};
 
 struct Observable1
 {
@@ -55,7 +47,7 @@ TEST(Repeat, Pipe)
     EXPECT_CALL(observer, on_completed()).Times(1);
     EXPECT_CALL(observer, on_error()).Times(0);
 
-    o.fork() | repeat(0) | subscribe(observer::ref(observer));
+    o.fork() | repeat(0) | subscribe(observer.ref());
 }
 
 TEST(Repeat, SingleElement_RepeatedZeroTimes)
@@ -68,7 +60,7 @@ TEST(Repeat, SingleElement_RepeatedZeroTimes)
     EXPECT_CALL(observer, on_completed()).Times(1);
     EXPECT_CALL(observer, on_error()).Times(0);
 
-    o.fork().repeat(0).subscribe(observer);
+    o.fork().repeat(0).subscribe(observer.ref());
 }
 
 TEST(Repeat, SingleElement_RepeatedOnce)
@@ -82,7 +74,7 @@ TEST(Repeat, SingleElement_RepeatedOnce)
     EXPECT_CALL(observer, on_completed()).Times(1).InSequence(s);
     EXPECT_CALL(observer, on_error()).Times(0);
 
-    o.fork().repeat(1).subscribe(observer);
+    o.fork().repeat(1).subscribe(observer.ref());
 }
 
 TEST(Repeat, SingleElement_RepeatedN)
@@ -96,7 +88,7 @@ TEST(Repeat, SingleElement_RepeatedN)
     EXPECT_CALL(observer, on_completed()).Times(1).InSequence(s);
     EXPECT_CALL(observer, on_error()).Times(0);
 
-    o.fork().repeat(10).subscribe(observer);
+    o.fork().repeat(10).subscribe(observer.ref());
 }
 
 TEST(Repeat, SingleElement_Terminated)
@@ -127,7 +119,7 @@ TEST(Repeat, TwoElemens_RepeatedZeroTime)
     EXPECT_CALL(observer, on_completed()).Times(1);
     EXPECT_CALL(observer, on_error()).Times(0);
 
-    observable::range(0, 1).repeat(0).subscribe(observer);
+    observable::range(0, 1).repeat(0).subscribe(observer.ref());
 }
 
 TEST(Repeat, TwoElemens_RepeatedOnce)
@@ -141,7 +133,7 @@ TEST(Repeat, TwoElemens_RepeatedOnce)
     EXPECT_CALL(observer, on_completed()).InSequence(s);
     EXPECT_CALL(observer, on_error()).Times(0);
 
-    observable::range(3, 4).repeat(1).subscribe(observer);
+    observable::range(3, 4).repeat(1).subscribe(observer.ref());
 }
 
 TEST(Repeat, TwoElemens_RepeatedTwice)
@@ -157,7 +149,7 @@ TEST(Repeat, TwoElemens_RepeatedTwice)
     EXPECT_CALL(observer, on_completed()).InSequence(s);
     EXPECT_CALL(observer, on_error()).Times(0);
 
-    observable::range(3, 4).repeat(2).subscribe(observer);
+    observable::range(3, 4).repeat(2).subscribe(observer.ref());
 }
 
 TEST(Repeat, Terminated_OnFirstPass)
@@ -174,5 +166,5 @@ TEST(Repeat, Terminated_OnFirstPass)
     observable::range(3, 4)
         .repeat(2)
         .take(1)
-        .subscribe(observer::ref(observer));
+        .subscribe(observer.ref());
 }

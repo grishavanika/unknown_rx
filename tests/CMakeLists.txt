@@ -3,6 +3,7 @@ add_subdirectory(single_compile)
 set(xrx_tests_HDR
     "debug_copy_move.h"
     "noop_archetypes.h"
+    "observer_mock.h"
     )
 set(xrx_tests_SRC
     "unknown.cpp"
@@ -14,6 +15,7 @@ set(xrx_tests_SRC
     "tests_operator_flat_map.cpp"
     "tests_operator_window.cpp"
     "tests_utils_containers.cpp"
+    "tests_operator_filter.cpp"
     )
 add_executable(tests_xrx ${xrx_tests_SRC} ${xrx_tests_HDR})
 set_all_warnings(tests_xrx PRIVATE)

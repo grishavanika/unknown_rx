@@ -4,18 +4,10 @@
 #include "operators/operator_take.h"
 
 #include <gtest/gtest.h>
-#include <gmock/gmock.h>
+#include "observer_mock.h"
 using namespace testing;
-
 using namespace xrx;
 using namespace xrx::detail;
-
-struct ObserverMock
-{
-    MOCK_METHOD(void, on_next, (int));
-    MOCK_METHOD(void, on_completed, ());
-    MOCK_METHOD(void, on_error, ());
-};
 
 TEST(Concat, ConcatTwoStreams_WithSingleNumber)
 {
@@ -33,7 +25,7 @@ TEST(Concat, ConcatTwoStreams_WithSingleNumber)
     auto merged = observable::concat(o1.fork(), o2.fork()); // [1, 2]
     static_assert(ConceptObservable<decltype(merged)>);
 
-    merged.fork().subscribe(observer);
+    merged.fork().subscribe(observer.ref());
 }
 
 TEST(Concat, ConcatTwoStreams_ProcessStreamsInOrder)
@@ -52,7 +44,7 @@ TEST(Concat, ConcatTwoStreams_ProcessStreamsInOrder)
     auto o1 = observable::range(1).take(2);  // [1, 2]
     auto o2 = observable::range(10).take(2); // [10, 11]
     auto merged = observable::concat(o1.fork(), o2.fork()); // [1, 2, 10, 11]
-    merged.fork().subscribe(observer);
+    merged.fork().subscribe(observer.ref());
 }
 
 TEST(Concat, CanStopWhileProcessingFirstStream)

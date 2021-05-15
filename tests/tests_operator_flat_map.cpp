@@ -4,18 +4,10 @@
 #include "operators/operator_from.h"
 
 #include <gtest/gtest.h>
-#include <gmock/gmock.h>
+#include "observer_mock.h"
 using namespace testing;
-
 using namespace xrx;
 using namespace xrx::detail;
-
-struct ObserverMock
-{
-    MOCK_METHOD(void, on_next, (int));
-    MOCK_METHOD(void, on_completed, ());
-    MOCK_METHOD(void, on_error, ());
-};
 
 TEST(FlatMap, CollapseSingleRangeWithSingleElement)
 {
@@ -29,7 +21,7 @@ TEST(FlatMap, CollapseSingleRangeWithSingleElement)
 
     observable::from(1)
         | flat_map([](int v) { return observable::from(int(v)); })
-        | subscribe(observer::ref(observer));
+        | subscribe(observer.ref());
 }
 
 TEST(FlatMap, TerminateAfterSingleElementEmit)
@@ -45,5 +37,5 @@ TEST(FlatMap, TerminateAfterSingleElementEmit)
     observable::from(1, 2, 3)
         | flat_map([](int) { return observable::from(5, 2, 3); })
         | take(1)
-        | subscribe(observer::ref(observer));
+        | subscribe(observer.ref());
 }
