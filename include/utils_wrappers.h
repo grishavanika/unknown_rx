@@ -4,6 +4,10 @@
 
 namespace xrx::detail
 {
+    // Hint that V is reference and may be moved from
+    // to MaybeRef<>.
+#define XRX_MOV_IF_ASYNC(V) V
+
     template<typename T, bool MustBeValue>
     struct MaybeRef;
 
@@ -15,6 +19,11 @@ namespace xrx::detail
 
         [[no_unique_address]] T _value;
         XRX_FORCEINLINE() T& get() { return _value; }
+
+        XRX_FORCEINLINE() MaybeRef(T& v)
+            : _value(XRX_MOV(v))
+        {
+        }
     };
 
     template<typename T>
@@ -25,20 +34,11 @@ namespace xrx::detail
 
         T* _value = nullptr;
         XRX_FORCEINLINE() T& get() { return *_value; }
+
+        XRX_FORCEINLINE() MaybeRef(T& v)
+            : _value(&v)
+        {
+        }
     };
-
-    template<typename T, bool MustBeValue>
-    XRX_FORCEINLINE() auto maybe_ref(T& v, std::bool_constant<MustBeValue>)
-    {
-        if constexpr (MustBeValue)
-        {
-            return MaybeRef<T, true>(XRX_MOV(v));
-        }
-        else
-        {
-            return MaybeRef<T, false>(&v);
-        }
-    }
 } // namespace xrx::detail
-
 

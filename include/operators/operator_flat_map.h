@@ -4,9 +4,9 @@
 #include "utils_observers.h"
 #include "utils_observable.h"
 #include "observable_interface.h"
-#include "debug/assert_flag.h"
 #include <type_traits>
 #include <utility>
+#include <cassert>
 
 namespace xrx::detail
 {

@@ -5,9 +5,9 @@
 #include "utils_observers.h"
 #include "utils_observable.h"
 #include "utils_fast_FWD.h"
+#include "utils_defines.h"
 #include "utils_wrappers.h"
 #include "observable_interface.h"
-#include "debug/assert_flag.h"
 #include <utility>
 #include <concepts>
 
@@ -27,27 +27,40 @@ namespace xrx::detail
         SourceObservable _source;
         Filter _filter;
 
-        template<typename Observer>
-        struct FilterObserver : Observer
-        {
-            explicit FilterObserver(XRX_RVALUE(Observer&&) o, XRX_RVALUE(Filter&&) f)
-                : Observer(XRX_MOV(o))
-                , _filter(XRX_MOV(f))
-                , _disconnected() {}
-            Filter _filter;
-            [[no_unique_address]] debug::AssertFlag<> _disconnected;
-            Observer& observer() { return *this; }
+        template<typename T>
+        using MaybeRef_ = MaybeRef<T, is_async::value>;
 
-            OnNextAction on_next(XRX_RVALUE(value_type&&) v)
+        template<typename Observer>
+        struct FilterObserver
+        {
+            MaybeRef_<Observer> _observer;
+            MaybeRef_<Filter> _filter;
+
+            XRX_FORCEINLINE() OnNextAction on_next(XRX_RVALUE(value_type&&) v)
             {
-                _disconnected.check_not_set();
-                if (_filter(v))
+                if (_filter.get()(v))
                 {
-                    return ::xrx::detail::ensure_action_state(
-                        ::xrx::detail::on_next_with_action(observer(), XRX_MOV(v))
-                        , _disconnected);
+                    return ::xrx::detail::on_next_with_action(_observer.get(), XRX_MOV(v));
                 }
                 return OnNextAction();
+            }
+
+            XRX_FORCEINLINE() auto on_completed()
+            {
+                return on_completed_optional(XRX_MOV(_observer.get()));
+            }
+
+            template<typename... VoidOrError>
+            XRX_FORCEINLINE() auto on_error(XRX_RVALUE(VoidOrError&&)... e)
+            {
+                if constexpr ((sizeof...(e)) == 0)
+                {
+                    return on_error_optional(XRX_MOV(_observer.get()));
+                }
+                else
+                {
+                    return on_error_optional(XRX_MOV(_observer.get()), XRX_MOV(e...));
+                }
             }
         };
 
@@ -61,10 +74,8 @@ namespace xrx::detail
             static_assert(not std::is_lvalue_reference_v<Observer>);
             using Observer_ = std::remove_reference_t<Observer>;
             using FilterObserver = FilterObserver<Observer_>;
-            // #XXX: when is_async = false, there is no need to move construct
-            // Observer & Filter. Reference to local variables can be used.
-            // See MaybeRef<> and check what can be done.
-            return XRX_MOV(_source).subscribe(FilterObserver(XRX_MOV(observer), XRX_MOV(_filter)));
+            return XRX_MOV(_source).subscribe(FilterObserver(
+                XRX_MOV_IF_ASYNC(observer), XRX_MOV_IF_ASYNC(_filter)));
         }
     };
 

@@ -7,6 +7,7 @@
 #include "utils_observers.h"
 #include <type_traits>
 #include <utility>
+#include <cassert>
 
 namespace xrx::detail
 {
@@ -30,7 +31,6 @@ namespace xrx::detail
                 , _taken(0) {}
             std::size_t _max;
             std::size_t _taken;
-            [[no_unique_address]] debug::AssertFlag<> _disconnected;
             Observer& observer() { return *this; }
 
             template<typename Value>
@@ -38,14 +38,10 @@ namespace xrx::detail
             {
                 assert(_max > 0);
                 assert(_taken < _max);
-                _disconnected.check_not_set();
-                const auto action = ::xrx::detail::ensure_action_state(
-                    ::xrx::detail::on_next_with_action(observer(), XRX_FWD(v))
-                    , _disconnected);
+                const auto action = ::xrx::detail::on_next_with_action(observer(), XRX_FWD(v));
                 if (++_taken >= _max)
                 {
                     ::xrx::detail::on_completed_optional(XRX_MOV(observer()));
-                    _disconnected.raise();
                     return OnNextAction{._unsubscribe = true};
                 }
                 return action;

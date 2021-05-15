@@ -69,7 +69,7 @@ namespace xrx
                 if (auto shared = _shared_weak.lock(); shared)
                 {
                     AnyObserver<value_type, error_type> erased(std::forward<Observer>(observer));
-                    auto _ = std::lock_guard(shared->_assert_mutex);
+                    auto guard = std::lock_guard(shared->_assert_mutex);
                     Unsubscriber unsubscriber;
                     unsubscriber._shared_weak = _shared_weak;
                     unsubscriber._handle = shared->_subscriptions.push_back(std::move(erased));
@@ -107,7 +107,7 @@ namespace xrx
                 {
                     bool do_unsubscribe = false;
                     {
-                        auto _ = debug::ScopeUnlock(lock);
+                        auto guard = debug::ScopeUnlock(lock);
                         const auto action = observer.on_next(v);
                         do_unsubscribe = action._unsubscribe;
                     }
@@ -129,7 +129,7 @@ namespace xrx
                 auto lock = std::unique_lock(_shared->_assert_mutex);
                 _shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
                 {
-                    auto _ = debug::ScopeUnlock(lock);
+                    auto guard = debug::ScopeUnlock(lock);
                     if constexpr (sizeof...(errors) == 0)
                     {
                         observer.on_error();
@@ -152,7 +152,7 @@ namespace xrx
                 auto lock = std::unique_lock(_shared->_assert_mutex);
                 _shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
                 {
-                        auto _ = debug::ScopeUnlock(lock);
+                        auto guard = debug::ScopeUnlock(lock);
                         observer.on_completed();
                 });
                 _shared.reset(); // done.

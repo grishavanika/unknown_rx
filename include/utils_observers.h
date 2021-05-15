@@ -1,6 +1,5 @@
 #pragma once
 #include "concepts_observer.h"
-#include "debug/assert_flag.h"
 #include "utils_fast_FWD.h"
 #include "utils_defines.h"
 
@@ -13,16 +12,6 @@ namespace xrx::detail
     {
         bool _unsubscribe = false;
     };
-
-    template<typename Action>
-    XRX_FORCEINLINE() OnNextAction ensure_action_state(OnNextAction action, debug::AssertFlag<Action>& unsubscribed)
-    {
-        if (action._unsubscribe)
-        {
-            unsubscribed.raise();
-        }
-        return action;
-    }
 
     // #pragma GCC diagnostic ignored "-Wattributes"
     // #XXX: check why GCC can't possibly inline one-liner.
