@@ -154,7 +154,7 @@ namespace xrx::detail
                 {
                     auto _ = debug::ScopeUnlock(lock);
                     const auto action = observer.on_next(v);
-                    if (action._unsubscribe)
+                    if (action._stop)
                     {
                         unsubscribe(handle, do_refcount);
                     }

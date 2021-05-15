@@ -42,7 +42,7 @@ namespace xrx::detail
                 if (++_taken >= _max)
                 {
                     ::xrx::detail::on_completed_optional(XRX_MOV(observer()));
-                    return OnNextAction{._unsubscribe = true};
+                    return OnNextAction{._stop = true};
                 }
                 return action;
             }

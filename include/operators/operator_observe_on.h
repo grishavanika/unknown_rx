@@ -52,7 +52,7 @@ namespace xrx::observable
                     }
                     const auto action = ::xrx::detail::on_next_with_action(
                         self->_target, std::forward<Value>(v_));
-                    if (action._unsubscribe)
+                    if (action._stop)
                     {
                         self->_unsubscribed = true;
                     }

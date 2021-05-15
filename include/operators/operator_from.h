@@ -29,7 +29,7 @@ namespace xrx::detail
             auto invoke_ = [](auto& observer, auto&& value)
             {
                 const auto action = on_next_with_action(observer, XRX_FWD(value));
-                return (not action._unsubscribe);
+                return (not action._stop);
             };
 
             const bool all_processed = std::apply([&](auto&&... vs)

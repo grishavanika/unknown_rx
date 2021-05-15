@@ -61,7 +61,7 @@ namespace xrx::detail
             while (compare_(current, _last, _step, _edless))
             {
                 const OnNextAction action = on_next_with_action(observer, Integer(current));
-                if (action._unsubscribe)
+                if (action._stop)
                 {
                     return Unsubscriber();
                 }

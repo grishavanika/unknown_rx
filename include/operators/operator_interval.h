@@ -57,7 +57,7 @@ namespace xrx::observable
                 {
                     const value_type now = state._ticks++;
                     const auto action = ::xrx::detail::on_next_with_action(state._observer, now);
-                    return action._unsubscribe;
+                    return action._stop;
                 }
                     , State(std::move(observer), value_type(0)));
 

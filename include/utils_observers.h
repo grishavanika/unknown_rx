@@ -10,7 +10,7 @@ namespace xrx::detail
 {
     struct [[nodiscard]] OnNextAction
     {
-        bool _unsubscribe = false;
+        bool _stop = false;
     };
 
     // #pragma GCC diagnostic ignored "-Wattributes"
@@ -35,7 +35,7 @@ namespace xrx::detail
         else if constexpr (std::is_same_v<Return_, ::xrx::unsubscribe>)
         {
             const ::xrx::unsubscribe state = ::xrx::detail::on_next(std::forward<Observer>(observer), std::forward<Value>(value));
-            return OnNextAction{ ._unsubscribe = state._do_unsubscribe };
+            return OnNextAction{ ._stop = state._do_unsubscribe };
         }
         else
         {
@@ -64,7 +64,7 @@ namespace xrx::detail
         else if constexpr (std::is_same_v<Return_, ::xrx::unsubscribe>)
         {
             const ::xrx::unsubscribe state = ::xrx::detail::on_next(std::forward<Observer>(observer));
-            return OnNextAction{ ._unsubscribe = state._do_unsubscribe };
+            return OnNextAction{ ._stop = state._do_unsubscribe };
         }
         else
         {

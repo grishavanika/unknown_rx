@@ -109,7 +109,7 @@ namespace xrx
                     {
                         auto guard = debug::ScopeUnlock(lock);
                         const auto action = observer.on_next(v);
-                        do_unsubscribe = action._unsubscribe;
+                        do_unsubscribe = action._stop;
                     }
                     if (do_unsubscribe)
                     {

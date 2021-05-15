@@ -36,7 +36,7 @@ namespace xrx::detail
             const bool all = _values.for_each([&](value_type v) XRX_FORCEINLINE_LAMBDA()
             {
                 const auto action = on_next_with_action(observer, XRX_MOV(v));
-                if (action._unsubscribe)
+                if (action._stop)
                 {
                     return false;
                 }
@@ -99,7 +99,7 @@ namespace xrx::detail
                 {
                     const auto action = on_next_with_action(observer
                         , value_type(ObservableValue_(XRX_MOV(values))));
-                    if (action._unsubscribe)
+                    if (action._stop)
                     {
                         unsubscribed = true;
                         return ::xrx::unsubscribe(true);
@@ -117,7 +117,7 @@ namespace xrx::detail
                 {
                     const auto action = on_next_with_action(observer
                         , value_type(ObservableValue_(XRX_MOV(values))));
-                    finalize_ = (not action._unsubscribe);
+                    finalize_ = (not action._stop);
                 }
                 if (finalize_)
                 {

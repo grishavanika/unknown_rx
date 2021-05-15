@@ -27,7 +27,7 @@ struct Observable1
     Unsubscriber subscribe(Observer&& observer) &&
     {
         const auto action = on_next_with_action(observer, _value);
-        if (not action._unsubscribe)
+        if (not action._stop)
         {
             on_completed_optional(XRX_FWD(observer));
         }

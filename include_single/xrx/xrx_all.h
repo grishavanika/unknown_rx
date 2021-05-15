@@ -1177,7 +1177,7 @@ namespace xrx::detail
 {
     struct [[nodiscard]] OnNextAction
     {
-        bool _unsubscribe = false;
+        bool _stop = false;
     };
 
     // #pragma GCC diagnostic ignored "-Wattributes"
@@ -1202,7 +1202,7 @@ namespace xrx::detail
         else if constexpr (std::is_same_v<Return_, ::xrx::unsubscribe>)
         {
             const ::xrx::unsubscribe state = ::xrx::detail::on_next(std::forward<Observer>(observer), std::forward<Value>(value));
-            return OnNextAction{ ._unsubscribe = state._do_unsubscribe };
+            return OnNextAction{ ._stop = state._do_unsubscribe };
         }
         else
         {
@@ -1231,7 +1231,7 @@ namespace xrx::detail
         else if constexpr (std::is_same_v<Return_, ::xrx::unsubscribe>)
         {
             const ::xrx::unsubscribe state = ::xrx::detail::on_next(std::forward<Observer>(observer));
-            return OnNextAction{ ._unsubscribe = state._do_unsubscribe };
+            return OnNextAction{ ._stop = state._do_unsubscribe };
         }
         else
         {
@@ -2170,7 +2170,7 @@ namespace xrx::observable
                     }
                     const auto action = ::xrx::detail::on_next_with_action(
                         self->_target, std::forward<Value>(v_));
-                    if (action._unsubscribe)
+                    if (action._stop)
                     {
                         self->_unsubscribed = true;
                     }
@@ -2350,7 +2350,7 @@ namespace xrx::observable
                 {
                     const value_type now = state._ticks++;
                     const auto action = ::xrx::detail::on_next_with_action(state._observer, now);
-                    return action._unsubscribe;
+                    return action._stop;
                 }
                     , State(std::move(observer), value_type(0)));
 
@@ -2422,7 +2422,7 @@ namespace xrx::detail
                 if (++_taken >= _max)
                 {
                     ::xrx::detail::on_completed_optional(XRX_MOV(observer()));
-                    return OnNextAction{._unsubscribe = true};
+                    return OnNextAction{._stop = true};
                 }
                 return action;
             }
@@ -2646,7 +2646,7 @@ namespace xrx::detail
                 {
                     assert(not unsubscribed);
                     const auto action = on_next_with_action(observer, XRX_FWD(value));
-                    unsubscribed = action._unsubscribe;
+                    unsubscribed = action._stop;
                     return action;
                 }
                     , [&]() { completed = true; } // on_completed(): nothing to do, move to next observable.
@@ -2791,7 +2791,7 @@ namespace xrx::detail
             while (compare_(current, _last, _step, _edless))
             {
                 const OnNextAction action = on_next_with_action(observer, Integer(current));
-                if (action._unsubscribe)
+                if (action._stop)
                 {
                     return Unsubscriber();
                 }
@@ -2969,10 +2969,10 @@ namespace xrx::detail
                 if (_state->_unsubscribed)
                 {
                     assert(false && "Call to on_next() even when unsubscribe() was requested.");
-                    return OnNextAction{._unsubscribe = true};
+                    return OnNextAction{._stop = true};
                 }
                 const auto action = on_next_with_action(*_observer, XRX_FWD(v));
-                if (action._unsubscribe)
+                if (action._stop)
                 {
                     _state->_unsubscribed = true;
                     return action;
@@ -3042,7 +3042,7 @@ namespace xrx::detail
                     for (const value_type& v : *state._values)
                     {
                         const auto action = on_next_with_action(observer, v);
-                        if (action._unsubscribe)
+                        if (action._stop)
                         {
                             return NoopUnsubscriber();
                         }
@@ -3169,7 +3169,7 @@ namespace xrx::detail
                 {
                     assert(not unsubscribed);
                     const auto action = on_next_with_action(destination_, XRX_FWD(value));
-                    unsubscribed = action._unsubscribe;
+                    unsubscribed = action._stop;
                     return action;
                 }
                     , [&]()
@@ -3302,7 +3302,7 @@ namespace xrx::detail
             auto invoke_ = [](auto& observer, auto&& value)
             {
                 const auto action = on_next_with_action(observer, XRX_FWD(value));
-                return (not action._unsubscribe);
+                return (not action._stop);
             };
 
             const bool all_processed = std::apply([&](auto&&... vs)
@@ -3503,7 +3503,7 @@ namespace xrx::detail
             const bool all = _values.for_each([&](value_type v) XRX_FORCEINLINE_LAMBDA()
             {
                 const auto action = on_next_with_action(observer, XRX_MOV(v));
-                if (action._unsubscribe)
+                if (action._stop)
                 {
                     return false;
                 }
@@ -3566,7 +3566,7 @@ namespace xrx::detail
                 {
                     const auto action = on_next_with_action(observer
                         , value_type(ObservableValue_(XRX_MOV(values))));
-                    if (action._unsubscribe)
+                    if (action._stop)
                     {
                         unsubscribed = true;
                         return ::xrx::unsubscribe(true);
@@ -3584,7 +3584,7 @@ namespace xrx::detail
                 {
                     const auto action = on_next_with_action(observer
                         , value_type(ObservableValue_(XRX_MOV(values))));
-                    finalize_ = (not action._unsubscribe);
+                    finalize_ = (not action._stop);
                 }
                 if (finalize_)
                 {
@@ -3803,7 +3803,7 @@ namespace xrx::detail
                 {
                     auto _ = debug::ScopeUnlock(lock);
                     const auto action = observer.on_next(v);
-                    if (action._unsubscribe)
+                    if (action._stop)
                     {
                         unsubscribe(handle, do_refcount);
                     }
@@ -4067,7 +4067,7 @@ namespace xrx
                     {
                         auto guard = debug::ScopeUnlock(lock);
                         const auto action = observer.on_next(v);
-                        do_unsubscribe = action._unsubscribe;
+                        do_unsubscribe = action._stop;
                     }
                     if (do_unsubscribe)
                     {

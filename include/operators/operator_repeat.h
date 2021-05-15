@@ -55,10 +55,10 @@ namespace xrx::detail
                 if (_state->_unsubscribed)
                 {
                     assert(false && "Call to on_next() even when unsubscribe() was requested.");
-                    return OnNextAction{._unsubscribe = true};
+                    return OnNextAction{._stop = true};
                 }
                 const auto action = on_next_with_action(*_observer, XRX_FWD(v));
-                if (action._unsubscribe)
+                if (action._stop)
                 {
                     _state->_unsubscribed = true;
                     return action;
@@ -128,7 +128,7 @@ namespace xrx::detail
                     for (const value_type& v : *state._values)
                     {
                         const auto action = on_next_with_action(observer, v);
-                        if (action._unsubscribe)
+                        if (action._stop)
                         {
                             return NoopUnsubscriber();
                         }

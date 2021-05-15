@@ -47,7 +47,7 @@ namespace xrx::detail
                 {
                     assert(not unsubscribed);
                     const auto action = on_next_with_action(observer, XRX_FWD(value));
-                    unsubscribed = action._unsubscribe;
+                    unsubscribed = action._stop;
                     return action;
                 }
                     , [&]() { completed = true; } // on_completed(): nothing to do, move to next observable.
