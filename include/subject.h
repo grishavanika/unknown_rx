@@ -50,7 +50,7 @@ namespace xrx
         }
 
         explicit Subject_(std::shared_ptr<SharedImpl_> impl)
-            : _shared(std::move(impl))
+            : _shared(XRX_MOV(impl))
         {
         }
 
@@ -64,15 +64,16 @@ namespace xrx
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, Value>
-            Unsubscriber subscribe(Observer&& observer)
+            Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer)
             {
+                static_assert(not std::is_lvalue_reference_v<Observer>);
                 if (auto shared = _shared_weak.lock(); shared)
                 {
-                    AnyObserver<value_type, error_type> erased(std::forward<Observer>(observer));
+                    AnyObserver<value_type, error_type> erased(XRX_MOV(observer));
                     auto guard = std::lock_guard(shared->_assert_mutex);
                     Unsubscriber unsubscriber;
                     unsubscriber._shared_weak = _shared_weak;
-                    unsubscriber._handle = shared->_subscriptions.push_back(std::move(erased));
+                    unsubscriber._handle = shared->_subscriptions.push_back(XRX_MOV(erased));
                     return unsubscriber;
                 }
                 return Unsubscriber();
@@ -83,9 +84,10 @@ namespace xrx
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, Value>
-        Unsubscriber subscribe(Observer&& observer)
+        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer)
         {
-            return as_observable().subscribe(std::forward<Observer>(observer));
+            static_assert(not std::is_lvalue_reference_v<Observer>);
+            return as_observable().subscribe(XRX_MOV(observer));
         }
 
         ::xrx::detail::Observable_<SourceObservable> as_observable()
@@ -98,7 +100,7 @@ namespace xrx
             return Subject_(_shared);
         }
 
-        void on_next(Value v)
+        void on_next(XRX_RVALUE(value_type&&) v)
         {
             if (_shared)
             {
@@ -108,7 +110,7 @@ namespace xrx
                     bool do_unsubscribe = false;
                     {
                         auto guard = debug::ScopeUnlock(lock);
-                        const auto action = observer.on_next(v);
+                        const auto action = observer.on_next(value_type(v)); // copy.
                         do_unsubscribe = action._stop;
                     }
                     if (do_unsubscribe)
@@ -137,7 +139,7 @@ namespace xrx
                     else
                     {
                         static_assert(sizeof...(errors) == 1);
-                        observer.on_error(XRX_FWD(errors)...);
+                        observer.on_error(Es(errors)...); // copy.
                     }
                 });
                 _shared.reset(); // done.
@@ -152,8 +154,8 @@ namespace xrx
                 auto lock = std::unique_lock(_shared->_assert_mutex);
                 _shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
                 {
-                        auto guard = debug::ScopeUnlock(lock);
-                        observer.on_completed();
+                    auto guard = debug::ScopeUnlock(lock);
+                    observer.on_completed();
                 });
                 _shared.reset(); // done.
             }

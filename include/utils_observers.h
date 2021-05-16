@@ -20,22 +20,22 @@ namespace xrx::detail
     XRX_FORCEINLINE() OnNextAction on_next_with_action(Observer&& observer, Value&& value)
         requires ConceptWithOnNext<Observer, Value>
     {
-        using Return_ = decltype(::xrx::detail::on_next(std::forward<Observer>(observer), std::forward<Value>(value)));
+        using Return_ = decltype(::xrx::detail::on_next(XRX_FWD(observer), XRX_FWD(value)));
         static_assert(not std::is_reference_v<Return_>
             , "Return by value only allowed fron on_next() callback. To simplify implementation below.");
         if constexpr (std::is_same_v<Return_, void>)
         {
-            (void)::xrx::detail::on_next(std::forward<Observer>(observer), std::forward<Value>(value));
+            (void)::xrx::detail::on_next(XRX_FWD(observer), XRX_FWD(value));
             return OnNextAction();
         }
         else if constexpr (std::is_same_v<Return_, OnNextAction>)
         {
-            return ::xrx::detail::on_next(std::forward<Observer>(observer), std::forward<Value>(value));
+            return ::xrx::detail::on_next(XRX_FWD(observer), XRX_FWD(value));
         }
         else if constexpr (std::is_same_v<Return_, ::xrx::unsubscribe>)
         {
-            const ::xrx::unsubscribe state = ::xrx::detail::on_next(std::forward<Observer>(observer), std::forward<Value>(value));
-            return OnNextAction{ ._stop = state._do_unsubscribe };
+            const ::xrx::unsubscribe state = ::xrx::detail::on_next(XRX_FWD(observer), XRX_FWD(value));
+            return OnNextAction{._stop = state._do_unsubscribe};
         }
         else
         {
@@ -49,21 +49,21 @@ namespace xrx::detail
     XRX_FORCEINLINE() OnNextAction on_next_with_action(Observer&& observer)
         requires ConceptWithOnNext<Observer, void>
     {
-        using Return_ = decltype(::xrx::detail::on_next(std::forward<Observer>(observer)));
+        using Return_ = decltype(::xrx::detail::on_next(XRX_FWD(observer)));
         static_assert(not std::is_reference_v<Return_>
             , "Return by value only allowed fron on_next() callback. To simplify implementation below.");
         if constexpr (std::is_same_v<Return_, void>)
         {
-            (void)::xrx::detail::on_next(std::forward<Observer>(observer));
+            (void)::xrx::detail::on_next(XRX_FWD(observer));
             return OnNextAction();
         }
         else if constexpr (std::is_same_v<Return_, OnNextAction>)
         {
-            return ::xrx::detail::on_next(std::forward<Observer>(observer));
+            return ::xrx::detail::on_next(XRX_FWD(observer));
         }
         else if constexpr (std::is_same_v<Return_, ::xrx::unsubscribe>)
         {
-            const ::xrx::unsubscribe state = ::xrx::detail::on_next(std::forward<Observer>(observer));
+            const ::xrx::unsubscribe state = ::xrx::detail::on_next(XRX_FWD(observer));
             return OnNextAction{ ._stop = state._do_unsubscribe };
         }
         else
@@ -77,7 +77,7 @@ namespace xrx::detail
     XRX_FORCEINLINE() void on_error_optional(Observer&& observer, Error&& error)
         requires ConceptWithOnError<Observer, Error>
     {
-        return ::xrx::detail::on_error(std::forward<Observer>(observer), std::forward<Error>(error));
+        return ::xrx::detail::on_error(XRX_FWD(observer), XRX_FWD(error));
     }
     template<typename Observer, typename Error>
     XRX_FORCEINLINE() void on_error_optional(Observer&&, Error&&)
@@ -89,7 +89,7 @@ namespace xrx::detail
     XRX_FORCEINLINE() void on_error_optional(Observer&& observer)
         requires ConceptWithOnError<Observer, void>
     {
-        return ::xrx::detail::on_error(std::forward<Observer>(observer));
+        return ::xrx::detail::on_error(XRX_FWD(observer));
     }
     template<typename Observer>
     XRX_FORCEINLINE() void on_error_optional(Observer&&)
@@ -101,7 +101,7 @@ namespace xrx::detail
     XRX_FORCEINLINE() auto on_completed_optional(Observer&& o)
         requires ConceptWithOnCompleted<Observer>
     {
-        return ::xrx::detail::on_completed(std::forward<Observer>(o));
+        return ::xrx::detail::on_completed(XRX_FWD(o));
     }
     
     template<typename Observer>
@@ -150,7 +150,7 @@ namespace xrx::detail
         XRX_FORCEINLINE() constexpr decltype(auto) on_next(Value&& value)
             requires ConceptWithOnNext<OnNext, Value>
         {
-            return ::xrx::detail::on_next(_on_next, std::forward<Value>(value));
+            return ::xrx::detail::on_next(_on_next, XRX_FWD(value));
         }
 
         XRX_FORCEINLINE() constexpr decltype(auto) on_next()
@@ -160,22 +160,22 @@ namespace xrx::detail
         }
 
         XRX_FORCEINLINE() constexpr auto on_completed()
-            requires requires { std::move(_on_completed)(); }
+            requires requires { XRX_MOV(_on_completed)(); }
         {
-            return std::move(_on_completed)();
+            return XRX_MOV(_on_completed)();
         }
 
         template<typename Error>
         XRX_FORCEINLINE() constexpr auto on_error(Error&& error)
-            requires requires { std::move(_on_error)(std::forward<Error>(error)); }
+            requires requires { XRX_MOV(_on_error)(XRX_FWD(error)); }
         {
-            return std::move(_on_error)(std::forward<Error>(error));
+            return XRX_MOV(_on_error)(XRX_FWD(error));
         }
 
         XRX_FORCEINLINE() constexpr decltype(auto) on_error()
-            requires requires { std::move(_on_error)(); }
+            requires requires { XRX_MOV(_on_error)(); }
         {
-            return std::move(_on_error)();
+            return XRX_MOV(_on_error)();
         }
     };
 
@@ -213,7 +213,7 @@ namespace xrx::observer
     {
         using F_       = std::remove_cvref_t<OnNext>;
         using Observer = ::xrx::detail::LambdaObserver<F_, ::xrx::detail::OnCompleted_Noop, ::xrx::detail::OnError_Noop>;
-        return Observer(std::forward<OnNext>(on_next), {}, {});
+        return Observer(XRX_FWD(on_next), {}, {});
     }
 
     template<typename Value, typename OnNext>
@@ -224,7 +224,7 @@ namespace xrx::observer
     {
         using F_       = std::remove_cvref_t<OnNext>;
         using Observer = ::xrx::detail::LambdaObserver<F_, ::xrx::detail::OnCompleted_Noop, ::xrx::detail::OnError_Noop>;
-        return Observer(std::forward<OnNext>(on_next), {}, {});
+        return Observer(XRX_FWD(on_next), {}, {});
     }
 
     template<typename OnNext, typename OnCompleted, typename OnError = ::xrx::detail::OnError_Noop>
@@ -234,9 +234,9 @@ namespace xrx::observer
         using OnCompleted_ = std::remove_cvref_t<OnCompleted>;
         using OnError_     = std::remove_cvref_t<OnError>;
         using Observer     = ::xrx::detail::LambdaObserver<OnNext_, OnCompleted_, OnError_>;
-        return Observer(std::forward<OnNext>(on_next)
-            , std::forward<OnCompleted>(on_completed)
-            , std::forward<OnError>(on_error));
+        return Observer(XRX_FWD(on_next)
+            , XRX_FWD(on_completed)
+            , XRX_FWD(on_error));
     }
 
     template<typename Value, typename Error
@@ -251,9 +251,9 @@ namespace xrx::observer
         using OnCompleted_ = std::remove_cvref_t<OnCompleted>;
         using OnError_     = std::remove_cvref_t<OnError>;
         using Observer     = ::xrx::detail::LambdaObserver<OnNext_, OnCompleted_, OnError_>;
-        return Observer(std::forward<OnNext>(on_next)
-            , std::forward<OnCompleted>(on_completed)
-            , std::forward<OnError>(on_error));
+        return Observer(XRX_FWD(on_next)
+            , XRX_FWD(on_completed)
+            , XRX_FWD(on_error));
     }
 } // namespace xrx::observer
 

@@ -23,6 +23,8 @@ namespace xrx
     template<typename Value, typename Error = void>
     struct AnyObserver
     {
+        static_assert(not std::is_reference_v<Value>);
+        static_assert(not std::is_reference_v<Error>);
 #define X_ANY_OBSERVER_SUPPORTS_COPY() 0
 
         struct ObserverConcept
@@ -31,8 +33,8 @@ namespace xrx
 #if (X_ANY_OBSERVER_SUPPORTS_COPY())
             virtual std::unique_ptr<ObserverConcept> copy_() const = 0;
 #endif
-            virtual ::xrx::detail::OnNextAction on_next(Value v) = 0;
-            virtual void on_error(Error e) = 0;
+            virtual ::xrx::detail::OnNextAction on_next(XRX_RVALUE(Value&&) v) = 0;
+            virtual void on_error(XRX_RVALUE(Error&&) e) = 0;
             virtual void on_completed() = 0;
         };
 
@@ -51,24 +53,25 @@ namespace xrx
             }
 #endif
 
-            virtual ::xrx::detail::OnNextAction on_next(Value v) override
+            virtual ::xrx::detail::OnNextAction on_next(XRX_RVALUE(Value&&) v) override
             {
-                return ::xrx::detail::on_next_with_action(_observer, std::forward<Value>(v));
+                return ::xrx::detail::on_next_with_action(_observer, XRX_MOV(v));
             }
 
-            virtual void on_error(Error e) override
+            virtual void on_error(XRX_RVALUE(Error&&) e) override
             {
-                return ::xrx::detail::on_error_optional(std::move(_observer), std::forward<Error>(e));
+                return ::xrx::detail::on_error_optional(XRX_MOV(_observer), XRX_MOV(e));
             }
 
             virtual void on_completed()
             {
-                return ::xrx::detail::on_completed_optional(std::move(_observer));
+                return ::xrx::detail::on_completed_optional(XRX_MOV(_observer));
             }
 
-            explicit Observer(ConcreateObserver o)
-                : _observer(std::move(o))
+            explicit Observer(XRX_RVALUE(ConcreateObserver&&) o)
+                : _observer(XRX_MOV(o))
             {
+                static_assert(not std::is_lvalue_reference_v<ConcreateObserver>);
             }
 
             ConcreateObserver _observer;
@@ -85,9 +88,10 @@ namespace xrx
 
         template<typename ConcreateObserver>
             requires (!detail::IsAnyObserver<ConcreateObserver>::value)
-        /*explicit*/ AnyObserver(ConcreateObserver o)
-            : _observer(std::make_unique<Observer<ConcreateObserver>>(std::move(o)))
+        /*explicit*/ AnyObserver(XRX_RVALUE(ConcreateObserver&&) o)
+            : _observer(std::make_unique<Observer<ConcreateObserver>>(XRX_MOV(o)))
         {
+            static_assert(not std::is_lvalue_reference_v<ConcreateObserver>);
         }
 
 #if (X_ANY_OBSERVER_SUPPORTS_COPY())
@@ -106,14 +110,14 @@ namespace xrx
         }
 #endif
         AnyObserver(AnyObserver&& rhs) noexcept
-            : _observer(std::move(rhs._observer))
+            : _observer(XRX_MOV(rhs._observer))
         {
         }
         AnyObserver& operator=(AnyObserver&& rhs) noexcept
         {
             if (this != &rhs)
             {
-                _observer = std::move(rhs._observer);
+                _observer = XRX_MOV(rhs._observer);
             }
             return *this;
         }
@@ -125,16 +129,16 @@ namespace xrx
 
         std::unique_ptr<ObserverConcept> _observer;
 
-        ::xrx::detail::OnNextAction on_next(Value v)
+        ::xrx::detail::OnNextAction on_next(XRX_RVALUE(Value&&) v)
         {
             assert(_observer);
-            return _observer->on_next(std::forward<Value>(v));
+            return _observer->on_next(XRX_MOV(v));
         }
 
-        void on_error(Error e)
+        void on_error(XRX_RVALUE(Error&&) e)
         {
             assert(_observer);
-            return _observer->on_error(std::forward<Error>(e));
+            return _observer->on_error(XRX_MOV(e));
         }
 
         void on_completed()
@@ -153,7 +157,7 @@ namespace xrx
 #if (X_ANY_OBSERVER_SUPPORTS_COPY())
             virtual std::unique_ptr<ObserverConcept> copy_() const = 0;
 #endif
-            virtual ::xrx::detail::OnNextAction on_next(Value v) = 0;
+            virtual ::xrx::detail::OnNextAction on_next(XRX_RVALUE(Value&&) v) = 0;
             virtual void on_error() = 0;
             virtual void on_completed() = 0;
         };
@@ -173,23 +177,23 @@ namespace xrx
             }
 #endif
 
-            virtual ::xrx::detail::OnNextAction on_next(Value v) override
+            virtual ::xrx::detail::OnNextAction on_next(XRX_RVALUE(Value&&) v) override
             {
-                return ::xrx::detail::on_next_with_action(_observer, std::forward<Value>(v));
+                return ::xrx::detail::on_next_with_action(_observer, XRX_MOV(v));
             }
 
             virtual void on_error() override
             {
-                return ::xrx::detail::on_error_optional(std::move(_observer));
+                return ::xrx::detail::on_error_optional(XRX_MOV(_observer));
             }
 
             virtual void on_completed()
             {
-                return ::xrx::detail::on_completed_optional(std::move(_observer));
+                return ::xrx::detail::on_completed_optional(XRX_MOV(_observer));
             }
 
-            explicit Observer(ConcreateObserver o)
-                : _observer(std::move(o))
+            explicit Observer(XRX_RVALUE(ConcreateObserver&&) o)
+                : _observer(XRX_MOV(o))
             {
             }
 
@@ -200,9 +204,10 @@ namespace xrx
 
         template<typename ConcreateObserver>
             requires (!detail::IsAnyObserver<ConcreateObserver>::value)
-        /*explicit*/ AnyObserver(ConcreateObserver o)
-            : _observer(std::make_unique<Observer<ConcreateObserver>>(std::move(o)))
+        /*explicit*/ AnyObserver(XRX_RVALUE(ConcreateObserver&&) o)
+            : _observer(std::make_unique<Observer<ConcreateObserver>>(XRX_MOV(o)))
         {
+            static_assert(not std::is_lvalue_reference_v<ConcreateObserver>);
         }
 
 #if (X_ANY_OBSERVER_SUPPORTS_COPY())
@@ -221,14 +226,14 @@ namespace xrx
         }
 #endif
         AnyObserver(AnyObserver&& rhs) noexcept
-            : _observer(std::move(rhs._observer))
+            : _observer(XRX_MOV(rhs._observer))
         {
         }
         AnyObserver& operator=(AnyObserver&& rhs) noexcept
         {
             if (this != &rhs)
             {
-                _observer = std::move(rhs._observer);
+                _observer = XRX_MOV(rhs._observer);
             }
             return *this;
         }
@@ -240,10 +245,10 @@ namespace xrx
 
         std::unique_ptr<ObserverConcept> _observer;
 
-        ::xrx::detail::OnNextAction on_next(Value v)
+        ::xrx::detail::OnNextAction on_next(XRX_RVALUE(Value&&) v)
         {
             assert(_observer);
-            return _observer->on_next(std::forward<Value>(v));
+            return _observer->on_next(XRX_MOV(v));
         }
 
         void on_error()

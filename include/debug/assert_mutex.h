@@ -1,4 +1,5 @@
 #pragma once
+#include "utils_fast_FWD.h"
 #include <shared_mutex>
 #include <mutex>
 #include <utility>
@@ -27,7 +28,7 @@ namespace xrx::debug
         }
 
         explicit AssertMutex(Action action) noexcept
-            : _action(std::move(action))
+            : _action(XRX_MOV(action))
         {
         }
 
