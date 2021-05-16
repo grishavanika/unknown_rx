@@ -72,7 +72,7 @@ namespace xrx::detail
                 {
                     on_error_optional(XRX_MOV(*_destination), XRX_MOV(e...));
                 }
-                _state->end_with_error = true;
+                _state->_end_with_error = true;
             }
         };
 
