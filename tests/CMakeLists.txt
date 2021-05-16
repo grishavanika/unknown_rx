@@ -21,15 +21,15 @@ set(xrx_tests_SRC
     "tests_operator_interval.cpp"
     "tests_operator_observe_on.cpp"
     "tests_operator_publish.cpp"
+    "tests_operator_subscribe_on.cpp"
+    "tests_operator_take.cpp"
     )
 add_executable(tests_xrx ${xrx_tests_SRC} ${xrx_tests_HDR})
 set_all_warnings(tests_xrx PRIVATE)
 target_link_libraries(tests_xrx PRIVATE GTest_Integrated)
 target_link_libraries(tests_xrx PRIVATE xrx)
 
-set_target_properties(tests_single_compile PROPERTIES FOLDER tests)
-set_target_properties(tests_all_compile    PROPERTIES FOLDER tests)
-set_target_properties(tests_xrx            PROPERTIES FOLDER tests)
-new_test(single_compile tests_single_compile)
+set_target_properties(tests_all_compile PROPERTIES FOLDER tests)
+set_target_properties(tests_xrx         PROPERTIES FOLDER tests)
 new_test(all_compile    tests_all_compile)
 new_test(xrx_           tests_xrx)

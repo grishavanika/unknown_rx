@@ -1,9 +1,11 @@
 #include "operators/operator_subscribe_on.h"
-#include "tests/noop_archetypes.h"
+#include "noop_archetypes.h"
 #include <gtest/gtest.h>
-
-using namespace xrx::detail;
+#include "observer_mock.h"
+using namespace testing;
 using namespace tests;
+using namespace xrx;
+using namespace xrx::detail;
 using xrx::detail::operator_tag::SubscribeOn;
 
 TEST(Compile, SubscribeOn)
