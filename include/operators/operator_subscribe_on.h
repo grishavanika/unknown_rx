@@ -47,22 +47,22 @@ namespace xrx::observable
                 , TaskHandle
                 , Subscribed> _unsubscribers;
 
-            explicit SubscribeStateShared_(Scheduler sheduler)
+            explicit SubscribeStateShared_(XRX_RVALUE(Scheduler&&) sheduler)
                 : _mutex()
-                , _scheduler(std::move(sheduler))
+                , _scheduler(XRX_MOV(sheduler))
                 , _try_cancel_subscribe(false)
                 , _unsubscribers()
             {
             }
 
-            static std::shared_ptr<SubscribeStateShared_> make(Scheduler scheduler)
+            static std::shared_ptr<SubscribeStateShared_> make(XRX_RVALUE(Scheduler&&) scheduler)
             {
-                return std::make_shared<SubscribeStateShared_>(std::move(scheduler));
+                return std::make_shared<SubscribeStateShared_>(XRX_MOV(scheduler));
             }
 
             template<typename Observer>
                 // requires ConceptValueObserverOf<Observer, value_type>
-            void subscribe_impl(SourceObservable source, Observer observer
+            void subscribe_impl(XRX_RVALUE(SourceObservable&&) source, XRX_RVALUE(Observer&&) observer
                 , std::true_type) // source unsubscriber does have unsubscribe effect; remember it.
             {
                 assert(std::get_if<std::monostate>(&_unsubscribers)); // Not yet initialized.
@@ -73,7 +73,7 @@ namespace xrx::observable
                 auto shared_weak = this->weak_from_this();
 
                 const TaskHandle task_handle = _scheduler.task_post(
-                    [self = shared_weak, source_ = std::move(source), observer_ = std::move(observer)]() mutable
+                    [self = shared_weak, source_ = XRX_MOV(source), observer_ = XRX_MOV(observer)]() mutable
                 {
                     auto shared = self.lock(); // remember & extend lifetime.
                     SubscribeInProgress* in_progress = nullptr;
@@ -112,7 +112,7 @@ namespace xrx::observable
                     // #XXX: we should pass our own observer.
                     // And do check if unsubscribe happened while this
                     // .subscribe() is in progress.
-                    SourceUnsubscriber unsubscriber = std::move(source_).subscribe(std::move(observer_));
+                    SourceUnsubscriber unsubscriber = XRX_MOV(source_).subscribe(XRX_MOV(observer_));
 
                     if (in_progress)
                     {
@@ -131,7 +131,7 @@ namespace xrx::observable
                             // We were too late. Can't destroy `SubscribeInProgress`.
                             const std::lock_guard lock2(in_progress->_mutex);
                             // Set the data everyone is waiting for.
-                            in_progress->_unsubscriber.emplace(std::move(unsubscriber));
+                            in_progress->_unsubscriber.emplace(XRX_MOV(unsubscriber));
                             in_progress->_on_finish.notify_all();
                         }
                         else
@@ -140,7 +140,7 @@ namespace xrx::observable
                             // and simply put final Unsubscriber.
                             Subscribed* subscribed = std::get_if<Subscribed>(&shared->_unsubscribers);
                             assert(subscribed && "No-one should change Subscribed state when it was already set");
-                            subscribed->_state.template emplace<SubscribeEnded>(std::move(unsubscriber));
+                            subscribed->_state.template emplace<SubscribeEnded>(XRX_MOV(unsubscriber));
                         }
                     }
                 });
@@ -148,7 +148,7 @@ namespace xrx::observable
                     const std::lock_guard lock(_mutex);
                     if (auto* not_initialized = std::get_if<std::monostate>(&_unsubscribers); not_initialized)
                     {
-                        _unsubscribers.template emplace<TaskHandle>(std::move(task_handle));
+                        _unsubscribers.template emplace<TaskHandle>(XRX_MOV(task_handle));
                     }
                     else if (auto* already_subscribing = std::get_if<Subscribed>(&_unsubscribers); already_subscribing)
                     {
@@ -225,6 +225,7 @@ namespace xrx::observable
         {
             using value_type = typename SourceObservable::value_type;
             using error_type = typename SourceObservable::error_type;
+            using is_async = std::true_type;
             using Handle = typename Scheduler::TaskHandle;
             using StateShared_ = SubscribeStateShared_<SourceObservable, Scheduler>;
 
@@ -249,24 +250,23 @@ namespace xrx::observable
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, value_type>
-            Unsubscriber subscribe(Observer&& observer) &&
+            Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
-                auto shared = StateShared_::make(std::move(_scheduler));
+                static_assert(not std::is_lvalue_reference_v<Observer>);
+                auto shared = StateShared_::make(XRX_MOV(_scheduler));
 #if (0)
                 // #TODO: implement subscribe_impl(..., std::false_type);
                 using remember_source = typename StateShared_::SourceUnsubscriber::has_effect;
 #else
                 using remember_source = std::true_type;
 #endif
-                shared->subscribe_impl(std::move(_source), std::forward<Observer>(observer)
+                shared->subscribe_impl(XRX_MOV(_source), XRX_MOV(observer)
                     , remember_source());
                 return Unsubscriber(shared);
             }
 
-            auto fork()
-            {
-                return SubscribeOnObservable_(_source.fork(), _scheduler);
-            }
+            auto fork() && { return SubscribeOnObservable_(XRX_MOV(_source), XRX_MOV(_scheduler)); }
+            auto fork() &  { return SubscribeOnObservable_(_source.fork(), _scheduler); }
         };
     } // namespace detail
 } // namespace xrx::observable
@@ -275,9 +275,13 @@ namespace xrx::detail::operator_tag
 {
     template<typename SourceObservable, typename Scheduler>
     auto tag_invoke(::xrx::tag_t<::xrx::detail::make_operator>, xrx::detail::operator_tag::SubscribeOn
-        , SourceObservable source, Scheduler scheduler)
+        , XRX_RVALUE(SourceObservable&&) source, XRX_RVALUE(Scheduler&&) scheduler)
     {
-        using Impl = ::xrx::observable::detail::SubscribeOnObservable_<SourceObservable, Scheduler>;
-        return Observable_<Impl>(Impl(std::move(source), std::move(scheduler)));
+        static_assert(not std::is_lvalue_reference_v<SourceObservable>);
+        static_assert(not std::is_lvalue_reference_v<Scheduler>);
+        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
+        using Scheduler_ = std::remove_reference_t<Scheduler>;
+        using Impl = ::xrx::observable::detail::SubscribeOnObservable_<SourceObservable_, Scheduler_>;
+        return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(scheduler)));
     }
 } // namespace xrx::detail::operator_tag
