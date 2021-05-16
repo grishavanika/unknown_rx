@@ -1,6 +1,5 @@
 set(single_compile_SRCS
     "../noop_archetypes.h"
-    "tests_compile_range.cpp"
     "tests_compile_take.cpp"
     "tests_compile_subscribe_on.cpp"
     )

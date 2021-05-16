@@ -1,12 +1,35 @@
 #include "observables_factory.h"
 #include "operators/operator_range.h"
 #include "utils_observers.h"
+#include "noop_archetypes.h"
+#include "cpo_make_operator.h"
 
 #include <gtest/gtest.h>
 #include "observer_mock.h"
 using namespace testing;
-
 using namespace xrx;
+using namespace xrx::detail;
+
+TEST(Compile, Range_Constructor)
+{
+    using xrx::detail::operator_tag::Range;
+    auto o = make_operator(Range(), 0, 0, 0, std::true_type());
+    static_assert(ConceptObservable<decltype(o)>);
+}
+
+TEST(Compile, Range_Subscribe_OnlyOnNext)
+{
+    using xrx::detail::operator_tag::Range;
+    auto o = make_operator(Range(), 0, 0, 1, std::false_type());
+    o.fork().subscribe([](int) {});
+}
+
+TEST(Compile, Range_Subscribe_OnNextOnCompleted)
+{
+    using xrx::detail::operator_tag::Range;
+    auto o = make_operator(Range(), 0, 0, 1, std::false_type());
+    o.fork().subscribe(observer::make([](int) {}, [] {}));
+}
 
 TEST(Range, WhenBoundariesAreEqual_InvokedOnce)
 {
