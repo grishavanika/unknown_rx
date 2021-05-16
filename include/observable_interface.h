@@ -103,6 +103,12 @@ namespace xrx::detail
             return make_operator(detail::operator_tag::Window()
                 , XRX_MOV(*this), std::size_t(count));
         }
+        template<typename Value, typename Op>
+        auto reduce(Value&& initial, Op&& op) &&
+        {
+            return make_operator(detail::operator_tag::Reduce()
+                , XRX_MOV(*this), XRX_FWD(initial), XRX_FWD(op));
+        }
     };
 } // namespace xrx::detail
 

@@ -23,6 +23,7 @@ set(xrx_tests_SRC
     "tests_operator_publish.cpp"
     "tests_operator_subscribe_on.cpp"
     "tests_operator_take.cpp"
+    "tests_operator_reduce.cpp"
     )
 add_executable(tests_xrx ${xrx_tests_SRC} ${xrx_tests_HDR})
 set_all_warnings(tests_xrx PRIVATE)

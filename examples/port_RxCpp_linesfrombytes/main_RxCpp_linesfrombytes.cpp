@@ -3,7 +3,7 @@
 // 
 #include "xrx/xrx_all.h"
 
-// #include <regex>
+#include <regex>
 #include <random>
 #include <iostream>
 #include <cstdint>
@@ -85,21 +85,52 @@ int main()
             auto delim = from(std::uint8_t('\r'));
             return concat(std::move(body), std::move(delim));
             })
-        | window(17);
+        | window(17)
+        | flat_map([](auto&& observable)
+        {
+            return observable.fork_move()
+                | reduce(std::vector<uint8_t>(),
+                    [](std::vector<uint8_t>&& v, uint8_t b)
+                    {
+                        v.push_back(b);
+                        return std::move(v);
+                    });
+        });
+
+    // create strings split on \r
+    auto strings = bytes.fork()
+        .flat_map([](std::vector<uint8_t> v)
+        {
+            std::string s(v.begin(), v.end());
+            std::regex delim(R"/(\r)/");
+            std::cregex_token_iterator cursor(&s[0], &s[0] + s.size(), delim, {-1, 0});
+            std::cregex_token_iterator end;
+            std::vector<std::string> splits(cursor, end);
+            // return iterate(move(splits));
+            assert(splits.size() > 0);
+            return observable::from(std::move(splits[0]));
+        })
+        .filter([](const std::string& s)
+        {
+            return !s.empty();
+        })
+        .publish()
+        .ref_count();
 
     // WIP. To be continued.
+    std::cout << "<bytes>" << "\n";
     bytes.fork()
-        | transform([](auto observable)
+        .subscribe([](auto v)
     {
-        observable.fork() | subscribe([](char ch)
-        {
-            if (ch == '\r') ch = '\n';
-            std::cout.put(ch);
-        });
-        return 0;
-    })
-        | subscribe([](int)
-    {
+        std::copy(v.begin(), v.end(), std::ostream_iterator<long>(std::cout, " "));
+        std::cout << std::endl;
     });
+    std::cout << "<strings>" << "\n";
+    strings.fork()
+        .subscribe([](auto v)
+    {
+        std::cout << v << std::endl;
+    });
+
     XRX_PRINT_ALLOCS_COUNT("bytes");
 }

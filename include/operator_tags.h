@@ -158,4 +158,15 @@ namespace xrx::detail::operator_tag
         };
     };
 
+    struct Reduce
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .reduce() operator implementation. "
+                  "Missing `operators/operator_reduce.h` include ?");
+        };
+    };
+
 } // namespace xrx::detail::operator_tag
