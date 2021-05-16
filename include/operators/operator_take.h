@@ -23,25 +23,21 @@ namespace xrx::detail
         using Unsubscriber = typename SourceObservable::Unsubscriber;
 
         template<typename Observer>
-        struct TakeObserver_ : Observer
+        struct TakeObserver_
         {
-            explicit TakeObserver_(Observer&& o, std::size_t count)
-                : Observer(std::move(o))
-                , _max(count)
-                , _taken(0) {}
-            std::size_t _max;
-            std::size_t _taken;
-            Observer& observer() { return *this; }
+            Observer _observer;
+            std::size_t _max = 0;
+            std::size_t _taken = 0;
 
-            template<typename Value>
-            OnNextAction on_next(Value&& v)
+            // #TODO: on_error(void) support.
+            OnNextAction on_next(XRX_RVALUE(value_type&&) v)
             {
                 assert(_max > 0);
                 assert(_taken < _max);
-                const auto action = ::xrx::detail::on_next_with_action(observer(), XRX_FWD(v));
+                const auto action = ::xrx::detail::on_next_with_action(_observer, XRX_MOV(v));
                 if (++_taken >= _max)
                 {
-                    ::xrx::detail::on_completed_optional(XRX_MOV(observer()));
+                    ::xrx::detail::on_completed_optional(XRX_MOV(_observer));
                     return OnNextAction{._stop = true};
                 }
                 return action;
@@ -50,7 +46,7 @@ namespace xrx::detail
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        Unsubscriber subscribe(Observer observer) &&
+        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             if (_count == 0)
             {
@@ -58,20 +54,20 @@ namespace xrx::detail
                 return Unsubscriber();
             }
             using TakeObserver_ = TakeObserver_<Observer>;
-            return std::move(_source).subscribe(TakeObserver_(std::move(observer), _count));
+            return XRX_MOV(_source).subscribe(TakeObserver_(XRX_MOV(observer), _count));
         }
 
-        TakeObservable fork() && { return TakeObservable(std::move(_source), _count); };
+        TakeObservable fork() && { return TakeObservable(XRX_MOV(_source), _count); };
         TakeObservable fork() &  { return TakeObservable(_source.fork(), _count); };
     };
 
     template<typename SourceObservable>
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Take
-        , SourceObservable source, std::size_t count)
+        , XRX_RVALUE(SourceObservable&&) source, std::size_t count)
             requires ConceptObservable<SourceObservable>
     {
         using Impl = TakeObservable<SourceObservable>;
-        return Observable_<Impl>(Impl(std::move(source), count));
+        return Observable_<Impl>(Impl(XRX_MOV(source), count));
     }
 } // namespace xrx::detail
 
@@ -84,7 +80,7 @@ namespace xrx
             std::size_t _count = 0;
 
             template<typename SourceObservable>
-            auto pipe_(SourceObservable source) &&
+            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
                 requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Take
                     , SourceObservable, std::size_t>
             {

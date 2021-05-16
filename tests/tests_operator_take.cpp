@@ -1,4 +1,6 @@
 #include "operators/operator_take.h"
+#include "operators/operator_create.h"
+#include "observables_factory.h"
 #include "noop_archetypes.h"
 #include <gtest/gtest.h>
 #include "observer_mock.h"
@@ -21,3 +23,25 @@ TEST(Compile, TakePipe)
     static_assert(ConceptObservable<decltype(o)>);
 }
 
+TEST(Take, One)
+{
+    int items_count = 0;
+    observable::create<int>([](auto o)
+    {
+        for (int i : {42, 43, 44})
+        {
+            const auto action = on_next_with_action(o, int(i));
+            if (action._stop)
+            {
+                return;
+            }
+        }
+        (void)on_completed_optional(o);
+    })
+        .take(1)
+        .subscribe([&](int)
+    {
+        ++items_count;
+    });
+    ASSERT_EQ(1, items_count);
+}
