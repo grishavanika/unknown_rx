@@ -26,7 +26,7 @@ struct Observable1
     template<typename Observer>
     Unsubscriber subscribe(Observer&& observer) &&
     {
-        const auto action = on_next_with_action(observer, _value);
+        const auto action = on_next_with_action(observer, int(_value));
         if (not action._stop)
         {
             on_completed_optional(XRX_FWD(observer));

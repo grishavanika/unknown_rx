@@ -49,14 +49,14 @@ namespace xrx::detail
             Observer* _observer = nullptr;
             std::size_t _max_repeats = 0;
 
-            OnNextAction on_next(value_type v)
+            OnNextAction on_next(XRX_RVALUE(value_type&&) v)
             {
                 if (_state->_unsubscribed)
                 {
                     assert(false && "Call to on_next() even when unsubscribe() was requested.");
                     return OnNextAction{._stop = true};
                 }
-                const auto action = on_next_with_action(*_observer, XRX_FWD(v));
+                const auto action = on_next_with_action(*_observer, XRX_MOV(v));
                 if (action._stop)
                 {
                     _state->_unsubscribed = true;
@@ -74,12 +74,20 @@ namespace xrx::detail
                 return OnNextAction();
             }
 
-            void on_error(error_type e)
+            template<typename... VoidOrError>
+            void on_error(XRX_RVALUE(VoidOrError&&)... e)
             {
                 if (not _state->_unsubscribed)
                 {
                     // Trigger an error there to avoid a need to remember it.
-                    on_error_optional(XRX_MOV(*_observer), XRX_FWD(e));
+                    if constexpr ((sizeof...(e)) == 0)
+                    {
+                        on_error_optional(XRX_MOV(*_observer));
+                    }
+                    else
+                    {
+                        on_error_optional(XRX_MOV(*_observer), XRX_MOV(e)...);
+                    }
                     _state->_unsubscribed = true;
                 }
                 else
@@ -103,17 +111,18 @@ namespace xrx::detail
 
         // Synchronous version.
         template<typename Observer>
-        NoopUnsubscriber subscribe(Observer&& observer) &&
+        NoopUnsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
+            static_assert(not std::is_lvalue_reference_v<Observer>);
             if (_max_repeats == 0)
             {
-                (void)on_completed_optional(XRX_FWD(observer));
+                (void)on_completed_optional(XRX_MOV(observer));
                 return NoopUnsubscriber();
             }
             using ObserverImpl = SyncObserver_<std::remove_reference_t<Observer>>;
             SyncState_ state;
             // Ignore unsubscriber since it should haven no effect since we are synchronous.
-            (void)std::move(_source).subscribe(ObserverImpl(&state, &observer, _max_repeats));
+            (void)XRX_MOV(_source).subscribe(ObserverImpl(&state, &observer, _max_repeats));
             if (state._unsubscribed)
             {
                 // Either unsubscribed or error.
@@ -151,18 +160,18 @@ namespace xrx::detail
             return NoopUnsubscriber();
         }
 
-        RepeatObservable fork() && { return RepeatObservable(std::move(_source), _max_repeats); }
+        RepeatObservable fork() && { return RepeatObservable(XRX_MOV(_source), _max_repeats); }
         RepeatObservable fork() &  { return RepeatObservable(_source.fork(), _max_repeats); }
     };
 
     template<typename SourceObservable, bool Endless>
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Repeat
-        , SourceObservable source, std::size_t count, std::bool_constant<Endless>)
+        , XRX_RVALUE(SourceObservable&&) source, std::size_t count, std::bool_constant<Endless>)
             requires ConceptObservable<SourceObservable>
     {
         using IsAsync_ = IsAsyncObservable<SourceObservable>;
         using Impl = RepeatObservable<SourceObservable, Endless, IsAsync_::value>;
-        return Observable_<Impl>(Impl(std::move(source), count));
+        return Observable_<Impl>(Impl(XRX_MOV(source), count));
     }
 } // namespace xrx::detail
 
@@ -176,7 +185,7 @@ namespace xrx
             std::size_t _count = 0;
 
             template<typename SourceObservable>
-            auto pipe_(SourceObservable source) &&
+            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
                 requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Repeat
                     , SourceObservable, std::size_t, std::bool_constant<Endless>>
             {

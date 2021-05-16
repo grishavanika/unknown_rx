@@ -54,8 +54,9 @@ namespace xrx::detail
         }
 
         template<typename Observer>
-        Unsubscriber subscribe(Observer&& observer) &&
+        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
+            static_assert(not std::is_lvalue_reference_v<Observer>);
             constexpr std::bool_constant<Endless> _edless;
             Integer current = _first;
             while (compare_(current, _last, _step, _edless))
@@ -67,7 +68,7 @@ namespace xrx::detail
                 }
                 current = do_step_(current, _step);
             }
-            (void)on_completed_optional(std::forward<Observer>(observer));
+            (void)on_completed_optional(XRX_MOV(observer));
             return Unsubscriber();
         }
 

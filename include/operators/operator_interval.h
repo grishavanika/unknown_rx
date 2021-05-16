@@ -64,7 +64,7 @@ namespace xrx::observable
                 }
                     , State(XRX_MOV(observer), value_type(0)));
 
-                return Unsubscriber(handle, std::move(_scheduler));
+                return Unsubscriber(handle, XRX_MOV(_scheduler));
             }
 
             auto fork() && { return IntervalObservable_(XRX_MOV(_period), XRX_MOV(_scheduler)); }
