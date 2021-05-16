@@ -1,4 +1,5 @@
 
+ - More tests for special .publish() and .ref_count() combination together with Sync/Async Observables.
  - Do not use ::xrx::observer::make() in Observables implementation. Leads to bigger observer's size.
  - Finaly decide if reference types as value_type for Observables are possible/supportable.
    Currently there is a mess with XRX_MOV, XRX_FWD in non-template context.

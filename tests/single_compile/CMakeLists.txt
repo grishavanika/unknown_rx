@@ -3,7 +3,6 @@ set(single_compile_SRCS
     "tests_compile_range.cpp"
     "tests_compile_take.cpp"
     "tests_compile_subscribe_on.cpp"
-    "tests_compile_publish.cpp"
     )
 add_executable(tests_single_compile ${single_compile_SRCS})
 set_all_warnings(tests_single_compile PRIVATE)

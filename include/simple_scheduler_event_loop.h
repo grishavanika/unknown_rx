@@ -84,7 +84,7 @@ namespace xrx::debug
             requires std::convertible_to<std::invoke_result_t<F, State&>, bool>
         ActionHandle tick_every(clock_point start_from, clock_duration period, F&& f, State&& state)
         {
-            auto _ = std::lock_guard(_assert_mutex_tick);
+            auto guard = std::lock_guard(_assert_mutex_tick);
             const ActionHandle handle = _tick_actions.push_back(make_action(
                 start_from
                 , clock_duration(period)
@@ -95,7 +95,7 @@ namespace xrx::debug
 
         bool tick_cancel(ActionHandle handle)
         {
-            auto _ = std::lock_guard(_assert_mutex_tick);
+            auto guard = std::lock_guard(_assert_mutex_tick);
             return _tick_actions.erase(handle);
         }
 
@@ -115,7 +115,7 @@ namespace xrx::debug
         {
             TaskCallback task;
             {
-                auto _ = std::lock_guard(_assert_mutex_tasks);
+                auto guard = std::lock_guard(_assert_mutex_tasks);
                 if (_tasks.size() == 0)
                 {
                     return 0;
@@ -145,7 +145,7 @@ namespace xrx::debug
         {
             ActionHandle to_execute;
             {
-                auto _ = std::lock_guard(_assert_mutex_tick);
+                auto guard = std::lock_guard(_assert_mutex_tick);
                 clock_duration smallest = clock_duration::max();
                 _tick_actions.for_each([&](TickAction& action, ActionHandle handle)
                 {
@@ -164,7 +164,7 @@ namespace xrx::debug
 
             clock_point desired_point;
             {
-                auto _ = std::lock_guard(_assert_mutex_tick);
+                auto guard = std::lock_guard(_assert_mutex_tick);
                 TickAction* action = _tick_actions.get(to_execute);
                 if (not action)
                 {
@@ -181,7 +181,7 @@ namespace xrx::debug
             TickAction invoke_action;
             bool do_remove = false;
             {
-                auto _ = std::lock_guard(_assert_mutex_tick);
+                auto guard = std::lock_guard(_assert_mutex_tick);
                 if (TickAction* action = _tick_actions.get(to_execute))
                 {
                     invoke_action = *action; // copy shared.
@@ -198,7 +198,7 @@ namespace xrx::debug
                 assert(removed);
                 return 1;
             }
-            auto _ = std::lock_guard(_assert_mutex_tick);
+            auto guard = std::lock_guard(_assert_mutex_tick);
             // Action can removed from the inside of callback.
             if (TickAction* action_modified = _tick_actions.get(to_execute))
             {

@@ -35,7 +35,7 @@ namespace xrx
             {
                 if (auto shared = _shared_weak.lock(); shared)
                 {
-                    auto _ = std::lock_guard(shared->_assert_mutex);
+                    auto guard = std::lock_guard(shared->_assert_mutex);
                     return shared->_subscriptions.erase(_handle);
                 }
                 return false;

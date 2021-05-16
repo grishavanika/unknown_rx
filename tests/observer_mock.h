@@ -21,5 +21,5 @@ struct ObserverMock_Error
     MOCK_METHOD(void, on_completed, ());
     MOCK_METHOD(void, on_error, (int));
 
-    auto ref()& { return ::xrx::observer::ref(*this); }
+    auto ref() & { return ::xrx::observer::ref(*this); }
 };
