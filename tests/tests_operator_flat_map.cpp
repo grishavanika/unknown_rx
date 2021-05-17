@@ -2,6 +2,7 @@
 #include "operators/operator_flat_map.h"
 #include "operators/operator_take.h"
 #include "operators/operator_from.h"
+#include "subject.h"
 
 #include <string>
 
@@ -94,4 +95,66 @@ TEST(FlatMap, WithMap_DifferentTypes)
             return pair(source, inner);
         })
         | subscribe(observer.ref());
+}
+
+TEST(FlatMap, SyncSource_WithAsyncProducer)
+{
+    ObserverMock observer;
+    Sequence s;
+
+    EXPECT_CALL(observer, on_next(42)).InSequence(s);
+    EXPECT_CALL(observer, on_next(43)).InSequence(s);
+
+    EXPECT_CALL(observer, on_completed()).Times(0);
+    EXPECT_CALL(observer, on_error()).Times(0);
+
+    Subject_<int, none_tag> inner;
+    auto unsubscriber = observable::from(1)
+        | flat_map([&](int)
+    {
+        return inner.as_observable();
+    })
+        | subscribe(observer.ref());
+    
+    inner.on_next(42);
+    inner.on_next(43);
+    unsubscriber.detach();
+    inner.on_next(44);
+    // Unsubscribed. Should not be called.
+    inner.on_completed();
+}
+
+TEST(FlatMap, SyncSource_WithAsyncProducer_MultipleChildren)
+{
+    ObserverMockAny<std::string> observer;
+    Sequence s;
+
+    EXPECT_CALL(observer, on_next("42")).InSequence(s);
+    EXPECT_CALL(observer, on_next("43")).InSequence(s);
+    EXPECT_CALL(observer, on_next("47")).InSequence(s);
+    EXPECT_CALL(observer, on_next("48")).InSequence(s);
+
+    EXPECT_CALL(observer, on_completed()).InSequence(s);
+    EXPECT_CALL(observer, on_error()).Times(0);
+
+    Subject_<std::string, none_tag> inner1;
+    Subject_<std::string, none_tag> inner2;
+    auto unsubscriber = observable::from(1, 2)
+        | flat_map([&](int v)
+    {
+        if (v == 1)
+        {
+            return inner1.as_observable();
+        }
+        return inner2.as_observable();
+    })
+        | subscribe(observer.ref());
+    
+    inner1.on_next("42");
+    inner1.on_next("43");
+    inner1.on_completed();
+
+    inner2.on_next("47");
+    inner2.on_next("48");
+    inner2.on_completed();
 }

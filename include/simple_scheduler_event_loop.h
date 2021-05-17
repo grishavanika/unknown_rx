@@ -195,7 +195,7 @@ namespace xrx::debug
             if (do_remove)
             {
                 const bool removed = tick_cancel(to_execute);
-                assert(removed);
+                assert(removed); (void)removed;
                 return 1;
             }
             auto guard = std::lock_guard(_assert_mutex_tick);
