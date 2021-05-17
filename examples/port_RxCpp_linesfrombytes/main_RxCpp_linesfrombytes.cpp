@@ -84,7 +84,7 @@ int main()
                 | repeat(dist(gen));
             auto delim = from(std::uint8_t('\r'));
             return concat(std::move(body), std::move(delim));
-            })
+        })
         | window(17)
         | flat_map([](auto&& observable)
         {

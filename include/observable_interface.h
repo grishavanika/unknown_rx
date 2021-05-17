@@ -98,6 +98,12 @@ namespace xrx::detail
             return make_operator(detail::operator_tag::FlatMap()
                 , XRX_MOV(*this), XRX_FWD(produce));
         }
+        template<typename Produce, typename Map>
+        auto flat_map(Produce&& produce, Map&& map) &&
+        {
+            return make_operator(detail::operator_tag::FlatMap()
+                , XRX_MOV(*this), XRX_FWD(produce), XRX_FWD(map));
+        }
         auto window(std::size_t count) &&
         {
             return make_operator(detail::operator_tag::Window()
