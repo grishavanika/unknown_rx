@@ -24,11 +24,13 @@ namespace xrx::debug
     public:
         explicit AssertMutex() noexcept
             : _action()
+            , _mutex()
         {
         }
 
         explicit AssertMutex(Action action) noexcept
             : _action(XRX_MOV(action))
+            , _mutex()
         {
         }
 

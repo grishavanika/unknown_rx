@@ -200,7 +200,7 @@ namespace xrx::detail
         static_assert(not std::is_same_v<produce_type, void>
             , "Observables with void value type are not yet supported.");
 
-        static_assert(Errors::are_compatible()
+        static_assert(Errors::are_compatible::value
             , "Different error types for Source Observable and Produced Observable are not yet supported.");
 
         using map_value = decltype(_map(std::declval<source_type>(), std::declval<produce_type>()));
@@ -297,13 +297,30 @@ namespace xrx::detail
         , typename InnerValue>
     struct SharedState_Sync_Async
     {
-        AllObservablesState<Observable, SourceValue> _observables;
+        using AllObservables = AllObservablesState<Observable, SourceValue>;
+        AllObservables _observables;
         Observer _observer;
         Map _map;
-        std::size_t _subscribed_count = 0;
-        std::atomic<std::size_t> _completed_count = 0;
+        std::size_t _subscribed_count;
+        std::atomic<std::size_t> _completed_count;
         std::atomic<bool> _unsubscribe = false;
-        // [[no_unique_address]] debug::AssertMutex<> _serialize;
+#if (0)
+        debug::AssertMutex<> _serialize;
+#else
+        std::mutex _serialize;
+#endif
+
+        explicit SharedState_Sync_Async(XRX_RVALUE(AllObservables&&) observables
+            , XRX_RVALUE(Observer&&) observer, XRX_RVALUE(Map&&) map)
+                : _observables(XRX_MOV(observables))
+                , _observer(XRX_MOV(observer))
+                , _map(XRX_MOV(map))
+                , _subscribed_count(0)
+                , _completed_count(0)
+                , _unsubscribe(false)
+                , _serialize()
+        {
+        }
 
         void unsubscribe_all()
         {
@@ -333,7 +350,7 @@ namespace xrx::detail
             {
                 // The lock there is ONLY to serialize (possibly)
                 // parallel calls to on_next()/on_error().
-                // auto guard = std::lock_guard(_serialize);
+                auto guard = std::lock_guard(_serialize);
                 const auto action = on_next_with_action(_observer
                     , _map(XRX_MOV(source_value), XRX_MOV(inner_value)));
                 stop = action._stop;
@@ -357,12 +374,12 @@ namespace xrx::detail
             // parallel calls to on_next()/on_error().
             if constexpr ((sizeof...(e)) == 0)
             {
-                // auto guard = std::lock_guard(_serialize);
+                auto guard = std::lock_guard(_serialize);
                 on_error_optional(XRX_MOV(_observer));
             }
             else
             {
-                // auto guard = std::lock_guard(_serialize);
+                auto guard = std::lock_guard(_serialize);
                 on_error_optional(XRX_MOV(_observer), XRX_MOV(e...));
             }
             _unsubscribe = true;
@@ -376,6 +393,7 @@ namespace xrx::detail
             assert(finished <= _subscribed_count);
             if (finished == _subscribed_count)
             {
+                auto guard = std::lock_guard(_serialize);
                 on_completed_optional(XRX_MOV(_observer));
             }
             auto& kill = _observables._children[child_index]._unsubscriber;
@@ -485,7 +503,7 @@ namespace xrx::detail
         static_assert(not std::is_same_v<produce_type, void>
             , "Observables with void value type are not yet supported.");
 
-        static_assert(Errors::are_compatible()
+        static_assert(Errors::are_compatible::value
             , "Different error types for Source Observable and Produced Observable are not yet supported.");
 
         using map_value = decltype(_map(std::declval<source_type>(), std::declval<produce_type>()));
@@ -532,8 +550,7 @@ namespace xrx::detail
             }
 
             auto shared = std::make_shared<SharedState_>(XRX_MOV(observables)
-                , XRX_MOV(destination_)
-                , XRX_MOV(_map));
+                , XRX_MOV(destination_), XRX_MOV(_map));
             shared->_observables._unsubscribe = &shared->_unsubscribe;
             shared->_subscribed_count = shared->_observables._children.size();
             std::shared_ptr<AllObsevables> unsubscriber(shared, &shared->_observables);
@@ -549,6 +566,122 @@ namespace xrx::detail
             }
 
             return Unsubscriber(XRX_MOV(unsubscriber));
+        }
+    };
+
+    template<typename Observer, typename Producer, typename Map, typename SourceValue, typename ProducedValue>
+    struct OuterObserver_Async_Sync
+    {
+        Producer _produce;
+        Map _map;
+        Observer _destination;
+        State_Sync_Sync _state;
+
+        explicit OuterObserver_Async_Sync(XRX_RVALUE(Producer&&) produce, XRX_RVALUE(Map&&) map, XRX_RVALUE(Observer&&) observer)
+            : _produce(XRX_MOV(produce))
+            , _map(XRX_MOV(map))
+            , _destination(XRX_MOV(observer))
+            , _state()
+        {
+        }
+
+        auto on_next(XRX_RVALUE(SourceValue&&) source_value)
+        {
+            assert(not _state._end_with_error);
+            assert(not _state._completed);
+            assert(not _state._unsubscribed);
+            SourceValue copy = source_value;
+            const bool continue_ = invoke_inner_sync_sync<ProducedValue>(
+                _destination
+                , (_produce)(XRX_MOV(source_value))
+                , _map
+                , XRX_MOV(copy));
+            _state._unsubscribed = (not continue_);
+            return ::xrx::unsubscribe(_state._unsubscribed);
+        }
+        void on_completed()
+        {
+            assert(not _state._end_with_error);
+            assert(not _state._completed);
+            assert(not _state._unsubscribed);
+            on_completed_optional(_destination);
+            _state._completed = true;
+        }
+        template<typename... VoidOrError>
+        void on_error(XRX_RVALUE(VoidOrError&&)... e)
+        {
+            assert(not _state._end_with_error);
+            assert(not _state._completed);
+            assert(not _state._unsubscribed);
+            if constexpr ((sizeof...(e)) == 0)
+            {
+                on_error_optional(XRX_MOV(_destination));
+            }
+            else
+            {
+                on_error_optional(XRX_MOV(_destination), XRX_MOV(e...));
+            }
+            _state._end_with_error = true;
+        }
+    };
+
+    template<typename SourceObservable
+        , typename ProducedObservable
+        , typename Produce
+        , typename Map>
+    struct FlatMapObservable<
+        SourceObservable
+        , ProducedObservable
+        , Produce
+        , Map
+        , true  /*Async source Observable*/
+        , false /*Sync Observables produced*/>
+    {
+        static_assert(ConceptObservable<ProducedObservable>
+            , "Return value of Produce should be Observable.");
+
+        [[no_unique_address]] SourceObservable _source;
+        [[no_unique_address]] Produce _produce;
+        [[no_unique_address]] Map _map;
+
+        using source_type = typename SourceObservable::value_type;
+        using source_error = typename SourceObservable::error_type;
+        using produce_type = typename ProducedObservable::value_type;
+        using produce_error = typename ProducedObservable::error_type;
+
+        using Errors = MergedErrors<source_error, produce_error>;
+
+        static_assert(not std::is_same_v<produce_type, void>
+            , "Observables with void value type are not yet supported.");
+
+        static_assert(Errors::are_compatible::value
+            , "Different error types for Source Observable and Produced Observable are not yet supported.");
+
+        using map_value = decltype(_map(std::declval<source_type>(), std::declval<produce_type>()));
+        static_assert(not std::is_same_v<map_value, void>
+            , "Observables with void value type are not yet supported. "
+              "As result of applying given Map.");
+        static_assert(not std::is_reference_v<map_value>
+            , "Map should return value-like type.");
+
+        using value_type = map_value;
+        using error_type = typename Errors::E;
+        using is_async = std::true_type;
+
+        using Unsubscriber = typename SourceObservable::Unsubscriber;
+
+        FlatMapObservable fork() && { return FlatMapObservable(XRX_MOV(_source), XRX_MOV(_produce), XRX_MOV(_map)); }
+        FlatMapObservable fork() &  { return FlatMapObservable(_source.fork(), _produce, _map); }
+
+        template<typename Observer>
+            requires ConceptValueObserverOf<Observer, value_type>
+        Unsubscriber subscribe(XRX_RVALUE(Observer&&) destination_) &&
+        {
+            static_assert(not std::is_lvalue_reference_v<Observer>);
+            using OuterObserver_ = OuterObserver_Async_Sync<Observer, Produce, Map, source_type, produce_type>;
+
+            OuterObserver_ outer(XRX_MOV(_produce), XRX_MOV(_map), XRX_MOV(destination_));
+            return XRX_MOV(_source).subscribe(XRX_MOV(outer));
         }
     };
 
