@@ -25,6 +25,25 @@ namespace xrx::detail
         }
     };
 
+    template<typename E1, typename E2>
+    struct MergedErrors
+    {
+        using are_compatible = std::is_same<E1, E1>;
+        using E = E1;
+    };
+    template<>
+    struct MergedErrors<void, none_tag>
+    {
+        using are_compatible = std::true_type;
+        using E = void;
+    };
+    template<>
+    struct MergedErrors<none_tag, void>
+    {
+        using are_compatible = std::true_type;
+        using E = void;
+    };
+
     template<typename SourceObservable
         , typename ProducedObservable
         , typename Produce
@@ -176,10 +195,12 @@ namespace xrx::detail
         using produce_type = typename ProducedObservable::value_type;
         using produce_error = typename ProducedObservable::error_type;
 
+        using Errors = MergedErrors<source_error, produce_error>;
+
         static_assert(not std::is_same_v<produce_type, void>
             , "Observables with void value type are not yet supported.");
 
-        static_assert(std::is_same_v<source_error, produce_error>
+        static_assert(Errors::are_compatible()
             , "Different error types for Source Observable and Produced Observable are not yet supported.");
 
         using map_value = decltype(_map(std::declval<source_type>(), std::declval<produce_type>()));
@@ -190,7 +211,7 @@ namespace xrx::detail
             , "Map should return value-like type.");
 
         using value_type = map_value;
-        using error_type = source_error;
+        using error_type = typename Errors::E;
         using is_async = std::false_type;
         using Unsubscriber = NoopUnsubscriber;
 
@@ -459,10 +480,12 @@ namespace xrx::detail
         using produce_type = typename ProducedObservable::value_type;
         using produce_error = typename ProducedObservable::error_type;
 
+        using Errors = MergedErrors<source_error, produce_error>;
+
         static_assert(not std::is_same_v<produce_type, void>
             , "Observables with void value type are not yet supported.");
 
-        static_assert(std::is_same_v<source_error, produce_error>
+        static_assert(Errors::are_compatible()
             , "Different error types for Source Observable and Produced Observable are not yet supported.");
 
         using map_value = decltype(_map(std::declval<source_type>(), std::declval<produce_type>()));
@@ -473,7 +496,7 @@ namespace xrx::detail
             , "Map should return value-like type.");
 
         using value_type = map_value;
-        using error_type = source_error;
+        using error_type = typename Errors::E;
         using is_async = std::true_type;
 
         using Unsubscriber = Unsubscriber_Sync_Async<ProducedObservable, source_type>;

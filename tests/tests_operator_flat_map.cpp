@@ -108,7 +108,7 @@ TEST(FlatMap, SyncSource_WithAsyncProducer)
     EXPECT_CALL(observer, on_completed()).Times(0);
     EXPECT_CALL(observer, on_error()).Times(0);
 
-    Subject_<int, none_tag> inner;
+    Subject_<int> inner;
     auto unsubscriber = observable::from(1)
         | flat_map([&](int)
     {
@@ -137,8 +137,8 @@ TEST(FlatMap, SyncSource_WithAsyncProducer_MultipleChildren)
     EXPECT_CALL(observer, on_completed()).InSequence(s);
     EXPECT_CALL(observer, on_error()).Times(0);
 
-    Subject_<std::string, none_tag> inner1;
-    Subject_<std::string, none_tag> inner2;
+    Subject_<std::string> inner1;
+    Subject_<std::string> inner2;
     auto unsubscriber = observable::from(1, 2)
         | flat_map([&](int v)
     {
@@ -157,4 +157,44 @@ TEST(FlatMap, SyncSource_WithAsyncProducer_MultipleChildren)
     inner2.on_next("47");
     inner2.on_next("48");
     inner2.on_completed();
+}
+
+TEST(FlatMap, SyncSource_WithAsyncProducer_Interleaving)
+{
+    using pair = std::tuple<int, std::string>;
+    ObserverMockAny<pair> observer;
+    Sequence s;
+
+    EXPECT_CALL(observer, on_next(pair(1, "42"))).InSequence(s);
+    EXPECT_CALL(observer, on_next(pair(2, "47"))).InSequence(s);
+    EXPECT_CALL(observer, on_next(pair(1, "43"))).InSequence(s);
+    EXPECT_CALL(observer, on_next(pair(2, "48"))).InSequence(s);
+
+    EXPECT_CALL(observer, on_completed()).InSequence(s);
+    EXPECT_CALL(observer, on_error()).Times(0);
+
+    Subject_<std::string> inner1;
+    Subject_<std::string> inner2;
+    auto unsubscriber = observable::from(1, 2)
+        | flat_map([&](int v)
+    {
+        if (v == 1)
+        {
+            return inner1.as_observable();
+        }
+        return inner2.as_observable();
+    }
+        , [](int source, std::string inner)
+    {
+        return pair(source, inner);
+    })
+        | subscribe(observer.ref());
+    
+    inner1.on_next("42");
+    inner2.on_next("47");
+    inner1.on_next("43");
+    inner2.on_next("48");
+
+    inner2.on_completed();
+    inner1.on_completed();
 }
