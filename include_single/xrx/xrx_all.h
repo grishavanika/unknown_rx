@@ -4696,7 +4696,7 @@ namespace xrx::detail
         Observer _destination;
         Produce _produce;
         AllObservables _observables;
-        std::atomic<int> _subscriptions_count;
+        int _subscriptions_count;
 
         explicit SharedState_Async_Async(XRX_RVALUE(Map&&) map, XRX_RVALUE(Observer&&) observer, XRX_RVALUE(Produce&&) produce)
             : _map(XRX_MOV(map))
@@ -4737,14 +4737,14 @@ namespace xrx::detail
 
         void on_completed_source(std::size_t child_index)
         {
-            const int count = (_subscriptions_count.fetch_sub(1) - 1);
-            assert(count >= 0);
-            if (count >= 1)
+            auto lock = std::lock_guard(_observables._mutex);
+            --_subscriptions_count;
+            assert(_subscriptions_count >= 0);
+            if (_subscriptions_count >= 1)
             {
                 // Not everyone completed yet.
                 return;
             }
-            auto lock = std::lock_guard(_observables._mutex);
             _observables.detach_all_unsafe(child_index);
             on_completed_optional(XRX_MOV(_destination));
         }
