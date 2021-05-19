@@ -4628,15 +4628,26 @@ namespace xrx::detail
         std::vector<Child_> _children;
         std::atomic_bool _unsubscribe = false;
 
-        bool detach_all()
+        bool detach_all(std::size_t ignore_index)
         {
             bool at_least_one = false;
             const bool was_unsubscribed = _unsubscribe.exchange(true);
             at_least_one |= (not was_unsubscribed);
             {
                 auto guard = std::lock_guard(_mutex);
-                for (Child_& child : _children)
+                for (std::size_t i = 0, count = _children.size(); i < count; ++i)
                 {
+                    if (i == ignore_index)
+                    {
+                        // We may be asked to unsubscribe during
+                        // observable's on_next/on_completed/on_error calls.
+                        // detach() may destroy observer's state, hence we
+                        // skip such cases.
+                        // It should be fine, since we do unsubscribe in other ways
+                        // (i.e., return unsubscribe(true)).
+                        continue;
+                    }
+                    Child_& child = _children[i];
                     at_least_one |= child._unsubscriber.detach();
                 }
             }
@@ -4656,7 +4667,10 @@ namespace xrx::detail
         {
             if (_observables)
             {
-                const bool at_least_one = _observables->detach_all();
+                // #TODO: may thi happen during parallel
+                // handling of on_next()/on_completed()/on_error() ?
+                const bool at_least_one = _observables->detach_all(
+                    std::size_t(-1)/*nothing to ignore*/);
                 return (_outer.detach() || at_least_one);
             }
             return false;
@@ -4716,13 +4730,13 @@ namespace xrx::detail
             // If `_unsubscribe` in parallel was requested.
             if (_observables._unsubscribe)
             {
-                // (void)_observables.detach_all();
+                (void)_observables.detach_all(std::size_t(-1)/*nothing to ignore*/);
                 return true;
             }
             return false;
         }
 
-        void on_completed_source()
+        void on_completed_source(std::size_t child_index)
         {
             const int count = (_subscriptions_count.fetch_sub(1) - 1);
             assert(count >= 0);
@@ -4731,16 +4745,16 @@ namespace xrx::detail
                 // Not everyone completed yet.
                 return;
             }
-            // _observables.detach_all();
             auto lock = std::lock_guard(_serialize);
+            _observables.detach_all(child_index);
             on_completed_optional(XRX_MOV(_destination));
         }
 
         template<typename... VoidOrError>
-        void on_error_source(XRX_RVALUE(VoidOrError&&)... e)
+        void on_error_source(std::size_t child_index, XRX_RVALUE(VoidOrError&&)... e)
         {
-            // _observables.detach_all();
             auto lock = std::lock_guard(_serialize);
+            _observables.detach_all(child_index);
             if constexpr ((sizeof...(e)) == 0)
             {
                 on_error_optional(XRX_MOV(_destination));
@@ -4755,13 +4769,13 @@ namespace xrx::detail
         auto on_error(std::size_t child_index, XRX_RVALUE(VoidOrError&&)... e)
         {
             (void)child_index;
-            on_error_source(XRX_MOV(e)...);
+            on_error_source(child_index, XRX_MOV(e)...);
         }
 
         auto on_completed(std::size_t child_index)
         {
             (void)child_index;
-            on_completed_source();
+            on_completed_source(child_index);
         }
 
         auto on_next(std::size_t child_index, XRX_RVALUE(child_value&&) value)
@@ -4777,7 +4791,7 @@ namespace xrx::detail
             }
             if (stop)
             {
-                // _observables.detach_all();
+                _observables.detach_all(child_index/*ignore*/);
                 return unsubscribe(true);
             }
             return unsubscribe(false);
@@ -4813,7 +4827,7 @@ namespace xrx::detail
             assert(not _state._end_with_error);
             assert(not _state._completed);
             assert(not _state._unsubscribed);
-            _shared->on_completed_source();
+            _shared->on_completed_source(std::size_t(-1));
             _state._completed = true;
         }
         template<typename... VoidOrError>
@@ -4822,7 +4836,7 @@ namespace xrx::detail
             assert(not _state._end_with_error);
             assert(not _state._completed);
             assert(not _state._unsubscribed);
-            _shared->on_error_source(XRX_MOV(e)...);
+            _shared->on_error_source(std::size_t(-1), XRX_MOV(e)...);
             _state._end_with_error = true;
         }
     };
