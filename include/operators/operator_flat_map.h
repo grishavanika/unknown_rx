@@ -679,9 +679,298 @@ namespace xrx::detail
         {
             static_assert(not std::is_lvalue_reference_v<Observer>);
             using OuterObserver_ = OuterObserver_Async_Sync<Observer, Produce, Map, source_type, produce_type>;
+            return XRX_MOV(_source).subscribe(OuterObserver_(
+                XRX_MOV(_produce), XRX_MOV(_map), XRX_MOV(destination_)));
+        }
+    };
 
-            OuterObserver_ outer(XRX_MOV(_produce), XRX_MOV(_map), XRX_MOV(destination_));
-            return XRX_MOV(_source).subscribe(XRX_MOV(outer));
+    // The state of single subscription.
+    template<typename Observable, typename SourceValue>
+    struct ChildObservableState_Async_Async
+    {
+        using Unsubscriber = typename Observable::Unsubscriber;
+
+        SourceValue _source_value;
+        Unsubscriber _unsubscriber;
+    };
+
+    // Tricky state for all subscriptions AND stop flag.
+    // This is made into one struct to be able to share
+    // this data with Unsubscriber returned to user.
+    // 
+    // `_unsubscribe` is valid if there is shared data valid.
+    template<typename Observable, typename SourceValue>
+    struct AllObservablesState_Async_Async
+    {
+        using Child_ = ChildObservableState_Async_Async<Observable, SourceValue>;
+        
+        std::mutex _mutex;
+        std::vector<Child_> _children;
+        std::atomic_bool _unsubscribe = false;
+
+        bool detach_all()
+        {
+            bool at_least_one = false;
+            const bool was_unsubscribed = _unsubscribe.exchange(true);
+            at_least_one |= (not was_unsubscribed);
+            {
+                auto guard = std::lock_guard(_mutex);
+                for (Child_& child : _children)
+                {
+                    at_least_one |= child._unsubscriber.detach();
+                }
+            }
+            return at_least_one;
+        }
+    };
+
+    template<typename OuterUnsubscriber, typename ObservablesState>
+    struct Unsubscriber_Async_Async
+    {
+        OuterUnsubscriber _outer;
+        std::shared_ptr<ObservablesState> _observables;
+
+        using has_effect = std::true_type;
+        
+        bool detach()
+        {
+            if (_observables)
+            {
+                const bool at_least_one = _observables->detach_all();
+                return (_outer.detach() || at_least_one);
+            }
+            return false;
+        }
+    };
+
+    template<typename Map
+        , typename Observer
+        , typename SourceValue
+        , typename ChildObservable>
+    struct SharedState_Async_Async
+    {
+        using AllObservables = AllObservablesState_Async_Async<ChildObservable, SourceValue>;
+        using child_value = typename ChildObservable::value_type;
+
+        Map _map;
+        Observer _destination;
+        AllObservables _observables;
+        std::mutex _serialize;
+        std::atomic<int> _subscriptions_count;
+
+        explicit SharedState_Async_Async(XRX_RVALUE(Map&&) map, XRX_RVALUE(Observer&&) observer)
+            : _map(XRX_MOV(map))
+            , _destination(XRX_MOV(observer))
+            , _observables()
+            , _serialize()
+            , _subscriptions_count(1) // start with subscription to source
+        {
+        }
+
+        bool on_next_child(XRX_RVALUE(SourceValue&&) source_value
+            , XRX_RVALUE(ChildObservable&&) child
+            , std::shared_ptr<SharedState_Async_Async> self)
+        {
+            using Child = AllObservables::Child_;
+            using InnerObserver = InnerObserver_Sync_Async<SharedState_Async_Async
+                , child_value
+                , typename ChildObservable::error_type>;
+            using InnerUnsubscriber = typename ChildObservable::Unsubscriber;
+
+            InnerUnsubscriber child_unsubscribe;
+            {
+                // Need to guard subscription to be sure racy complete (on_completed_source())
+                // will not think there are no children anymore; also external
+                // unsubscription may miss child we just construct now.
+                auto guard = std::lock_guard(_observables._mutex);
+                ++_subscriptions_count;
+                const std::size_t index = _observables._children.size();
+                // Now, we need to insert _before_ subscription first
+                // so if there will be some inner values emitted during subscription
+                // we will known about Observable.
+                _observables._children.push_back(Child(XRX_MOV(source_value)));
+                auto& state = _observables._children.back();
+                state._unsubscriber = XRX_MOV(child).subscribe(InnerObserver(index, XRX_MOV(self)));
+                child_unsubscribe = state._unsubscriber;
+            }
+            // If `_unsubscribe` in parallel was requested.
+            if (_observables._unsubscribe)
+            {
+                // (void)_observables.detach_all();
+                return true;
+            }
+            return false;
+        }
+
+        void on_completed_source()
+        {
+            const int count = (_subscriptions_count.fetch_sub(1) - 1);
+            assert(count >= 0);
+            if (count >= 1)
+            {
+                // Not everyone completed yet.
+                return;
+            }
+            // _observables.detach_all();
+            auto lock = std::lock_guard(_serialize);
+            on_completed_optional(XRX_MOV(_destination));
+        }
+
+        template<typename... VoidOrError>
+        void on_error_source(XRX_RVALUE(VoidOrError&&)... e)
+        {
+            // _observables.detach_all();
+            auto lock = std::lock_guard(_serialize);
+            if constexpr ((sizeof...(e)) == 0)
+            {
+                on_error_optional(XRX_MOV(_destination));
+            }
+            else
+            {
+                on_error_optional(XRX_MOV(_destination), XRX_MOV(e...));
+            }
+        }
+
+        template<typename... VoidOrError>
+        auto on_error(std::size_t child_index, XRX_RVALUE(VoidOrError&&)... e)
+        {
+            (void)child_index;
+            on_error_source(XRX_MOV(e)...);
+        }
+
+        auto on_completed(std::size_t child_index)
+        {
+            (void)child_index;
+            on_completed_source();
+        }
+
+        auto on_next(std::size_t child_index, XRX_RVALUE(child_value&&) value)
+        {
+            bool stop = false;
+            {
+                auto lock = std::lock_guard(_serialize);
+                assert(child_index < _observables._children.size());
+                auto source_value = _observables._children[child_index]._source_value;
+                const auto action = on_next_with_action(
+                    _destination, _map(XRX_MOV(source_value), XRX_MOV(value)));
+                stop = action._stop;
+            }
+            if (stop)
+            {
+                // _observables.detach_all();
+                return unsubscribe(true);
+            }
+            return unsubscribe(false);
+        }
+    };
+
+    template<typename Shared, typename SourceValue, typename Produce>
+    struct OuterObserver_Async_Async
+    {
+        std::shared_ptr<Shared> _shared;
+        Produce _produce;
+        State_Sync_Sync _state;
+
+        unsubscribe on_next(XRX_RVALUE(SourceValue&&) source_value)
+        {
+            assert(not _state._end_with_error);
+            assert(not _state._completed);
+            assert(not _state._unsubscribed);
+            if (_shared->_observables._unsubscribe)
+            {
+                _state._unsubscribed = true;
+                return unsubscribe(true);
+            }
+            SourceValue copy = source_value;
+            _state._unsubscribed = _shared->on_next_child(
+                XRX_MOV(copy)
+                , _produce(XRX_MOV(source_value))
+                , _shared);
+            return unsubscribe(_state._unsubscribed);
+        }
+        void on_completed()
+        {
+            assert(not _state._end_with_error);
+            assert(not _state._completed);
+            assert(not _state._unsubscribed);
+            _shared->on_completed_source();
+            _state._completed = true;
+        }
+        template<typename... VoidOrError>
+        void on_error(XRX_RVALUE(VoidOrError&&)... e)
+        {
+            assert(not _state._end_with_error);
+            assert(not _state._completed);
+            assert(not _state._unsubscribed);
+            _shared->on_error_source(XRX_MOV(e)...);
+            _state._end_with_error = true;
+        }
+    };
+
+    template<typename SourceObservable
+        , typename ProducedObservable
+        , typename Produce
+        , typename Map>
+    struct FlatMapObservable<
+        SourceObservable
+        , ProducedObservable
+        , Produce
+        , Map
+        , true /*Async source Observable*/
+        , true /*Async Observables produced*/>
+    {
+        static_assert(ConceptObservable<ProducedObservable>
+            , "Return value of Produce should be Observable.");
+
+        [[no_unique_address]] SourceObservable _source;
+        [[no_unique_address]] Produce _produce;
+        [[no_unique_address]] Map _map;
+
+        using source_type = typename SourceObservable::value_type;
+        using source_error = typename SourceObservable::error_type;
+        using produce_type = typename ProducedObservable::value_type;
+        using produce_error = typename ProducedObservable::error_type;
+
+        using OuterUnsubscriber = typename SourceObservable::Unsubscriber;
+        using InnerUnsubscriber = typename ProducedObservable::Unsubscriber;
+        using AllObservables = AllObservablesState_Async_Async<ProducedObservable, source_type>;
+        using Unsubscriber = Unsubscriber_Async_Async<OuterUnsubscriber, AllObservables>;
+
+        using Errors = MergedErrors<source_error, produce_error>;
+
+        static_assert(not std::is_same_v<produce_type, void>
+            , "Observables with void value type are not yet supported.");
+
+        static_assert(Errors::are_compatible::value
+            , "Different error types for Source Observable and Produced Observable are not yet supported.");
+
+        using map_value = decltype(_map(std::declval<source_type>(), std::declval<produce_type>()));
+        static_assert(not std::is_same_v<map_value, void>
+            , "Observables with void value type are not yet supported. "
+              "As result of applying given Map.");
+        static_assert(not std::is_reference_v<map_value>
+            , "Map should return value-like type.");
+
+        using value_type = map_value;
+        using error_type = typename Errors::E;
+        using is_async = std::true_type;
+
+        FlatMapObservable fork() && { return FlatMapObservable(XRX_MOV(_source), XRX_MOV(_produce), XRX_MOV(_map)); }
+        FlatMapObservable fork() &  { return FlatMapObservable(_source.fork(), _produce, _map); }
+
+        template<typename Observer>
+            requires ConceptValueObserverOf<Observer, value_type>
+        Unsubscriber subscribe(XRX_RVALUE(Observer&&) destination_) &&
+        {
+            static_assert(not std::is_lvalue_reference_v<Observer>);
+            using Shared_ = SharedState_Async_Async<Map, Observer, source_type, ProducedObservable>;
+            using AllObservablesRef = std::shared_ptr<typename Shared_::AllObservables>;
+            using OuterObserver_ = OuterObserver_Async_Async<Shared_, source_type, Produce>;
+
+            auto shared = std::make_shared<Shared_>(XRX_MOV(_map), XRX_MOV(destination_));
+            auto observables_ref = AllObservablesRef(shared, &shared->_observables);
+            auto unsubscriber = XRX_MOV(_source).subscribe(OuterObserver_(XRX_MOV(shared), XRX_MOV(_produce)));
+            return Unsubscriber(XRX_MOV(unsubscriber), XRX_MOV(observables_ref));
         }
     };
 

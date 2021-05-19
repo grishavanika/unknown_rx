@@ -292,3 +292,33 @@ TEST(FlatMap, AsyncSource_SyncInner)
     source.on_next(2);
     source.on_completed();
 }
+
+TEST(FlatMap, AsyncSource_AsyncInner)
+{
+    ObserverMock observer;
+    Sequence s;
+
+    EXPECT_CALL(observer, on_next(1)).InSequence(s);
+    EXPECT_CALL(observer, on_next(2)).InSequence(s);
+    EXPECT_CALL(observer, on_next(3)).InSequence(s);
+
+    EXPECT_CALL(observer, on_completed()).InSequence(s);
+    EXPECT_CALL(observer, on_error()).Times(0);
+
+    Subject_<int> source;
+    Subject_<int> inner;
+
+    source.as_observable().flat_map([&](int)
+    {
+        return inner.as_observable();
+    })
+        .subscribe(observer.ref());
+
+    source.on_next(-1);
+    source.on_completed();
+
+    inner.on_next(1);
+    inner.on_next(2);
+    inner.on_next(3);
+    inner.on_completed();
+}
