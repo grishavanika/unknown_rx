@@ -704,34 +704,39 @@ namespace xrx::detail
     {
         using Child_ = ChildObservableState_Async_Async<Observable, SourceValue>;
         
+#if (0)
         std::mutex _mutex;
+#else
+        debug::AssertMutex<> _mutex;
+#endif
         std::vector<Child_> _children;
-        std::atomic_bool _unsubscribe = false;
+        bool _unsubscribe = false;
 
-        bool detach_all(std::size_t ignore_index)
+        bool detach_all_unsafe(std::size_t ignore_index)
         {
-            bool at_least_one = false;
-            const bool was_unsubscribed = _unsubscribe.exchange(true);
-            at_least_one |= (not was_unsubscribed);
+            // Should be locked.
+            // auto guard = std::lock_guard(_mutex);
+            if (_unsubscribe)
             {
-                auto guard = std::lock_guard(_mutex);
-                for (std::size_t i = 0, count = _children.size(); i < count; ++i)
-                {
-                    if (i == ignore_index)
-                    {
-                        // We may be asked to unsubscribe during
-                        // observable's on_next/on_completed/on_error calls.
-                        // detach() may destroy observer's state, hence we
-                        // skip such cases.
-                        // It should be fine, since we do unsubscribe in other ways
-                        // (i.e., return unsubscribe(true)).
-                        continue;
-                    }
-                    Child_& child = _children[i];
-                    at_least_one |= child._unsubscriber.detach();
-                }
+                return false;
             }
-            return at_least_one;
+            _unsubscribe = true;
+            for (std::size_t i = 0, count = _children.size(); i < count; ++i)
+            {
+                if (i == ignore_index)
+                {
+                    // We may be asked to unsubscribe during
+                    // observable's on_next/on_completed/on_error calls.
+                    // detach() may destroy observer's state, hence we
+                    // skip such cases.
+                    // It should be fine, since we do unsubscribe in other ways
+                    // (i.e., return unsubscribe(true)).
+                    continue;
+                }
+                Child_& child = _children[i];
+                (void)child._unsubscriber.detach();
+            }
+            return true;
         }
     };
 
@@ -747,11 +752,11 @@ namespace xrx::detail
         {
             if (_observables)
             {
-                // #TODO: may thi happen during parallel
-                // handling of on_next()/on_completed()/on_error() ?
-                const bool at_least_one = _observables->detach_all(
+                const bool root_detached = _outer.detach();
+                auto guard = std::lock_guard(_observables->_mutex);
+                const bool at_least_one_child = _observables->detach_all_unsafe(
                     std::size_t(-1)/*nothing to ignore*/);
-                return (_outer.detach() || at_least_one);
+                return (root_detached || at_least_one_child);
             }
             return false;
         }
@@ -759,6 +764,7 @@ namespace xrx::detail
 
     template<typename Map
         , typename Observer
+        , typename Produce
         , typename SourceValue
         , typename ChildObservable>
     struct SharedState_Async_Async
@@ -768,21 +774,20 @@ namespace xrx::detail
 
         Map _map;
         Observer _destination;
+        Produce _produce;
         AllObservables _observables;
-        std::mutex _serialize;
         std::atomic<int> _subscriptions_count;
 
-        explicit SharedState_Async_Async(XRX_RVALUE(Map&&) map, XRX_RVALUE(Observer&&) observer)
+        explicit SharedState_Async_Async(XRX_RVALUE(Map&&) map, XRX_RVALUE(Observer&&) observer, XRX_RVALUE(Produce&&) produce)
             : _map(XRX_MOV(map))
             , _destination(XRX_MOV(observer))
+            , _produce(XRX_MOV(produce))
             , _observables()
-            , _serialize()
             , _subscriptions_count(1) // start with subscription to source
         {
         }
 
         bool on_next_child(XRX_RVALUE(SourceValue&&) source_value
-            , XRX_RVALUE(ChildObservable&&) child
             , std::shared_ptr<SharedState_Async_Async> self)
         {
             using Child = AllObservables::Child_;
@@ -791,28 +796,22 @@ namespace xrx::detail
                 , typename ChildObservable::error_type>;
             using InnerUnsubscriber = typename ChildObservable::Unsubscriber;
 
-            InnerUnsubscriber child_unsubscribe;
-            {
-                // Need to guard subscription to be sure racy complete (on_completed_source())
-                // will not think there are no children anymore; also external
-                // unsubscription may miss child we just construct now.
-                auto guard = std::lock_guard(_observables._mutex);
-                ++_subscriptions_count;
-                const std::size_t index = _observables._children.size();
-                // Now, we need to insert _before_ subscription first
-                // so if there will be some inner values emitted during subscription
-                // we will known about Observable.
-                _observables._children.push_back(Child(XRX_MOV(source_value)));
-                auto& state = _observables._children.back();
-                state._unsubscriber = XRX_MOV(child).subscribe(InnerObserver(index, XRX_MOV(self)));
-                child_unsubscribe = state._unsubscriber;
-            }
-            // If `_unsubscribe` in parallel was requested.
+            // Need to guard subscription to be sure racy complete (on_completed_source())
+            // will not think there are no children anymore; also external
+            // unsubscription may miss child we just construct now.
+            auto guard = std::lock_guard(_observables._mutex);
             if (_observables._unsubscribe)
             {
-                (void)_observables.detach_all(std::size_t(-1)/*nothing to ignore*/);
                 return true;
             }
+            ++_subscriptions_count;
+            const std::size_t index = _observables._children.size();
+            // Now, we need to insert _before_ subscription first
+            // so if there will be some inner values emitted during subscription
+            // we will known about Observable.
+            auto copy = source_value;
+            auto& state = _observables._children.emplace_back(XRX_MOV(source_value));
+            state._unsubscriber = _produce(XRX_MOV(copy)).subscribe(InnerObserver(index, XRX_MOV(self)));
             return false;
         }
 
@@ -825,16 +824,16 @@ namespace xrx::detail
                 // Not everyone completed yet.
                 return;
             }
-            auto lock = std::lock_guard(_serialize);
-            _observables.detach_all(child_index);
+            auto lock = std::lock_guard(_observables._mutex);
+            _observables.detach_all_unsafe(child_index);
             on_completed_optional(XRX_MOV(_destination));
         }
 
         template<typename... VoidOrError>
         void on_error_source(std::size_t child_index, XRX_RVALUE(VoidOrError&&)... e)
         {
-            auto lock = std::lock_guard(_serialize);
-            _observables.detach_all(child_index);
+            auto lock = std::lock_guard(_observables._mutex);
+            _observables.detach_all_unsafe(child_index);
             if constexpr ((sizeof...(e)) == 0)
             {
                 on_error_optional(XRX_MOV(_destination));
@@ -860,18 +859,14 @@ namespace xrx::detail
 
         auto on_next(std::size_t child_index, XRX_RVALUE(child_value&&) value)
         {
-            bool stop = false;
+            auto guard = std::unique_lock(_observables._mutex);
+            assert(child_index < _observables._children.size());
+            auto source_value = _observables._children[child_index]._source_value;
+            const auto action = on_next_with_action(
+                _destination, _map(XRX_MOV(source_value), XRX_MOV(value)));
+            if (action._stop)
             {
-                auto lock = std::lock_guard(_serialize);
-                assert(child_index < _observables._children.size());
-                auto source_value = _observables._children[child_index]._source_value;
-                const auto action = on_next_with_action(
-                    _destination, _map(XRX_MOV(source_value), XRX_MOV(value)));
-                stop = action._stop;
-            }
-            if (stop)
-            {
-                _observables.detach_all(child_index/*ignore*/);
+                _observables.detach_all_unsafe(child_index/*ignore*/);
                 return unsubscribe(true);
             }
             return unsubscribe(false);
@@ -890,15 +885,8 @@ namespace xrx::detail
             assert(not _state._end_with_error);
             assert(not _state._completed);
             assert(not _state._unsubscribed);
-            if (_shared->_observables._unsubscribe)
-            {
-                _state._unsubscribed = true;
-                return unsubscribe(true);
-            }
-            SourceValue copy = source_value;
             _state._unsubscribed = _shared->on_next_child(
-                XRX_MOV(copy)
-                , _produce(XRX_MOV(source_value))
+                XRX_MOV(source_value)
                 , _shared);
             return unsubscribe(_state._unsubscribed);
         }
@@ -977,11 +965,11 @@ namespace xrx::detail
         Unsubscriber subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
             static_assert(not std::is_lvalue_reference_v<Observer>);
-            using Shared_ = SharedState_Async_Async<Map, Observer, source_type, ProducedObservable>;
+            using Shared_ = SharedState_Async_Async<Map, Observer, Produce, source_type, ProducedObservable>;
             using AllObservablesRef = std::shared_ptr<typename Shared_::AllObservables>;
             using OuterObserver_ = OuterObserver_Async_Async<Shared_, source_type, Produce>;
 
-            auto shared = std::make_shared<Shared_>(XRX_MOV(_map), XRX_MOV(destination_));
+            auto shared = std::make_shared<Shared_>(XRX_MOV(_map), XRX_MOV(destination_), XRX_MOV(_produce));
             auto observables_ref = AllObservablesRef(shared, &shared->_observables);
             auto unsubscriber = XRX_MOV(_source).subscribe(OuterObserver_(XRX_MOV(shared), XRX_MOV(_produce)));
             return Unsubscriber(XRX_MOV(unsubscriber), XRX_MOV(observables_ref));
