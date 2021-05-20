@@ -169,4 +169,15 @@ namespace xrx::detail::operator_tag
         };
     };
 
+    struct Iterate
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .iterate() operator implementation. "
+                  "Missing `operators/operator_iterate.h` include ?");
+        };
+    };
+
 } // namespace xrx::detail::operator_tag

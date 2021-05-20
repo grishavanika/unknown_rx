@@ -57,6 +57,7 @@ set(xrx_HEADERS
     "include/operators/operator_flat_map.h"
     "include/operators/operator_window.h"
     "include/operators/operator_reduce.h"
+    "include/operators/operator_iterate.h"
     "include/debug/assert_mutex.h"
     "include/utils_ref_tracking_observer.h"
     "include/simple_scheduler_event_loop.h"

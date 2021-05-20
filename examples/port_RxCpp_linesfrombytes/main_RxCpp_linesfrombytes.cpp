@@ -106,9 +106,7 @@ int main()
             std::cregex_token_iterator cursor(&s[0], &s[0] + s.size(), delim, {-1, 0});
             std::cregex_token_iterator end;
             std::vector<std::string> splits(cursor, end);
-            // return iterate(move(splits));
-            assert(splits.size() > 0);
-            return observable::from(std::move(splits[0]));
+            return iterate(std::move(splits));
         })
         .filter([](const std::string& s)
         {

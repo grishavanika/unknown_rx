@@ -59,4 +59,12 @@ namespace xrx::observable
         return ::xrx::detail::make_operator(xrx::detail::operator_tag::Concat()
             , XRX_MOV(observable1), XRX_MOV(observable2), XRX_MOV(observables)...);
     }
+
+    template<typename Container>
+    auto iterate(XRX_RVALUE(Container&&) values)
+    {
+        static_assert(not std::is_lvalue_reference_v<Container>);
+        return ::xrx::detail::make_operator(xrx::detail::operator_tag::Iterate()
+            , XRX_MOV(values));
+    }
 } // namespace xrx::observable
