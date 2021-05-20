@@ -25,6 +25,7 @@ set(xrx_tests_SRC
     "tests_operator_take.cpp"
     "tests_operator_reduce.cpp"
     "tests_operator_iterate.cpp"
+    "tests_operator_tap_do.cpp"
     )
 add_executable(tests_xrx ${xrx_tests_SRC} ${xrx_tests_HDR})
 set_all_warnings(tests_xrx PRIVATE)

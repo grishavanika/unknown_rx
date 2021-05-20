@@ -180,4 +180,15 @@ namespace xrx::detail::operator_tag
         };
     };
 
+    struct TapOrDo
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .tap()/.do_() operator implementation. "
+                  "Missing `operators/operator_tap_do.h` include ?");
+        };
+    };
+
 } // namespace xrx::detail::operator_tag

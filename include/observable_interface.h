@@ -115,6 +115,18 @@ namespace xrx::detail
             return make_operator(detail::operator_tag::Reduce()
                 , XRX_MOV(*this), XRX_FWD(initial), XRX_FWD(op));
         }
+        template<typename Observer>
+        auto tap(Observer&& observer) &&
+        {
+            return make_operator(detail::operator_tag::TapOrDo()
+                , XRX_MOV(*this), XRX_FWD(observer));
+        }
+        template<typename Observer> // same as tap().
+        auto do_(Observer&& observer) &&
+        {
+            return make_operator(detail::operator_tag::TapOrDo()
+                , XRX_MOV(*this), XRX_FWD(observer));
+        }
     };
 } // namespace xrx::detail
 

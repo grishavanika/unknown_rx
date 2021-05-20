@@ -6,6 +6,8 @@
 #include <regex>
 #include <random>
 #include <iostream>
+#include <iterator>
+#include <algorithm>
 #include <cstdint>
 
 using namespace xrx;
@@ -89,12 +91,18 @@ int main()
         | flat_map([](auto&& observable)
         {
             return observable.fork_move()
-                | reduce(std::vector<uint8_t>(),
-                    [](std::vector<uint8_t>&& v, uint8_t b)
+                | reduce(std::vector<std::uint8_t>(),
+                    [](std::vector<std::uint8_t>&& v, std::uint8_t b)
                     {
                         v.push_back(b);
                         return std::move(v);
                     });
+        })
+        | tap([](std::vector<std::uint8_t>&& v)
+        {
+            // print input packet of bytes
+            std::copy(v.begin(), v.end(), std::ostream_iterator<long>(std::cout, " "));
+            std::cout << std::endl;
         });
 
     // create strings split on \r
@@ -116,14 +124,6 @@ int main()
         .ref_count();
 
     // WIP. To be continued.
-    std::cout << "<bytes>" << "\n";
-    bytes.fork()
-        .subscribe([](auto v)
-    {
-        std::copy(v.begin(), v.end(), std::ostream_iterator<long>(std::cout, " "));
-        std::cout << std::endl;
-    });
-    std::cout << "<strings>" << "\n";
     strings.fork()
         .subscribe([](auto v)
     {
