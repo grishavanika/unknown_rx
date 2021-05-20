@@ -249,17 +249,21 @@ namespace xrx::detail
         std::optional<Unsubscriber> _unsubscriber;
     };
 
-    // Tricky state for all subscriptions AND stop flag.
+    // State for all subscriptions AND stop flag.
     // This is made into one struct to be able to share
     // this data with Unsubscriber returned to user.
-    // 
-    // `_unsubscribe` is valid if there is shared data valid.
     template<typename Observable, typename SourceValue>
-    struct AllObservablesState
+    struct AllObservablesState_Sync_Async
     {
         using Child_ = ChildObservableState_Sync_Async<SourceValue, Observable>;
         std::vector<Child_> _children;
-        std::atomic_bool* _unsubscribe = nullptr;
+        bool _unsubscribe = false;
+#if (0)
+        using Mutex = debug::AssertMutex<>;
+#else
+        using Mutex = std::mutex;
+#endif
+        Mutex* _mutex = nullptr;
     };
 
     template<typename Observable, typename SourceValue>
@@ -267,7 +271,7 @@ namespace xrx::detail
     {
         using has_effect = std::true_type;
 
-        using AllObservables_ = AllObservablesState<Observable, SourceValue>;
+        using AllObservables_ = AllObservablesState_Sync_Async<Observable, SourceValue>;
         std::shared_ptr<AllObservables_> _shared;
 
         bool detach()
@@ -276,10 +280,9 @@ namespace xrx::detail
             {
                 return false;
             }
-            // `_unsubscribe` is a raw pointer into `_shared`.
-            // Since _shared is valid, we know this pointer is valid too.
-            assert(_shared->_unsubscribe);
-            (void)_shared->_unsubscribe->exchange(true);
+            assert(_shared->_mutex);
+            auto guard = std::lock_guard(*_shared->_mutex);
+            _shared->_unsubscribe = true;
             bool at_least_one = false;
             for (auto& child : _shared->_children)
             {
@@ -297,18 +300,14 @@ namespace xrx::detail
         , typename InnerValue>
     struct SharedState_Sync_Async
     {
-        using AllObservables = AllObservablesState<Observable, SourceValue>;
+        using AllObservables = AllObservablesState_Sync_Async<Observable, SourceValue>;
+        using Mutex = typename AllObservables::Mutex;
         AllObservables _observables;
         Observer _observer;
         Map _map;
         std::size_t _subscribed_count;
-        std::atomic<std::size_t> _completed_count;
-        std::atomic<bool> _unsubscribe = false;
-#if (0)
-        debug::AssertMutex<> _serialize;
-#else
-        std::mutex _serialize;
-#endif
+        std::size_t _completed_count;
+        Mutex _mutex;
 
         explicit SharedState_Sync_Async(XRX_RVALUE(AllObservables&&) observables
             , XRX_RVALUE(Observer&&) observer, XRX_RVALUE(Map&&) map)
@@ -317,17 +316,21 @@ namespace xrx::detail
                 , _map(XRX_MOV(map))
                 , _subscribed_count(0)
                 , _completed_count(0)
-                , _unsubscribe(false)
-                , _serialize()
+                , _mutex()
         {
+            _observables._mutex = &_mutex;
         }
 
-        void unsubscribe_all()
+        void unsubscribe_all(std::size_t ignore_index)
         {
-            // Multiple, in-parallel calls to `_children`
-            // should be ok. We never invalidate it.
-            for (auto& child : _observables._children)
+            for (std::size_t i = 0, count = _observables._children.size(); i < count; ++i)
             {
+                if (i == ignore_index)
+                {
+                    // #TODO: explain.
+                    continue;
+                }
+                auto& child = _observables._children[i];
                 assert(child._unsubscriber);
                 child._unsubscriber->detach();
                 // Note, we never reset _unsubscriber optional.
@@ -337,68 +340,61 @@ namespace xrx::detail
 
         unsubscribe on_next(std::size_t child_index, XRX_RVALUE(InnerValue&&) inner_value)
         {
+            auto guard = std::lock_guard(*_observables._mutex);
             assert(child_index < _observables._children.size());
-            if (_unsubscribe)
+            if (_observables._unsubscribe)
             {
+                // #XXX: suspicious.
                 // Not needed: called in all cases when `_unsubscribe` is set to true.
                 // unsubscribe_all();
                 return unsubscribe(true);
             }
 
             auto source_value = _observables._children[child_index]._source_value;
-            bool stop = false;
+            const auto action = on_next_with_action(_observer
+                , _map(XRX_MOV(source_value), XRX_MOV(inner_value)));
+            if (action._stop)
             {
-                // The lock there is ONLY to serialize (possibly)
-                // parallel calls to on_next()/on_error().
-                auto guard = std::lock_guard(_serialize);
-                const auto action = on_next_with_action(_observer
-                    , _map(XRX_MOV(source_value), XRX_MOV(inner_value)));
-                stop = action._stop;
+                _observables._unsubscribe = true;
+                unsubscribe_all(child_index);
+                return unsubscribe(true);
             }
-
-            if (not stop)
-            {
-                return unsubscribe(false);
-            }
-            _unsubscribe = true;
-            unsubscribe_all();
-            return unsubscribe(true);
+            return unsubscribe(false);
         }
         template<typename... VoidOrError>
         void on_error(std::size_t child_index, XRX_RVALUE(VoidOrError&&)... e)
         {
-            (void)child_index;
+            auto guard = std::lock_guard(*_observables._mutex);
             assert(child_index < _observables._children.size());
-            assert(not _unsubscribe);
-            // The lock there is ONLY to serialize (possibly)
-            // parallel calls to on_next()/on_error().
+            assert(not _observables._unsubscribe);
             if constexpr ((sizeof...(e)) == 0)
             {
-                auto guard = std::lock_guard(_serialize);
                 on_error_optional(XRX_MOV(_observer));
             }
             else
             {
-                auto guard = std::lock_guard(_serialize);
+                auto guard = std::lock_guard(_observables._serialize);
                 on_error_optional(XRX_MOV(_observer), XRX_MOV(e...));
             }
-            _unsubscribe = true;
-            unsubscribe_all();
+            _observables._unsubscribe = true;
+            unsubscribe_all(child_index);
         }
         void on_completed(std::size_t child_index)
         {
+            auto guard = std::lock_guard(*_observables._mutex);
             assert(child_index < _observables._children.size());
-            assert(not _unsubscribe);
-            const std::size_t finished = (_completed_count.fetch_add(+1) + 1);
-            assert(finished <= _subscribed_count);
-            if (finished == _subscribed_count)
+            assert(not _observables._unsubscribe);
+            ++_completed_count;
+            assert(_completed_count <= _subscribed_count);
+            if (_completed_count == _subscribed_count)
             {
-                auto guard = std::lock_guard(_serialize);
                 on_completed_optional(XRX_MOV(_observer));
             }
+#if (0) // #XXX: suspicious.
             auto& kill = _observables._children[child_index]._unsubscriber;
             assert(kill);
             kill->detach();
+#endif
         }
     };
 
@@ -434,7 +430,7 @@ namespace xrx::detail
     struct OuterObserver_Sync_Async
     {
         Observer* _destination = nullptr;
-        AllObservablesState<Observable, SourceValue>* _observables;
+        AllObservablesState_Sync_Async<Observable, SourceValue>* _observables;
         Producer* _produce = nullptr;
         State_Sync_Sync* _state = nullptr;
 
@@ -529,7 +525,7 @@ namespace xrx::detail
             static_assert(not std::is_lvalue_reference_v<Observer>);
             using Observer_ = std::remove_reference_t<Observer>;
             using Root_ = OuterObserver_Sync_Async<Observer_, Produce, ProducedObservable, source_type>;
-            using AllObsevables = AllObservablesState<ProducedObservable, source_type>;
+            using AllObsevables = AllObservablesState_Sync_Async<ProducedObservable, source_type>;
             using SharedState_ = SharedState_Sync_Async<Observer_, Map, ProducedObservable, source_type, produce_type>;
             using InnerObserver_ = InnerObserver_Sync_Async<SharedState_, produce_type, error_type>;
 
@@ -551,7 +547,6 @@ namespace xrx::detail
 
             auto shared = std::make_shared<SharedState_>(XRX_MOV(observables)
                 , XRX_MOV(destination_), XRX_MOV(_map));
-            shared->_observables._unsubscribe = &shared->_unsubscribe;
             shared->_subscribed_count = shared->_observables._children.size();
             std::shared_ptr<AllObsevables> unsubscriber(shared, &shared->_observables);
 
