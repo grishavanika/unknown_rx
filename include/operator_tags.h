@@ -191,4 +191,26 @@ namespace xrx::detail::operator_tag
         };
     };
 
+    struct WindowToggle
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .window_toggle() operator implementation. "
+                  "Missing `operators/operator_window_toggle.h` include ?");
+        };
+    };
+
+    struct StartsWith
+    {
+        template<typename _>
+        struct NotFound
+        {
+            static_assert(AlwaysFalse<_>()
+                , "Failed to find .start_with() operator implementation. "
+                  "Missing `operators/operator_start_with.h` include ?");
+        };
+    };
+
 } // namespace xrx::detail::operator_tag

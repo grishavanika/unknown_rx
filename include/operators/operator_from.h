@@ -50,7 +50,7 @@ namespace xrx::detail
 
     template<typename V, typename... Vs>
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::From
-        , V&& v0, Vs&&... vs)
+        , XRX_RVALUE(V&&) v0, XRX_RVALUE(Vs&&)... vs)
     {
         static_assert((not std::is_lvalue_reference_v<V>)
                   && ((not std::is_lvalue_reference_v<Vs>) && ...)

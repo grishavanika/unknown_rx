@@ -52,6 +52,8 @@ namespace xrx::detail
         struct RefCountUnsubscriber
         {
             Unsubscriber _unsubscriber;
+
+            explicit RefCountUnsubscriber() = default;
             explicit RefCountUnsubscriber(Unsubscriber unsubscriber)
                 : _unsubscriber(XRX_MOV(unsubscriber))
             {
@@ -69,7 +71,7 @@ namespace xrx::detail
             using value_type = typename SourceObservable::value_type;
             using error_type = typename SourceObservable::error_type;
             using is_async = IsAsyncObservable<SourceObservable>;
-            using Unsubscriber = typename ConnectObservableState_::Unsubscriber;
+            using Unsubscriber = RefCountUnsubscriber;
 
             std::shared_ptr<SharedImpl_> _shared;
 

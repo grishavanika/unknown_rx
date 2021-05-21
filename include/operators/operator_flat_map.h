@@ -382,7 +382,7 @@ namespace xrx::detail
         void on_completed(std::size_t child_index)
         {
             auto guard = std::lock_guard(*_observables._mutex);
-            assert(child_index < _observables._children.size());
+            assert(child_index < _observables._children.size()); (void)child_index;
             assert(not _observables._unsubscribe);
             ++_completed_count;
             assert(_completed_count <= _subscribed_count);
@@ -785,11 +785,9 @@ namespace xrx::detail
         bool on_next_child(XRX_RVALUE(SourceValue&&) source_value
             , std::shared_ptr<SharedState_Async_Async> self)
         {
-            using Child = AllObservables::Child_;
             using InnerObserver = InnerObserver_Sync_Async<SharedState_Async_Async
                 , child_value
                 , typename ChildObservable::error_type>;
-            using InnerUnsubscriber = typename ChildObservable::Unsubscriber;
 
             // Need to guard subscription to be sure racy complete (on_completed_source())
             // will not think there are no children anymore; also external

@@ -127,6 +127,18 @@ namespace xrx::detail
             return make_operator(detail::operator_tag::TapOrDo()
                 , XRX_MOV(*this), XRX_FWD(observer));
         }
+        template<typename OpeningsObservable, typename CloseObservableProducer>
+        auto window_toggle(OpeningsObservable&& openings, CloseObservableProducer&& close_producer) &&
+        {
+            return make_operator(detail::operator_tag::WindowToggle()
+                , XRX_MOV(*this), XRX_FWD(openings), XRX_FWD(close_producer));
+        }
+        template<typename V, typename... Vs>
+        auto starts_with(V&& v0, Vs&&... vs)
+        {
+            return ::xrx::detail::make_operator(xrx::detail::operator_tag::StartsWith()
+                , XRX_MOV(*this), XRX_FWD(v0), XRX_FWD(vs)...);
+        }
     };
 } // namespace xrx::detail
 

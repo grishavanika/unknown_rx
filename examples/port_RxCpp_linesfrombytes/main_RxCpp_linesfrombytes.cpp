@@ -73,6 +73,8 @@ void operator delete[](void* ptr) noexcept
 
 int main()
 {
+    debug::EventLoop event_loop;
+
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> dist(4, 18);
@@ -120,15 +122,60 @@ int main()
         {
             return !s.empty();
         })
+        // NOTE: this is only to make .window_toggle() work.
+        // It implicitly "works" for RxCpp, because of implicit scheduler
+        // passed to concat_map().
+        .observe_on(event_loop.scheduler())
         .publish()
         .ref_count();
 
-    // WIP. To be continued.
-    strings.fork()
-        .subscribe([](auto v)
+    // filter to last string in each line
+    auto closes = strings.fork()
+        .filter([](const std::string& s)
+        {
+            return s.back() == '\r';
+        })
+        .transform([](const std::string&)
+        {
+            return 0;
+        });
+
+    // group strings by line
+    auto linewindows = strings.fork()
+        .window_toggle(closes.fork().starts_with(0)
+            , [&](int)
+        {
+            return closes.fork();
+        });
+
+    auto removespaces = [](std::string s)
     {
-        std::cout << v << std::endl;
+        auto is_space = [](char ch) { return isspace(ch); };
+        s.erase(std::remove_if(s.begin(), s.end(), is_space), s.end());
+        return s;
+    };
+
+    // reduce the strings for a line into one string
+    auto lines = linewindows.fork_move()
+        .flat_map([&](auto w)
+        {
+            auto no_spaces = removespaces;
+            return w.fork_move()
+                .starts_with(std::string(""))
+                .reduce(std::string(""), std::plus<>())
+                .transform(std::move(no_spaces));
+        });
+
+    lines.fork_move()
+        .subscribe([](std::string line)
+    {
+        std::cout << line << std::endl;
     });
+
+    while (event_loop.work_count() > 0)
+    {
+        event_loop.poll_one();
+    }
 
     XRX_PRINT_ALLOCS_COUNT("bytes");
 }
