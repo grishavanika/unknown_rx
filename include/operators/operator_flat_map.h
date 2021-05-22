@@ -28,7 +28,7 @@ namespace xrx::detail
     template<typename E1, typename E2>
     struct MergedErrors
     {
-        using are_compatible = std::is_same<E1, E1>;
+        using are_compatible = std::is_same<E1, E2>;
         using E = E1;
     };
     template<>
@@ -287,7 +287,8 @@ namespace xrx::detail
             for (auto& child : _shared->_children)
             {
                 assert(child._unsubscriber);
-                at_least_one |= child._unsubscriber->detach();
+                const bool detached = child._unsubscriber->detach();
+                at_least_one |= detached;
             }
             return at_least_one;
         }

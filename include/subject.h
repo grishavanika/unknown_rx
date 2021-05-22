@@ -82,6 +82,9 @@ namespace xrx
             auto fork() { return SourceObservable(_shared_weak); }
         };
 
+        using Observable = ::xrx::detail::Observable_<SourceObservable>;
+        using Observer = Subject_;
+
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, Value>
         Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer)
@@ -90,14 +93,14 @@ namespace xrx
             return as_observable().subscribe(XRX_MOV(observer));
         }
 
-        ::xrx::detail::Observable_<SourceObservable> as_observable()
+        Observable as_observable()
         {
             return ::xrx::detail::Observable_<SourceObservable>(SourceObservable(_shared));
         }
 
-        Subject_ as_observer()
+        Observer as_observer()
         {
-            return Subject_(_shared);
+            return Observer(_shared);
         }
 
         void on_next(XRX_RVALUE(value_type&&) v)

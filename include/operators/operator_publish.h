@@ -53,7 +53,7 @@ namespace xrx::detail
         {
             Unsubscriber _unsubscriber;
 
-            explicit RefCountUnsubscriber() = default;
+            RefCountUnsubscriber() = default;
             explicit RefCountUnsubscriber(Unsubscriber unsubscriber)
                 : _unsubscriber(XRX_MOV(unsubscriber))
             {

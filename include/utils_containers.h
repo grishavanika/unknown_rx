@@ -38,6 +38,12 @@ namespace xrx::detail
             {
                 return (_version > 0);
             }
+
+            friend bool operator==(Handle lhs, Handle rhs) noexcept
+            {
+                return (lhs._version == rhs._version)
+                    && (lhs._index == rhs._index);
+            }
         };
 
         std::uint32_t _version = 0;

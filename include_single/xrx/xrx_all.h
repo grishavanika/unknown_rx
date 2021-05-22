@@ -684,6 +684,12 @@ namespace xrx::detail
             {
                 return (_version > 0);
             }
+
+            friend bool operator==(Handle lhs, Handle rhs) noexcept
+            {
+                return (lhs._version == rhs._version)
+                    && (lhs._index == rhs._index);
+            }
         };
 
         std::uint32_t _version = 0;
@@ -4402,7 +4408,7 @@ namespace xrx::detail
     template<typename E1, typename E2>
     struct MergedErrors
     {
-        using are_compatible = std::is_same<E1, E1>;
+        using are_compatible = std::is_same<E1, E2>;
         using E = E1;
     };
     template<>
@@ -4661,7 +4667,8 @@ namespace xrx::detail
             for (auto& child : _shared->_children)
             {
                 assert(child._unsubscriber);
-                at_least_one |= child._unsubscriber->detach();
+                const bool detached = child._unsubscriber->detach();
+                at_least_one |= detached;
             }
             return at_least_one;
         }
@@ -5617,7 +5624,7 @@ namespace xrx::detail
         {
             Unsubscriber _unsubscriber;
 
-            explicit RefCountUnsubscriber() = default;
+            RefCountUnsubscriber() = default;
             explicit RefCountUnsubscriber(Unsubscriber unsubscriber)
                 : _unsubscriber(XRX_MOV(unsubscriber))
             {
@@ -5985,6 +5992,9 @@ namespace xrx
             auto fork() { return SourceObservable(_shared_weak); }
         };
 
+        using Observable = ::xrx::detail::Observable_<SourceObservable>;
+        using Observer = Subject_;
+
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, Value>
         Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer)
@@ -5993,14 +6003,14 @@ namespace xrx
             return as_observable().subscribe(XRX_MOV(observer));
         }
 
-        ::xrx::detail::Observable_<SourceObservable> as_observable()
+        Observable as_observable()
         {
             return ::xrx::detail::Observable_<SourceObservable>(SourceObservable(_shared));
         }
 
-        Subject_ as_observer()
+        Observer as_observer()
         {
-            return Subject_(_shared);
+            return Observer(_shared);
         }
 
         void on_next(XRX_RVALUE(value_type&&) v)
@@ -6086,45 +6096,109 @@ namespace xrx
 
 namespace xrx::detail
 {
-    template<typename Observer, typename SourceValue>
+    template<typename SourceUnsubscriber
+        , typename OpeningsUnsubscriber
+        , typename ClosingsUnsubscriber
+        , typename WindowHandle>
+    struct Unsubscribers
+    {
+        struct CloseState
+        {
+            WindowHandle _window;
+            ClosingsUnsubscriber _unsubscriber;
+            bool detach() { return _unsubscriber.detach(); }
+        };
+
+        SourceUnsubscriber _source;
+        OpeningsUnsubscriber _openings;
+        std::vector<CloseState> _closings;
+        debug::AssertMutex<> _mutex;
+    };
+
+    template<typename Unsubscribers_
+        , typename Observer
+        , typename SourceValue
+        , typename ErrorValue>
     struct WindowToggleShared_
     {
-        using Windows = HandleVector<Subject_<SourceValue>>;
+        using Subject = Subject_<SourceValue, ErrorValue>;
+        using Windows = HandleVector<Subject>;
         using WindowHandle = typename Windows::Handle;
         Observer _observer;
         Windows _windows;
+        Unsubscribers_ _unsubscribers;
 
+        auto& mutex() { return _unsubscribers._mutex; }
+
+        explicit WindowToggleShared_(XRX_RVALUE(Observer&&) observer)
+            : _observer(XRX_MOV(observer))
+            , _windows()
+            , _unsubscribers()
+        {
+        }
+
+        // From Openings stream.
         WindowHandle on_new_window()
         {
-            auto handle = _windows.push_back(Subject_<SourceValue>());
-            auto* subject = _windows.get(handle);
+            // 1. We own the mutex.
+            WindowHandle handle = _windows.push_back(Subject());
+            Subject* subject = _windows.get(handle);
             assert(subject);
-            auto action = on_next_with_action(_observer, XRX_MOV(subject->as_observable()));
-            (void)action;
-            return handle;
+            const auto action = on_next_with_action(_observer, XRX_MOV(subject->as_observable()));
+            return (action._stop ? WindowHandle() : handle);
         }
+        // From Closings stream.
         bool close_window(WindowHandle handle)
         {
-            auto* subject = _windows.get(handle);
+            // 1. We own the mutex.
+            Subject* subject = _windows.get(handle);
             assert(subject);
             subject->on_completed();
             return _windows.erase(handle);
         }
-        void notify(auto source_value)
+        // From Source stream.
+        void on_next_source(auto source_value)
         {
-            _windows.for_each([&](auto& window)
+            // 1. We own the mutex.
+            _windows.for_each([&](Subject& window)
             {
                 auto copy = source_value;
-                (void)window.on_next(XRX_MOV(copy));
+                // Unsubscriptions are handled by the Subject_<> itself.
+                window.on_next(XRX_MOV(copy));
             });
         }
-        void notify_completed()
+        // From Source stream.
+        void on_completed_source()
         {
-            // close all closing observables.
-            _windows.for_each([&](auto& window)
+            // 1. We own the mutex.
+            _windows.for_each([&](Subject& window)
             {
-                (void)window.on_completed();
+                window.on_completed();
             });
+        }
+        // From any of (Openings, Closings, Source) stream.
+        template<typename... VoidOrError>
+        void on_any_error_unsafe(XRX_RVALUE(VoidOrError&&)... e)
+        {
+            // 1. We own the mutex.
+            if constexpr ((sizeof...(e)) == 0)
+            {
+                _windows.for_each([](Subject& window)
+                {
+                    window.on_error();
+                });
+            }
+            else
+            {
+                // #TODO: what's with "Allow pack expansion in lambda init-capture", http://wg21.link/p0780 ?
+                _windows.for_each([es = std::make_tuple(XRX_MOV(e)...)](Subject& window) mutable
+                {
+                    using Es = decltype(es);
+                    static_assert(std::tuple_size_v<Es> == 1);
+                    auto e = std::get<0>(es); // copy.
+                    window.on_error(XRX_MOV(e));
+                });
+            }
         }
     };
 
@@ -6135,38 +6209,93 @@ namespace xrx::detail
         WindowHandle _window;
         std::shared_ptr<Shared_> _shared;
 
+        void unsubscribe_rest_unsafe()
+        {
+            _shared->_unsubscribers._source.detach();
+            _shared->_unsubscribers._openings.detach();
+            auto& closings = _shared->_unsubscribers._closings;
+            for (auto& closer : closings)
+            {
+                if (closer._window == _window)
+                {
+                    // Invalidate self-reference.
+                    closer._unsubscriber = {};
+                }
+                else
+                {
+                    closer.detach();
+                }
+            }
+            closings.clear();
+        }
         auto on_next(auto)
         {
+            auto guard = std::lock_guard(_shared->mutex());
             _shared->close_window(_window);
             return unsubscribe(true);
         }
-        auto on_completed()
+        void on_completed()
         {
+            // Opened window remains opened if no
+            // on_next() close event triggered.
         }
-        auto on_error()
+        template<typename... VoidOrError>
+        void on_error(XRX_RVALUE(VoidOrError&&)... e)
         {
+            // Do not ignore errors. Propagate them from anywhere (closings stream).
+            auto guard = std::lock_guard(_shared->mutex());
+            unsubscribe_rest_unsafe();
+            _shared->on_any_error_unsafe(XRX_MOV(e)...);
         }
     };
 
     template<typename CloseObservableProducer, typename CloseObservable, typename Shared_>
     struct OpeningsObserver_
     {
+        using WindowHandle = typename Shared_::WindowHandle;
         CloseObservableProducer _close_producer;
         std::shared_ptr<Shared_> _shared;
 
-        auto on_next(XRX_RVALUE(auto) open_value)
+        void unsubscribe_rest_unsafe()
+        {
+            // 1. We own mutex.
+            // 2. We cant unsubscribe ourself (self-destroy), just invalidate the reference.
+            _shared->_unsubscribers._openings = {};
+            _shared->_unsubscribers._source.detach();
+            auto& closings = _shared->_unsubscribers._closings;
+            for (auto& closer : closings)
+            {
+                closer.detach();
+            }
+            closings.clear();
+        }
+        unsubscribe on_next(XRX_RVALUE(auto) open_value)
         {
             CloseObservable closer = _close_producer(XRX_MOV(open_value));
-            auto handle = _shared->on_new_window();
-            auto unsusbscriber1 = XRX_MOV(closer).subscribe(ClosingsObserver_<Shared_>(XRX_MOV(handle), _shared));
-            (void)unsusbscriber1;
+
+            auto guard = std::lock_guard(_shared->mutex());
+            WindowHandle handle = _shared->on_new_window();
+            if (not handle)
+            {
+                unsubscribe_rest_unsafe();
+                return unsubscribe(true);
+            }
+            using ClosingsObserver = ClosingsObserver_<Shared_>;
+            auto unsubscriber = XRX_MOV(closer).subscribe(ClosingsObserver(handle, _shared));
+            _shared->_unsubscribers._closings.push_back({XRX_MOV(handle), XRX_MOV(unsubscriber)});
+            return unsubscribe(false);
         }
         auto on_completed()
         {
-            // _shared->notify_completed();
+            // Done. No more windows possible.
         }
-        auto on_error()
+        template<typename... VoidOrError>
+        void on_error(XRX_RVALUE(VoidOrError&&)... e)
         {
+            // Do not ignore errors. Propagate them from anywhere (openings stream).
+            auto guard = std::lock_guard(_shared->mutex());
+            unsubscribe_rest_unsafe();
+            _shared->on_any_error_unsafe(XRX_MOV(e)...);
         }
     };
 
@@ -6175,18 +6304,83 @@ namespace xrx::detail
     {
         std::shared_ptr<Shared_> _shared;
 
+        void unsubscribe_rest_unsafe()
+        {
+            // 1. We own mutex.
+            // 2. We cant unsubscribe ourself (self-destroy), just invalidate the reference.
+            _shared->_unsubscribers._source = {};
+            _shared->_unsubscribers._openings.detach();
+            auto& closings = _shared->_unsubscribers._closings;
+            for (auto& closer : closings)
+            {
+                closer.detach();
+            }
+            closings.clear();
+        }
+
         auto on_next(auto source_value)
         {
-            _shared->notify(XRX_MOV(source_value));
+            auto guard = std::lock_guard(_shared->mutex());
+            _shared->on_next_source(XRX_MOV(source_value));
         }
         auto on_completed()
         {
-            _shared->notify_completed();
+            auto guard = std::lock_guard(_shared->mutex());
+            unsubscribe_rest_unsafe();
+            _shared->on_completed_source();
         }
-        auto on_error()
+        template<typename... VoidOrError>
+        void on_error(XRX_RVALUE(VoidOrError&&)... e)
         {
-            // _shared->notify_error();
+            auto guard = std::lock_guard(_shared->mutex());
+            unsubscribe_rest_unsafe();
+            _shared->on_any_error_unsafe(XRX_MOV(e)...);
         }
+    };
+
+    template<typename Unsubscribers_>
+    struct WindowToggleUnsubscriber
+    {
+        using has_effect = std::true_type;
+
+        std::shared_ptr<Unsubscribers_> _shared;
+
+        bool detach()
+        {
+            if (not _shared)
+            {
+                return false;
+            }
+            auto guard = std::lock_guard(_shared->_mutex);
+            const bool source_detached = _shared->_source.detach();
+            const bool openings_detached = _shared->_openings.detach();
+            bool at_least_one_closer = false;
+            for (auto& closer : _shared->_closings)
+            {
+                const bool detached = closer.detach();
+                at_least_one_closer |= detached;
+            }
+            _shared->_closings.clear();
+            _shared = {};
+            return (source_detached
+                or openings_detached
+                or at_least_one_closer);
+        }
+    };
+
+    template<typename E1, typename E2, typename E3>
+    struct MergedErrors3
+    {
+        static constexpr bool is_void_like1 = (std::is_same_v<E1, void> or std::is_same_v<E1, none_tag>);
+        static constexpr bool is_void_like2 = (std::is_same_v<E2, void> or std::is_same_v<E2, none_tag>);
+        static constexpr bool is_void_like3 = (std::is_same_v<E3, void> or std::is_same_v<E3, none_tag>);
+
+        static constexpr bool are_all_voids = (is_void_like1 and is_void_like2 and is_void_like3);
+        static constexpr bool are_all_same = (std::is_same_v<E1, E2> and std::is_same_v<E1, E3>);
+        using are_compatible = std::bool_constant<are_all_voids or are_all_same>;
+        // #TODO: it should be void if at least one is void.
+        // Should be none_tag if all of them are none_tag.
+        using E = E1;
     };
 
     template<typename SourceObservable, typename OpeningsObservable, typename CloseObservableProducer, typename CloseObservable>
@@ -6196,31 +6390,45 @@ namespace xrx::detail
         OpeningsObservable _openings;
         CloseObservableProducer _close_producer;
 
+        using MergedErrors = MergedErrors3<
+              typename SourceObservable::error_type
+            , typename OpeningsObservable::error_type
+            , typename CloseObservable::error_type>;
+
+        static_assert(MergedErrors::are_compatible::value
+            , "All steams (Opening, Closings, Source) should have same errors.");
+
         using source_type = typename SourceObservable::value_type;
-        using Window = decltype(Subject_<source_type>().as_observable());
+        using error_type = typename MergedErrors::E;
+        using Subject = Subject_<source_type, error_type>;
+        using Windows = HandleVector<Subject>;
+        using WindowHandle = typename Windows::Handle;
+        using UnsubscribersState = Unsubscribers<
+              typename SourceObservable::Unsubscriber
+            , typename OpeningsObservable::Unsubscriber
+            , typename CloseObservable::Unsubscriber
+            , WindowHandle>;
+        using Window = typename Subject::Observable;
         using value_type = Window;
-        using error_type   = typename SourceObservable::error_type;
-        using is_async     = std::true_type;
-        using Unsubscriber = NoopUnsubscriber;
+        using is_async = std::true_type;
+        using Unsubscriber = WindowToggleUnsubscriber<UnsubscribersState>;
 
         WindowToggleObservableImpl_ fork() && { return WindowToggleObservableImpl_(XRX_MOV(_source), XRX_MOV(_openings), XRX_MOV(_close_producer)); }
-        WindowToggleObservableImpl_ fork()  & { return WindowToggleObservableImpl_(_source.fork(), _openings, _close_producer); }
+        WindowToggleObservableImpl_ fork() &  { return WindowToggleObservableImpl_(_source.fork(), _openings, _close_producer); }
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
         Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
-            using Shared_ = WindowToggleShared_<Observer, source_type>;
+            using Shared_ = WindowToggleShared_<UnsubscribersState, Observer, source_type, error_type>;
             using OpeningsObserver = OpeningsObserver_<CloseObservableProducer, CloseObservable, Shared_>;
             using WindowSourceObserver = WindowSourceObserver_<Shared_>;
 
-            std::shared_ptr<Shared_> shared = std::make_shared<Shared_>(Shared_(XRX_MOV(observer)));
-            auto unsubscribe1 = XRX_MOV(_openings).subscribe(OpeningsObserver(XRX_MOV(_close_producer), shared));
-            (void)unsubscribe1;
-            auto unsubscribe2 = XRX_MOV(_source).subscribe(WindowSourceObserver(shared));
-            (void)unsubscribe2;
-            (void)observer;
-            return Unsubscriber();
+            std::shared_ptr<Shared_> shared = std::make_shared<Shared_>(XRX_MOV(observer));
+            std::shared_ptr<UnsubscribersState> unsubscribers(shared, &shared->_unsubscribers);
+            unsubscribers->_openings = XRX_MOV(_openings).subscribe(OpeningsObserver(XRX_MOV(_close_producer), shared));
+            unsubscribers->_source = XRX_MOV(_source).subscribe(WindowSourceObserver(shared));
+            return Unsubscriber(XRX_MOV(unsubscribers));
         }
     };
 
