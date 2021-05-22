@@ -2547,9 +2547,10 @@ namespace xrx::observable
 
                 bool detach()
                 {
-                    if (_shared)
+                    auto shared = std::exchange(_shared, {});
+                    if (shared)
                     {
-                        return _shared->detach_impl();
+                        return shared->detach_impl();
                     }
                     return false;
                 }
@@ -2765,11 +2766,13 @@ namespace xrx::observable
 
                 bool detach()
                 {
-                    if (_unsubscribed)
+                    auto unsubscribed = std::exchange(_unsubscribed, {});
+                    if (unsubscribed)
                     {
-                        *_unsubscribed = true;
+                        *unsubscribed = true;
+                        return std::exchange(_unsubscriber, {}).detach();
                     }
-                    return _unsubscriber.detach();
+                    return false;
                 }
             };
 
@@ -2949,7 +2952,12 @@ namespace xrx::observable
 
                 bool detach()
                 {
-                    return _scheduler.tick_cancel(_handle);
+                    auto handle = std::exchange(_handle, {});
+                    if (handle)
+                    {
+                        return _scheduler.tick_cancel(handle);
+                    }
+                    return false;
                 }
             };
 
@@ -4656,16 +4664,19 @@ namespace xrx::detail
 
         bool detach()
         {
-            if (not _shared)
+            // Note: not thread-safe.
+            auto shared = std::exchange(_shared, {});
+            if (not shared)
             {
                 return false;
             }
-            assert(_shared->_mutex);
-            auto guard = std::lock_guard(*_shared->_mutex);
-            _shared->_unsubscribe = true;
+            assert(shared->_mutex);
+            auto guard = std::lock_guard(*shared->_mutex);
+            shared->_unsubscribe = true;
             bool at_least_one = false;
-            for (auto& child : _shared->_children)
+            for (auto& child : shared->_children)
             {
+                // #XXX: invalidate unsubscribers references.
                 assert(child._unsubscriber);
                 const bool detached = child._unsubscriber->detach();
                 at_least_one |= detached;
@@ -5110,6 +5121,7 @@ namespace xrx::detail
                     continue;
                 }
                 Child_& child = _children[i];
+                // #XXX: invalidate all unsubscribers references.
                 (void)child._unsubscriber.detach();
             }
             return true;
@@ -5126,15 +5138,17 @@ namespace xrx::detail
         
         bool detach()
         {
-            if (_observables)
+            // Note: not thread-safe.
+            auto observables = std::exchange(_observables, {});
+            if (not observables)
             {
-                const bool root_detached = _outer.detach();
-                auto guard = std::lock_guard(_observables->_mutex);
-                const bool at_least_one_child = _observables->detach_all_unsafe(
-                    std::size_t(-1)/*nothing to ignore*/);
-                return (root_detached || at_least_one_child);
+                return false;
             }
-            return false;
+            const bool root_detached = std::exchange(_outer, {}).detach();
+            auto guard = std::lock_guard(observables->_mutex);
+            const bool at_least_one_child = observables->detach_all_unsafe(
+                std::size_t(-1)/*nothing to ignore*/);
+            return (root_detached or at_least_one_child);
         }
     };
 
@@ -5632,8 +5646,7 @@ namespace xrx::detail
 
             bool detach()
             {
-                const bool do_refcount = true;
-                return _unsubscriber.detach(do_refcount);
+                return std::exchange(_unsubscriber, {}).detach(true/*do_refcount*/);
             }
         };
 
@@ -5943,12 +5956,13 @@ namespace xrx
 
             bool detach()
             {
-                if (auto shared = _shared_weak.lock(); shared)
+                auto shared = std::exchange(_shared_weak, {}).lock();
+                if (not shared)
                 {
-                    auto guard = std::lock_guard(shared->_assert_mutex);
-                    return shared->_subscriptions.erase(_handle);
+                    return false;
                 }
-                return false;
+                auto guard = std::lock_guard(shared->_assert_mutex);
+                return shared->_subscriptions.erase(_handle);
             }
         };
 
@@ -6106,7 +6120,10 @@ namespace xrx::detail
         {
             WindowHandle _window;
             ClosingsUnsubscriber _unsubscriber;
-            bool detach() { return _unsubscriber.detach(); }
+            bool detach()
+            {
+                return std::exchange(_unsubscriber, {}).detach();
+            }
         };
 
         SourceUnsubscriber _source;
@@ -6347,21 +6364,21 @@ namespace xrx::detail
 
         bool detach()
         {
-            if (not _shared)
+            auto shared = std::exchange(_shared, {});
+            if (not shared)
             {
                 return false;
             }
-            auto guard = std::lock_guard(_shared->_mutex);
-            const bool source_detached = _shared->_source.detach();
-            const bool openings_detached = _shared->_openings.detach();
+            auto guard = std::lock_guard(shared->_mutex);
+            const bool source_detached = std::exchange(shared->_source, {}).detach();
+            const bool openings_detached = std::exchange(shared->_openings, {}).detach();
             bool at_least_one_closer = false;
-            for (auto& closer : _shared->_closings)
+            for (auto& closer : shared->_closings)
             {
                 const bool detached = closer.detach();
                 at_least_one_closer |= detached;
             }
-            _shared->_closings.clear();
-            _shared = {};
+            shared->closings.clear();
             return (source_detached
                 or openings_detached
                 or at_least_one_closer);

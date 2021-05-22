@@ -31,7 +31,12 @@ namespace xrx::observable
 
                 bool detach()
                 {
-                    return _scheduler.tick_cancel(_handle);
+                    auto handle = std::exchange(_handle, {});
+                    if (handle)
+                    {
+                        return _scheduler.tick_cancel(handle);
+                    }
+                    return false;
                 }
             };
 

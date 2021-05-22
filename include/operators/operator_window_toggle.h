@@ -25,7 +25,10 @@ namespace xrx::detail
         {
             WindowHandle _window;
             ClosingsUnsubscriber _unsubscriber;
-            bool detach() { return _unsubscriber.detach(); }
+            bool detach()
+            {
+                return std::exchange(_unsubscriber, {}).detach();
+            }
         };
 
         SourceUnsubscriber _source;
@@ -266,21 +269,21 @@ namespace xrx::detail
 
         bool detach()
         {
-            if (not _shared)
+            auto shared = std::exchange(_shared, {});
+            if (not shared)
             {
                 return false;
             }
-            auto guard = std::lock_guard(_shared->_mutex);
-            const bool source_detached = _shared->_source.detach();
-            const bool openings_detached = _shared->_openings.detach();
+            auto guard = std::lock_guard(shared->_mutex);
+            const bool source_detached = std::exchange(shared->_source, {}).detach();
+            const bool openings_detached = std::exchange(shared->_openings, {}).detach();
             bool at_least_one_closer = false;
-            for (auto& closer : _shared->_closings)
+            for (auto& closer : shared->_closings)
             {
                 const bool detached = closer.detach();
                 at_least_one_closer |= detached;
             }
-            _shared->_closings.clear();
-            _shared = {};
+            shared->closings.clear();
             return (source_detached
                 or openings_detached
                 or at_least_one_closer);

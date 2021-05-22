@@ -237,9 +237,10 @@ namespace xrx::observable
 
                 bool detach()
                 {
-                    if (_shared)
+                    auto shared = std::exchange(_shared, {});
+                    if (shared)
                     {
-                        return _shared->detach_impl();
+                        return shared->detach_impl();
                     }
                     return false;
                 }

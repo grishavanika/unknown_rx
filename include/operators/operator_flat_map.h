@@ -276,16 +276,19 @@ namespace xrx::detail
 
         bool detach()
         {
-            if (not _shared)
+            // Note: not thread-safe.
+            auto shared = std::exchange(_shared, {});
+            if (not shared)
             {
                 return false;
             }
-            assert(_shared->_mutex);
-            auto guard = std::lock_guard(*_shared->_mutex);
-            _shared->_unsubscribe = true;
+            assert(shared->_mutex);
+            auto guard = std::lock_guard(*shared->_mutex);
+            shared->_unsubscribe = true;
             bool at_least_one = false;
-            for (auto& child : _shared->_children)
+            for (auto& child : shared->_children)
             {
+                // #XXX: invalidate unsubscribers references.
                 assert(child._unsubscriber);
                 const bool detached = child._unsubscriber->detach();
                 at_least_one |= detached;
@@ -730,6 +733,7 @@ namespace xrx::detail
                     continue;
                 }
                 Child_& child = _children[i];
+                // #XXX: invalidate all unsubscribers references.
                 (void)child._unsubscriber.detach();
             }
             return true;
@@ -746,15 +750,17 @@ namespace xrx::detail
         
         bool detach()
         {
-            if (_observables)
+            // Note: not thread-safe.
+            auto observables = std::exchange(_observables, {});
+            if (not observables)
             {
-                const bool root_detached = _outer.detach();
-                auto guard = std::lock_guard(_observables->_mutex);
-                const bool at_least_one_child = _observables->detach_all_unsafe(
-                    std::size_t(-1)/*nothing to ignore*/);
-                return (root_detached || at_least_one_child);
+                return false;
             }
-            return false;
+            const bool root_detached = std::exchange(_outer, {}).detach();
+            auto guard = std::lock_guard(observables->_mutex);
+            const bool at_least_one_child = observables->detach_all_unsafe(
+                std::size_t(-1)/*nothing to ignore*/);
+            return (root_detached or at_least_one_child);
         }
     };
 

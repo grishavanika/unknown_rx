@@ -61,8 +61,7 @@ namespace xrx::detail
 
             bool detach()
             {
-                const bool do_refcount = true;
-                return _unsubscriber.detach(do_refcount);
+                return std::exchange(_unsubscriber, {}).detach(true/*do_refcount*/);
             }
         };
 

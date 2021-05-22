@@ -33,12 +33,13 @@ namespace xrx
 
             bool detach()
             {
-                if (auto shared = _shared_weak.lock(); shared)
+                auto shared = std::exchange(_shared_weak, {}).lock();
+                if (not shared)
                 {
-                    auto guard = std::lock_guard(shared->_assert_mutex);
-                    return shared->_subscriptions.erase(_handle);
+                    return false;
                 }
-                return false;
+                auto guard = std::lock_guard(shared->_assert_mutex);
+                return shared->_subscriptions.erase(_handle);
             }
         };
 

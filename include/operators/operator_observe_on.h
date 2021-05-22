@@ -165,11 +165,13 @@ namespace xrx::observable
 
                 bool detach()
                 {
-                    if (_unsubscribed)
+                    auto unsubscribed = std::exchange(_unsubscribed, {});
+                    if (unsubscribed)
                     {
-                        *_unsubscribed = true;
+                        *unsubscribed = true;
+                        return std::exchange(_unsubscriber, {}).detach();
                     }
-                    return _unsubscriber.detach();
+                    return false;
                 }
             };
 
