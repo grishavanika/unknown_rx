@@ -28,6 +28,7 @@ set(xrx_tests_SRC
     "tests_operator_tap_do.cpp"
     "tests_operator_window_toggle.cpp"
     "tests_operator_start_with.cpp"
+    "tests_subject.cpp"
     )
 add_executable(tests_xrx ${xrx_tests_SRC} ${xrx_tests_HDR})
 set_all_warnings(tests_xrx PRIVATE)

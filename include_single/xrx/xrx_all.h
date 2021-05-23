@@ -5927,6 +5927,7 @@ namespace xrx
 // #include "observable_interface.h"
 // #include "debug/assert_mutex.h"
 
+#include <mutex>
 #include <memory>
 #include <cassert>
 
@@ -5940,7 +5941,7 @@ namespace xrx
 
         struct SharedImpl_
         {
-            [[no_unique_address]] debug::AssertMutex<> _assert_mutex;
+            std::mutex _mutex;
             Subscriptions _subscriptions;
         };
 
@@ -5951,6 +5952,9 @@ namespace xrx
         {
             using has_effect = std::true_type;
 
+            // [weak_ptr]: if weak reference is expired, there is no actual
+            // reference to Subject<> that can push/emit new items to the stream.
+            // Nothing to unsubscribe from.
             std::weak_ptr<SharedImpl_> _shared_weak;
             Handle _handle;
 
@@ -5961,8 +5965,13 @@ namespace xrx
                 {
                     return false;
                 }
-                auto guard = std::lock_guard(shared->_assert_mutex);
+                auto guard = std::lock_guard(shared->_mutex);
                 return shared->_subscriptions.erase(_handle);
+            }
+
+            explicit operator bool() const
+            {
+                return (not _shared_weak.expired());
             }
         };
 
@@ -5984,26 +5993,31 @@ namespace xrx
             using error_type   = Subject_::error_type;
             using Unsubscriber = Subject_::Unsubscriber;
 
+            // [weak_ptr]: if weak reference is expired, there is no actual
+            // reference to Subject<> that can push/emit new items to the stream.
+            // The stream is dangling; any new Observer will not get any event.
             std::weak_ptr<SharedImpl_> _shared_weak;
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, Value>
-            Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer)
+            Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
                 static_assert(not std::is_lvalue_reference_v<Observer>);
-                if (auto shared = _shared_weak.lock(); shared)
+                auto shared = _shared_weak.lock();
+                if (not shared)
                 {
-                    AnyObserver<value_type, error_type> erased(XRX_MOV(observer));
-                    auto guard = std::lock_guard(shared->_assert_mutex);
-                    Unsubscriber unsubscriber;
-                    unsubscriber._shared_weak = _shared_weak;
-                    unsubscriber._handle = shared->_subscriptions.push_back(XRX_MOV(erased));
-                    return unsubscriber;
+                    return Unsubscriber();
                 }
-                return Unsubscriber();
+                AnyObserver<value_type, error_type> erased(XRX_MOV(observer));
+                auto guard = std::lock_guard(shared->_mutex);
+                Unsubscriber unsubscriber;
+                unsubscriber._shared_weak = _shared_weak;
+                unsubscriber._handle = shared->_subscriptions.push_back(XRX_MOV(erased));
+                return unsubscriber;
             }
 
-            auto fork() { return SourceObservable(_shared_weak); }
+            auto fork() && { return SourceObservable(XRX_MOV(_shared_weak)); }
+            auto fork() &  { return SourceObservable(_shared_weak); }
         };
 
         using Observable = ::xrx::detail::Observable_<SourceObservable>;
@@ -6011,6 +6025,9 @@ namespace xrx
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, Value>
+        // This subscribe() is not ref-qualified (like the rest of Observables)
+        // since it doesn't make sense for Subject<> use-case:
+        // once subscribed, _same_ Subject instance is used to emit values.
         Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer)
         {
             static_assert(not std::is_lvalue_reference_v<Observer>);
@@ -6019,7 +6036,7 @@ namespace xrx
 
         Observable as_observable()
         {
-            return ::xrx::detail::Observable_<SourceObservable>(SourceObservable(_shared));
+            return Observable(SourceObservable(_shared));
         }
 
         Observer as_observer()
@@ -6029,64 +6046,72 @@ namespace xrx
 
         void on_next(XRX_RVALUE(value_type&&) v)
         {
-            if (_shared)
+            // Note: on_next() and {on_error(), on_completed()} should not be called in-parallel.
+            if (not _shared)
             {
-                auto lock = std::unique_lock(_shared->_assert_mutex);
-                _shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer, Handle handle)
-                {
-                    bool do_unsubscribe = false;
-                    {
-                        auto guard = debug::ScopeUnlock(lock);
-                        const auto action = observer.on_next(value_type(v)); // copy.
-                        do_unsubscribe = action._stop;
-                    }
-                    if (do_unsubscribe)
-                    {
-                        // Notice: we have mutex lock.
-                        _shared->_subscriptions.erase(handle);
-                    }
-                });
+                assert(false);
+                return;
             }
-            // else: already completed
+            auto lock = std::unique_lock(_shared->_mutex);
+            _shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer, Handle handle)
+            {
+                bool do_unsubscribe = false;
+                {
+                    auto unguard = debug::ScopeUnlock(lock);
+                    const auto action = observer.on_next(value_type(v)); // copy.
+                    do_unsubscribe = action._stop;
+                }
+                if (do_unsubscribe)
+                {
+                    // Notice: we have mutex lock.
+                    _shared->_subscriptions.erase(handle);
+                }
+            });
+            // Note: should we unsubscribe if there are no observers/subscriptions anymore ?
+            // Seems like nope, someone can subscribe later.
         }
 
         template<typename... Es>
         void on_error(Es&&... errors)
         {
-            if (_shared)
+            // Note: on_completed() should not be called in-parallel.
+            auto shared = std::exchange(_shared, {});
+            if (not shared)
             {
-                auto lock = std::unique_lock(_shared->_assert_mutex);
-                _shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
-                {
-                    auto guard = debug::ScopeUnlock(lock);
-                    if constexpr (sizeof...(errors) == 0)
-                    {
-                        observer.on_error();
-                    }
-                    else
-                    {
-                        static_assert(sizeof...(errors) == 1);
-                        observer.on_error(Es(errors)...); // copy.
-                    }
-                });
-                _shared.reset(); // done.
+                assert(false);
+                return;
             }
-            // else: already completed
+            auto lock = std::unique_lock(shared->_mutex);
+            shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
+            {
+                auto unguard = debug::ScopeUnlock(lock);
+                if constexpr (sizeof...(errors) == 0)
+                {
+                    observer.on_error();
+                }
+                else
+                {
+                    static_assert(sizeof...(errors) == 1);
+                    observer.on_error(Es(errors)...); // copy.
+                }
+            });
         }
 
         void on_completed()
         {
-            if (_shared)
+            // Note: on_completed() should not be called in-parallel.
+            auto shared = std::exchange(_shared, {});
+            if (not shared)
             {
-                auto lock = std::unique_lock(_shared->_assert_mutex);
-                _shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
-                {
-                    auto guard = debug::ScopeUnlock(lock);
-                    observer.on_completed();
-                });
-                _shared.reset(); // done.
+                assert(false);
+                return;
             }
-            // else: already completed
+            auto lock = std::unique_lock(shared->_mutex);
+            shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
+            {
+                auto unguard = debug::ScopeUnlock(lock);
+                observer.on_completed();
+            });
         }
     };
 } // namespace xrx
