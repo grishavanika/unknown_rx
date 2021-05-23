@@ -86,28 +86,15 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        template<typename F>
-        struct RememberTransform
-        {
-            F _transform;
-
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Transform
-                    , SourceObservable, F>
-            {
-                return make_operator(operator_tag::Transform()
-                    , XRX_MOV(source), XRX_MOV(_transform));
-            }
-        };
-    } // namespace detail
-
     template<typename F>
     auto transform(XRX_RVALUE(F&&) transform_)
     {
-        using F_ = std::remove_reference_t<F>;
-        return detail::RememberTransform<F_>(XRX_MOV(transform_));
+        XRX_CHECK_RVALUE(transform_);
+        return [_transform = XRX_MOV(transform_)](XRX_RVALUE(auto&&) source) mutable
+        {
+            XRX_CHECK_RVALUE(source);
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::Transform()
+                , XRX_MOV(source), XRX_MOV(_transform));
+        };
     }
 } // namespace xrx

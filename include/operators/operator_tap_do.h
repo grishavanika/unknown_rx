@@ -86,29 +86,14 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        template<typename Observer>
-        struct RememberTapOrDo
-        {
-            Observer _observer;
-
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::TapOrDo
-                    , SourceObservable, Observer>
-            {
-                return make_operator(operator_tag::TapOrDo()
-                    , XRX_MOV(source), XRX_MOV(_observer));
-            }
-        };
-    } // namespace detail
-
     template<typename Observer>
     auto tap(XRX_RVALUE(Observer&&) observer)
     {
-        static_assert(not std::is_lvalue_reference_v<Observer>);
-        using Observer_ = std::remove_reference_t<Observer>;
-        return detail::RememberTapOrDo<Observer_>(XRX_MOV(observer));
+        XRX_CHECK_RVALUE(observer);
+        return [_observer = XRX_MOV(observer)](XRX_RVALUE(auto&&) source) mutable
+        {
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::TapOrDo()
+                , XRX_MOV(source), XRX_MOV(_observer));
+        };
     }
 } // namespace xrx

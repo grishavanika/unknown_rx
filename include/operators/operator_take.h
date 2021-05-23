@@ -73,24 +73,13 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        struct RememberTake
-        {
-            std::size_t _count = 0;
-
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Take
-                    , SourceObservable, std::size_t>
-            {
-                return make_operator(operator_tag::Take(), XRX_MOV(source), _count);
-            }
-        };
-    } // namespace detail
-
     inline auto take(std::size_t count)
     {
-        return detail::RememberTake(count);
+        return [_count = count](XRX_RVALUE(auto&&) source)
+        {
+            XRX_CHECK_RVALUE(source);
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::Take()
+                , XRX_MOV(source), std::size_t(_count));
+        };
     }
 } // namespace xrx

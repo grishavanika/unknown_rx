@@ -353,10 +353,9 @@ namespace xrx::detail
         , XRX_RVALUE(OpeningsObservable&&) openings
         , XRX_RVALUE(CloseObservableProducer&&) close_producer)
     {
-        static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-        static_assert(not std::is_lvalue_reference_v<OpeningsObservable>);
-        static_assert(not std::is_lvalue_reference_v<CloseObservableProducer>);
-
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(openings);
+        XRX_CHECK_RVALUE(close_producer);
         using opening_value = typename OpeningsObservable::value_type;
         using CloseObservable = decltype(close_producer(std::declval<opening_value>()));
         static_assert(not std::is_reference_v<CloseObservable>);

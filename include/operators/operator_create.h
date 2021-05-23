@@ -11,8 +11,6 @@
 
 namespace xrx::observable
 {
-    template<typename X> struct Show_;
-
     namespace detail
     {
         template<typename Unsubscriber_>
@@ -114,7 +112,7 @@ namespace xrx::detail::operator_tag
             on_subscribe(XRX_MOV(observer));
         }
     {
-        static_assert(not std::is_lvalue_reference_v<F>);
+        XRX_CHECK_RVALUE(on_subscribe);
         static_assert(not std::is_same_v<Value, void>);
         static_assert(not std::is_reference_v<Value>);
         using F_ = std::remove_reference_t<F>;

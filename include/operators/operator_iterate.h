@@ -45,7 +45,7 @@ namespace xrx::detail
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Iterate
         , XRX_RVALUE(Container&&) values)
     {
-        static_assert(not std::is_lvalue_reference_v<Container>);
+        XRX_CHECK_RVALUE(values);
         using Container_ = std::remove_reference_t<Container>;
         using Iterator = decltype(std::begin(values));
         static_assert(std::forward_iterator<Iterator>);

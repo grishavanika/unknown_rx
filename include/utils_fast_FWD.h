@@ -1,5 +1,6 @@
 #pragma once
 #include <utility>
+#include <type_traits>
 
 // #XXX: this needs to be without include-guard
 // and in something like XRX_prelude.h header
@@ -14,3 +15,7 @@
 // (because of constraints from other places).
 // XRX_MOV() can be used.
 #define XRX_RVALUE(...) __VA_ARGS__
+#define XRX_CHECK_RVALUE(...) \
+    static_assert(not std::is_lvalue_reference_v<decltype(__VA_ARGS__)> \
+        , "Expected to have rvalue reference. " \
+        # __VA_ARGS__)

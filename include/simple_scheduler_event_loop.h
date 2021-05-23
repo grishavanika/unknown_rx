@@ -59,8 +59,8 @@ namespace xrx::debug
             clock_point start_from, clock_duration period
             , XRX_RVALUE(F&&) f, XRX_RVALUE(State&&) state)
         {
-            static_assert(not std::is_lvalue_reference_v<F>);
-            static_assert(not std::is_lvalue_reference_v<State>);
+            XRX_CHECK_RVALUE(f);
+            XRX_CHECK_RVALUE(state);
             using Action_ = ActionCallback_<std::remove_reference_t<F>, std::remove_reference_t<State>>;
             auto action = std::make_unique<Action_>(XRX_MOV(f), XRX_MOV(state));
             action->_start_from = start_from;

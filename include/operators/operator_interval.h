@@ -47,7 +47,7 @@ namespace xrx::observable
                 requires ConceptValueObserverOf<Observer, value_type>
             Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
-                static_assert(not std::is_lvalue_reference_v<Observer>);
+                XRX_CHECK_RVALUE(observer);
                 using Observer_ = std::remove_reference_t<Observer>;
 
                 const clock_duration period(_period);

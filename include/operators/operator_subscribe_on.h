@@ -253,7 +253,7 @@ namespace xrx::observable
                 requires ConceptValueObserverOf<Observer, value_type>
             Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
-                static_assert(not std::is_lvalue_reference_v<Observer>);
+                XRX_CHECK_RVALUE(observer);
                 auto shared = StateShared_::make(XRX_MOV(_scheduler));
 #if (0)
                 // #TODO: implement subscribe_impl(..., std::false_type);
@@ -278,8 +278,8 @@ namespace xrx::detail::operator_tag
     auto tag_invoke(::xrx::tag_t<::xrx::detail::make_operator>, xrx::detail::operator_tag::SubscribeOn
         , XRX_RVALUE(SourceObservable&&) source, XRX_RVALUE(Scheduler&&) scheduler)
     {
-        static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-        static_assert(not std::is_lvalue_reference_v<Scheduler>);
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(scheduler);
         using SourceObservable_ = std::remove_reference_t<SourceObservable>;
         using Scheduler_ = std::remove_reference_t<Scheduler>;
         using Impl = ::xrx::observable::detail::SubscribeOnObservable_<SourceObservable_, Scheduler_>;

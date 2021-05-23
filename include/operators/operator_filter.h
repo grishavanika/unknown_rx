@@ -71,7 +71,7 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         decltype(auto) subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(observer);
             using Observer_ = std::remove_reference_t<Observer>;
             using FilterObserver = FilterObserver<Observer_>;
             return XRX_MOV(_source).subscribe(FilterObserver(
@@ -85,8 +85,8 @@ namespace xrx::detail
             requires ConceptObservable<SourceObservable>
                 && std::predicate<F, typename SourceObservable::value_type>
     {
-        static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-        static_assert(not std::is_lvalue_reference_v<F>);
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(filter);
         using SourceObservable_ = std::remove_reference_t<SourceObservable>;
         using F_ = std::remove_reference_t<F>;
         using Impl = FilterObservable<SourceObservable_, F_>;
@@ -96,30 +96,15 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        template<typename F>
-        struct RememberFilter
-        {
-            F _f;
-
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Filter
-                    , SourceObservable, F>
-            {
-                static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-                return make_operator(operator_tag::Filter()
-                    , XRX_MOV(source), XRX_MOV(_f));
-            }
-        };
-    } // namespace detail
-
     template<typename F>
-    auto filter(XRX_RVALUE(F&&) filter)
+    auto filter(XRX_RVALUE(F&&) f)
     {
-        static_assert(not std::is_lvalue_reference_v<F>);
-        using F_ = std::remove_reference_t<F>;
-        return detail::RememberFilter<F_>(XRX_MOV(filter));
+        XRX_CHECK_RVALUE(f);
+        return [_f = XRX_MOV(f)](XRX_RVALUE(auto&&) source) mutable
+        {
+            XRX_CHECK_RVALUE(source);
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::Filter()
+                , XRX_MOV(source), XRX_MOV(_f));
+        };
     }
 } // namespace xrx

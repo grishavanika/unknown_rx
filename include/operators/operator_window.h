@@ -190,24 +190,12 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        struct RememberWindow
-        {
-            std::size_t _count = 0;
-
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Window
-                    , SourceObservable, std::size_t>
-            {
-                return make_operator(operator_tag::Window(), XRX_MOV(source), std::size_t(_count));
-            }
-        };
-    } // namespace detail
-
     inline auto window(std::size_t count)
     {
-        return detail::RememberWindow(count);
+        return [_count = count](XRX_RVALUE(auto&&) source)
+        {
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::Window()
+                , XRX_MOV(source), std::size_t(_count));
+        };
     }
 } // namespace xrx

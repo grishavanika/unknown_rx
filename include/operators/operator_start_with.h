@@ -54,8 +54,9 @@ namespace xrx::detail
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::StartsWith
         , XRX_RVALUE(SourceObservable&&) source, XRX_RVALUE(V&&) v0, XRX_RVALUE(Vs&&)... vs)
     {
-        static_assert((not std::is_lvalue_reference_v<V>)
-                  && ((not std::is_lvalue_reference_v<Vs>) && ...)
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(v0);
+        static_assert(((not std::is_lvalue_reference_v<Vs>) && ...)
             , ".start_with(Vs...) requires Vs to be value-like type.");
 
         using Tuple = std::tuple<std::remove_reference_t<V>, std::remove_reference_t<Vs>...>;

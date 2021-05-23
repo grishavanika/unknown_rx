@@ -79,7 +79,7 @@ namespace xrx
                 requires ConceptValueObserverOf<Observer, Value>
             Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
-                static_assert(not std::is_lvalue_reference_v<Observer>);
+                XRX_CHECK_RVALUE(observer);
                 auto shared = _shared_weak.lock();
                 if (not shared)
                 {
@@ -107,7 +107,7 @@ namespace xrx
         // once subscribed, _same_ Subject instance is used to emit values.
         Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer)
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(observer);
             return as_observable().subscribe(XRX_MOV(observer));
         }
 

@@ -71,7 +71,7 @@ namespace xrx
             explicit Observer(XRX_RVALUE(ConcreateObserver&&) o)
                 : _observer(XRX_MOV(o))
             {
-                static_assert(not std::is_lvalue_reference_v<ConcreateObserver>);
+                XRX_CHECK_RVALUE(o);
             }
 
             ConcreateObserver _observer;
@@ -91,7 +91,7 @@ namespace xrx
         /*explicit*/ AnyObserver(XRX_RVALUE(ConcreateObserver&&) o)
             : _observer(std::make_unique<Observer<ConcreateObserver>>(XRX_MOV(o)))
         {
-            static_assert(not std::is_lvalue_reference_v<ConcreateObserver>);
+            XRX_CHECK_RVALUE(o);
         }
 
 #if (X_ANY_OBSERVER_SUPPORTS_COPY())
@@ -207,7 +207,7 @@ namespace xrx
         /*explicit*/ AnyObserver(XRX_RVALUE(ConcreateObserver&&) o)
             : _observer(std::make_unique<Observer<ConcreateObserver>>(XRX_MOV(o)))
         {
-            static_assert(not std::is_lvalue_reference_v<ConcreateObserver>);
+            XRX_CHECK_RVALUE(o);
         }
 
 #if (X_ANY_OBSERVER_SUPPORTS_COPY())

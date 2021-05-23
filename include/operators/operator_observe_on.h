@@ -206,8 +206,8 @@ namespace xrx::detail::operator_tag
         , xrx::detail::operator_tag::ObserveOn
         , XRX_RVALUE(SourceObservable&&) source, XRX_RVALUE(Scheduler&&) scheduler)
     {
-        static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-        static_assert(not std::is_lvalue_reference_v<Scheduler>);
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(scheduler);
         using Source_ = std::remove_reference_t<SourceObservable>;
         using Scheduler_ = std::remove_reference_t<Scheduler>;
         using Impl = ::xrx::observable::detail::ObserveOnObservable_<Source_, Scheduler_>;

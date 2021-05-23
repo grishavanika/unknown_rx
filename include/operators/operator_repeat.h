@@ -113,7 +113,7 @@ namespace xrx::detail
         template<typename Observer>
         NoopUnsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(observer);
             if (_max_repeats == 0)
             {
                 (void)on_completed_optional(XRX_MOV(observer));
@@ -177,31 +177,23 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        template<bool Endless>
-        struct RememberRepeat
-        {
-            std::size_t _count = 0;
-
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Repeat
-                    , SourceObservable, std::size_t, std::bool_constant<Endless>>
-            {
-                return make_operator(operator_tag::Repeat()
-                    , XRX_MOV(source), _count, std::bool_constant<Endless>());
-            }
-        };
-    } // namespace detail
-
     inline auto repeat()
     {
-        return detail::RememberRepeat<true/*endless*/>(0);
+        return [](XRX_RVALUE(auto&&) source)
+        {
+            XRX_CHECK_RVALUE(source);
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::Repeat()
+                , XRX_MOV(source), 0, std::bool_constant<true/*endless*/>());
+        };
     }
 
     inline auto repeat(std::size_t count)
     {
-        return detail::RememberRepeat<false/*not endless*/>(count);
+        return [_count = count](XRX_RVALUE(auto&&) source)
+        {
+            XRX_CHECK_RVALUE(source);
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::Repeat()
+                , XRX_MOV(source), _count, std::bool_constant<false/*not endless*/>());
+        };
     }
 } // namespace xrx

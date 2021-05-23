@@ -22,6 +22,7 @@ namespace xrx::detail
 
 // #pragma once
 #include <utility>
+#include <type_traits>
 
 // #XXX: this needs to be without include-guard
 // and in something like XRX_prelude.h header
@@ -36,6 +37,10 @@ namespace xrx::detail
 // (because of constraints from other places).
 // XRX_MOV() can be used.
 #define XRX_RVALUE(...) __VA_ARGS__
+#define XRX_CHECK_RVALUE(...) \
+    static_assert(not std::is_lvalue_reference_v<decltype(__VA_ARGS__)> \
+        , "Expected to have rvalue reference. " \
+        # __VA_ARGS__)
 
 // Header: meta_utils.h.
 
@@ -567,7 +572,7 @@ namespace xrx::debug
 
     private:
         [[no_unique_address]] Action _action;
-        std::shared_mutex _mutex;
+        std::recursive_mutex _mutex;
     };
 
     template<typename Mutex>
@@ -1137,8 +1142,8 @@ namespace xrx::debug
             clock_point start_from, clock_duration period
             , XRX_RVALUE(F&&) f, XRX_RVALUE(State&&) state)
         {
-            static_assert(not std::is_lvalue_reference_v<F>);
-            static_assert(not std::is_lvalue_reference_v<State>);
+            XRX_CHECK_RVALUE(f);
+            XRX_CHECK_RVALUE(state);
             using Action_ = ActionCallback_<std::remove_reference_t<F>, std::remove_reference_t<State>>;
             auto action = std::make_unique<Action_>(XRX_MOV(f), XRX_MOV(state));
             action->_start_from = start_from;
@@ -1588,7 +1593,7 @@ namespace xrx::observable
     template<typename Duration, typename Scheduler>
     auto interval(Duration period, XRX_RVALUE(Scheduler&&) scheduler)
     {
-        static_assert(not std::is_lvalue_reference_v<Scheduler>);
+        XRX_CHECK_RVALUE(scheduler);
         return ::xrx::detail::make_operator(xrx::detail::operator_tag::Interval()
             , XRX_MOV(period), XRX_MOV(scheduler));
     }
@@ -1597,7 +1602,7 @@ namespace xrx::observable
     auto create(XRX_RVALUE(F&&) on_subscribe)
     {
         static_assert(not std::is_same_v<Value, void>);
-        static_assert(not std::is_lvalue_reference_v<F>);
+        XRX_CHECK_RVALUE(on_subscribe);
         using Tag_ = xrx::detail::operator_tag::Create<Value, Error>;
         return ::xrx::detail::make_operator(Tag_()
             , XRX_MOV(on_subscribe));
@@ -1632,8 +1637,8 @@ namespace xrx::observable
     template<typename Observable1, typename Observable2, typename... ObservablesRest>
     auto concat(XRX_RVALUE(Observable1&&) observable1, XRX_RVALUE(Observable2&&) observable2, XRX_RVALUE(ObservablesRest&&)... observables)
     {
-        static_assert(not std::is_lvalue_reference_v<Observable1>);
-        static_assert(not std::is_lvalue_reference_v<Observable2>);
+        XRX_CHECK_RVALUE(observable1);
+        XRX_CHECK_RVALUE(observable2);
         static_assert(((not std::is_lvalue_reference_v<ObservablesRest>) && ...));
         return ::xrx::detail::make_operator(xrx::detail::operator_tag::Concat()
             , XRX_MOV(observable1), XRX_MOV(observable2), XRX_MOV(observables)...);
@@ -1642,7 +1647,7 @@ namespace xrx::observable
     template<typename Container>
     auto iterate(XRX_RVALUE(Container&&) values)
     {
-        static_assert(not std::is_lvalue_reference_v<Container>);
+        XRX_CHECK_RVALUE(values);
         return ::xrx::detail::make_operator(xrx::detail::operator_tag::Iterate()
             , XRX_MOV(values));
     }
@@ -2057,7 +2062,7 @@ namespace xrx
             explicit Observer(XRX_RVALUE(ConcreateObserver&&) o)
                 : _observer(XRX_MOV(o))
             {
-                static_assert(not std::is_lvalue_reference_v<ConcreateObserver>);
+                XRX_CHECK_RVALUE(o);
             }
 
             ConcreateObserver _observer;
@@ -2077,7 +2082,7 @@ namespace xrx
         /*explicit*/ AnyObserver(XRX_RVALUE(ConcreateObserver&&) o)
             : _observer(std::make_unique<Observer<ConcreateObserver>>(XRX_MOV(o)))
         {
-            static_assert(not std::is_lvalue_reference_v<ConcreateObserver>);
+            XRX_CHECK_RVALUE(o);
         }
 
 #if (X_ANY_OBSERVER_SUPPORTS_COPY())
@@ -2193,7 +2198,7 @@ namespace xrx
         /*explicit*/ AnyObserver(XRX_RVALUE(ConcreateObserver&&) o)
             : _observer(std::make_unique<Observer<ConcreateObserver>>(XRX_MOV(o)))
         {
-            static_assert(not std::is_lvalue_reference_v<ConcreateObserver>);
+            XRX_CHECK_RVALUE(o);
         }
 
 #if (X_ANY_OBSERVER_SUPPORTS_COPY())
@@ -2290,7 +2295,7 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         decltype(auto) subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(observer);
             // #XXX: we can require nothing if is_async == false, I guess.
             static_assert(std::is_move_constructible_v<Observer>);
             return XRX_MOV(_source).subscribe(XRX_MOV(observer));
@@ -2304,7 +2309,7 @@ namespace xrx::detail
         template<typename Scheduler>
         auto subscribe_on(XRX_RVALUE(Scheduler&&) scheduler) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Scheduler>);
+            XRX_CHECK_RVALUE(scheduler);
             return make_operator(detail::operator_tag::SubscribeOn()
                 , XRX_MOV(*this), XRX_MOV(scheduler));
         }
@@ -2312,7 +2317,7 @@ namespace xrx::detail
         template<typename Scheduler>
         auto observe_on(XRX_RVALUE(Scheduler&&) scheduler) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Scheduler>);
+            XRX_CHECK_RVALUE(scheduler);
             return make_operator(detail::operator_tag::ObserveOn()
                 , XRX_MOV(*this), XRX_MOV(scheduler));
         }
@@ -2402,34 +2407,24 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        template<typename Observer>
-        struct RememberSubscribe
-        {
-            Observer _observer;
-
-            template<typename SourceObservable>
-            auto pipe_(SourceObservable source) &&
-                requires requires { XRX_MOV(source).subscribe(XRX_MOV(_observer)); }
-            {
-                return XRX_MOV(source).subscribe(XRX_MOV(_observer));
-            }
-        };
-    } // namespace detail
-
     template<typename Observer>
-    inline auto subscribe(Observer observer)
+    inline auto subscribe(XRX_RVALUE(Observer&&) observer)
     {
-        return detail::RememberSubscribe<Observer>(XRX_MOV(observer));
+        XRX_CHECK_RVALUE(observer);
+        return [_observer = XRX_MOV(observer)](XRX_RVALUE(auto&&) source) mutable
+        {
+            return XRX_MOV(source).subscribe(XRX_MOV(_observer));
+        };
     }
 } // namespace xrx
 
 template<typename SourceObservable, typename PipeConnect>
-auto operator|(::xrx::detail::Observable_<SourceObservable>&& source_rvalue, PipeConnect connect)
-    requires requires { XRX_MOV(connect).pipe_(XRX_MOV(source_rvalue)); }
+auto operator|(XRX_RVALUE(::xrx::detail::Observable_<SourceObservable>&&) source_rvalue, XRX_RVALUE(PipeConnect&&) connect)
+    requires requires { XRX_MOV(connect)(XRX_MOV(source_rvalue)); }
 {
-    return XRX_MOV(connect).pipe_(XRX_MOV(source_rvalue));
+    XRX_CHECK_RVALUE(source_rvalue);
+    XRX_CHECK_RVALUE(connect);
+    return XRX_MOV(connect)(XRX_MOV(source_rvalue));
 }
 
 // Header: operators/operator_subscribe_on.h.
@@ -2689,7 +2684,7 @@ namespace xrx::observable
                 requires ConceptValueObserverOf<Observer, value_type>
             Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
-                static_assert(not std::is_lvalue_reference_v<Observer>);
+                XRX_CHECK_RVALUE(observer);
                 auto shared = StateShared_::make(XRX_MOV(_scheduler));
 #if (0)
                 // #TODO: implement subscribe_impl(..., std::false_type);
@@ -2714,8 +2709,8 @@ namespace xrx::detail::operator_tag
     auto tag_invoke(::xrx::tag_t<::xrx::detail::make_operator>, xrx::detail::operator_tag::SubscribeOn
         , XRX_RVALUE(SourceObservable&&) source, XRX_RVALUE(Scheduler&&) scheduler)
     {
-        static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-        static_assert(not std::is_lvalue_reference_v<Scheduler>);
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(scheduler);
         using SourceObservable_ = std::remove_reference_t<SourceObservable>;
         using Scheduler_ = std::remove_reference_t<Scheduler>;
         using Impl = ::xrx::observable::detail::SubscribeOnObservable_<SourceObservable_, Scheduler_>;
@@ -2933,8 +2928,8 @@ namespace xrx::detail::operator_tag
         , xrx::detail::operator_tag::ObserveOn
         , XRX_RVALUE(SourceObservable&&) source, XRX_RVALUE(Scheduler&&) scheduler)
     {
-        static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-        static_assert(not std::is_lvalue_reference_v<Scheduler>);
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(scheduler);
         using Source_ = std::remove_reference_t<SourceObservable>;
         using Scheduler_ = std::remove_reference_t<Scheduler>;
         using Impl = ::xrx::observable::detail::ObserveOnObservable_<Source_, Scheduler_>;
@@ -3021,25 +3016,14 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        struct RememberTake
-        {
-            std::size_t _count = 0;
-
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Take
-                    , SourceObservable, std::size_t>
-            {
-                return make_operator(operator_tag::Take(), XRX_MOV(source), _count);
-            }
-        };
-    } // namespace detail
-
     inline auto take(std::size_t count)
     {
-        return detail::RememberTake(count);
+        return [_count = count](XRX_RVALUE(auto&&) source)
+        {
+            XRX_CHECK_RVALUE(source);
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::Take()
+                , XRX_MOV(source), std::size_t(_count));
+        };
     }
 } // namespace xrx
 
@@ -3094,7 +3078,7 @@ namespace xrx::observable
                 requires ConceptValueObserverOf<Observer, value_type>
             Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
-                static_assert(not std::is_lvalue_reference_v<Observer>);
+                XRX_CHECK_RVALUE(observer);
                 using Observer_ = std::remove_reference_t<Observer>;
 
                 const clock_duration period(_period);
@@ -3198,7 +3182,7 @@ namespace xrx::detail
         template<typename Observer>
         Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(observer);
             constexpr std::bool_constant<Endless> _edless;
             Integer current = _first;
             while (compare_(current, _last, _step, _edless))
@@ -3319,29 +3303,16 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        template<typename F>
-        struct RememberTransform
-        {
-            F _transform;
-
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Transform
-                    , SourceObservable, F>
-            {
-                return make_operator(operator_tag::Transform()
-                    , XRX_MOV(source), XRX_MOV(_transform));
-            }
-        };
-    } // namespace detail
-
     template<typename F>
     auto transform(XRX_RVALUE(F&&) transform_)
     {
-        using F_ = std::remove_reference_t<F>;
-        return detail::RememberTransform<F_>(XRX_MOV(transform_));
+        XRX_CHECK_RVALUE(transform_);
+        return [_transform = XRX_MOV(transform_)](XRX_RVALUE(auto&&) source) mutable
+        {
+            XRX_CHECK_RVALUE(source);
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::Transform()
+                , XRX_MOV(source), XRX_MOV(_transform));
+        };
     }
 } // namespace xrx
 
@@ -3462,7 +3433,7 @@ namespace xrx::detail
         template<typename Observer>
         NoopUnsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(observer);
             if (_max_repeats == 0)
             {
                 (void)on_completed_optional(XRX_MOV(observer));
@@ -3526,32 +3497,24 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        template<bool Endless>
-        struct RememberRepeat
-        {
-            std::size_t _count = 0;
-
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Repeat
-                    , SourceObservable, std::size_t, std::bool_constant<Endless>>
-            {
-                return make_operator(operator_tag::Repeat()
-                    , XRX_MOV(source), _count, std::bool_constant<Endless>());
-            }
-        };
-    } // namespace detail
-
     inline auto repeat()
     {
-        return detail::RememberRepeat<true/*endless*/>(0);
+        return [](XRX_RVALUE(auto&&) source)
+        {
+            XRX_CHECK_RVALUE(source);
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::Repeat()
+                , XRX_MOV(source), 0, std::bool_constant<true/*endless*/>());
+        };
     }
 
     inline auto repeat(std::size_t count)
     {
-        return detail::RememberRepeat<false/*not endless*/>(count);
+        return [_count = count](XRX_RVALUE(auto&&) source)
+        {
+            XRX_CHECK_RVALUE(source);
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::Repeat()
+                , XRX_MOV(source), _count, std::bool_constant<false/*not endless*/>());
+        };
     }
 } // namespace xrx
 
@@ -3645,30 +3608,15 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        template<typename Observer>
-        struct RememberTapOrDo
-        {
-            Observer _observer;
-
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::TapOrDo
-                    , SourceObservable, Observer>
-            {
-                return make_operator(operator_tag::TapOrDo()
-                    , XRX_MOV(source), XRX_MOV(_observer));
-            }
-        };
-    } // namespace detail
-
     template<typename Observer>
     auto tap(XRX_RVALUE(Observer&&) observer)
     {
-        static_assert(not std::is_lvalue_reference_v<Observer>);
-        using Observer_ = std::remove_reference_t<Observer>;
-        return detail::RememberTapOrDo<Observer_>(XRX_MOV(observer));
+        XRX_CHECK_RVALUE(observer);
+        return [_observer = XRX_MOV(observer)](XRX_RVALUE(auto&&) source) mutable
+        {
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::TapOrDo()
+                , XRX_MOV(source), XRX_MOV(_observer));
+        };
     }
 } // namespace xrx
 
@@ -3896,8 +3844,8 @@ namespace xrx::detail
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::From
         , XRX_RVALUE(V&&) v0, XRX_RVALUE(Vs&&)... vs)
     {
-        static_assert((not std::is_lvalue_reference_v<V>)
-                  && ((not std::is_lvalue_reference_v<Vs>) && ...)
+        XRX_CHECK_RVALUE(v0);
+        static_assert(((not std::is_lvalue_reference_v<Vs>) && ...)
             , ".from(Vs...) requires Vs to be value-like type.");
 
         using Tuple = std::tuple<std::remove_reference_t<V>, std::remove_reference_t<Vs>...>;
@@ -3964,8 +3912,9 @@ namespace xrx::detail
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::StartsWith
         , XRX_RVALUE(SourceObservable&&) source, XRX_RVALUE(V&&) v0, XRX_RVALUE(Vs&&)... vs)
     {
-        static_assert((not std::is_lvalue_reference_v<V>)
-                  && ((not std::is_lvalue_reference_v<Vs>) && ...)
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(v0);
+        static_assert(((not std::is_lvalue_reference_v<Vs>) && ...)
             , ".start_with(Vs...) requires Vs to be value-like type.");
 
         using Tuple = std::tuple<std::remove_reference_t<V>, std::remove_reference_t<Vs>...>;
@@ -4030,7 +3979,7 @@ namespace xrx::detail
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::Iterate
         , XRX_RVALUE(Container&&) values)
     {
-        static_assert(not std::is_lvalue_reference_v<Container>);
+        XRX_CHECK_RVALUE(values);
         using Container_ = std::remove_reference_t<Container>;
         using Iterator = decltype(std::begin(values));
         static_assert(std::forward_iterator<Iterator>);
@@ -4234,25 +4183,13 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        struct RememberWindow
-        {
-            std::size_t _count = 0;
-
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Window
-                    , SourceObservable, std::size_t>
-            {
-                return make_operator(operator_tag::Window(), XRX_MOV(source), std::size_t(_count));
-            }
-        };
-    } // namespace detail
-
     inline auto window(std::size_t count)
     {
-        return detail::RememberWindow(count);
+        return [_count = count](XRX_RVALUE(auto&&) source)
+        {
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::Window()
+                , XRX_MOV(source), std::size_t(_count));
+        };
     }
 } // namespace xrx
 
@@ -4331,7 +4268,7 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         decltype(auto) subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(observer);
             using Observer_ = std::remove_reference_t<Observer>;
             using FilterObserver = FilterObserver<Observer_>;
             return XRX_MOV(_source).subscribe(FilterObserver(
@@ -4345,8 +4282,8 @@ namespace xrx::detail
             requires ConceptObservable<SourceObservable>
                 && std::predicate<F, typename SourceObservable::value_type>
     {
-        static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-        static_assert(not std::is_lvalue_reference_v<F>);
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(filter);
         using SourceObservable_ = std::remove_reference_t<SourceObservable>;
         using F_ = std::remove_reference_t<F>;
         using Impl = FilterObservable<SourceObservable_, F_>;
@@ -4356,31 +4293,16 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        template<typename F>
-        struct RememberFilter
-        {
-            F _f;
-
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Filter
-                    , SourceObservable, F>
-            {
-                static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-                return make_operator(operator_tag::Filter()
-                    , XRX_MOV(source), XRX_MOV(_f));
-            }
-        };
-    } // namespace detail
-
     template<typename F>
-    auto filter(XRX_RVALUE(F&&) filter)
+    auto filter(XRX_RVALUE(F&&) f)
     {
-        static_assert(not std::is_lvalue_reference_v<F>);
-        using F_ = std::remove_reference_t<F>;
-        return detail::RememberFilter<F_>(XRX_MOV(filter));
+        XRX_CHECK_RVALUE(f);
+        return [_f = XRX_MOV(f)](XRX_RVALUE(auto&&) source) mutable
+        {
+            XRX_CHECK_RVALUE(source);
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::Filter()
+                , XRX_MOV(source), XRX_MOV(_f));
+        };
     }
 } // namespace xrx
 
@@ -4399,8 +4321,6 @@ namespace xrx
 
 namespace xrx::observable
 {
-    template<typename X> struct Show_;
-
     namespace detail
     {
         template<typename Unsubscriber_>
@@ -4502,7 +4422,7 @@ namespace xrx::detail::operator_tag
             on_subscribe(XRX_MOV(observer));
         }
     {
-        static_assert(not std::is_lvalue_reference_v<F>);
+        XRX_CHECK_RVALUE(on_subscribe);
         static_assert(not std::is_same_v<Value, void>);
         static_assert(not std::is_reference_v<Value>);
         using F_ = std::remove_reference_t<F>;
@@ -4532,10 +4452,10 @@ namespace xrx::detail
     struct FlatMapIdentity
     {
         template<typename SourceValue, typename InnerValue>
-        InnerValue operator()(XRX_RVALUE(SourceValue&&) /*main_value*/, XRX_RVALUE(InnerValue&&) inner_value) const
+        InnerValue operator()(XRX_RVALUE(SourceValue&&) main_value, XRX_RVALUE(InnerValue&&) inner_value) const
         {
-            static_assert(not std::is_lvalue_reference_v<SourceValue>);
-            static_assert(not std::is_lvalue_reference_v<InnerValue>);
+            XRX_CHECK_RVALUE(main_value);
+            XRX_CHECK_RVALUE(inner_value);
             return XRX_MOV(inner_value);
         }
     };
@@ -4584,7 +4504,7 @@ namespace xrx::detail
 
         XRX_FORCEINLINE() auto on_next(XRX_RVALUE(Value&&) value)
         {
-            static_assert(not std::is_lvalue_reference_v<Value>);
+            XRX_CHECK_RVALUE(value);
             assert(not _state->_end_with_error);
             assert(not _state->_completed);
             assert(not _state->_unsubscribed);
@@ -4624,8 +4544,8 @@ namespace xrx::detail
         , Map& map
         , XRX_RVALUE(SourceValue&&) source_value)
     {
-        static_assert(not std::is_lvalue_reference_v<Observable>);
-        static_assert(not std::is_lvalue_reference_v<SourceValue>);
+        XRX_CHECK_RVALUE(inner);
+        XRX_CHECK_RVALUE(source_value);
         using InnerSync_ = InnerObserver_Sync_Sync<Observer, ProducedValue, Map, SourceValue>;
         State_Sync_Sync state;
         auto unsubscribe = XRX_MOV(inner).subscribe(
@@ -4737,7 +4657,7 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         Unsubscriber subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(destination_);
             using Observer_ = std::remove_reference_t<Observer>;
             using Root_ = OuterObserver_Sync_Sync<Observer_, Produce, Map, source_type, produce_type>;
             State_Sync_Sync state;
@@ -5041,7 +4961,7 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         Unsubscriber subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(destination_);
             using Observer_ = std::remove_reference_t<Observer>;
             using Root_ = OuterObserver_Sync_Async<Observer_, Produce, ProducedObservable, source_type>;
             using AllObsevables = AllObservablesState_Sync_Async<ProducedObservable, source_type>;
@@ -5191,7 +5111,7 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         Unsubscriber subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(destination_);
             using OuterObserver_ = OuterObserver_Async_Sync<Observer, Produce, Map, source_type, produce_type>;
             return XRX_MOV(_source).subscribe(OuterObserver_(
                 XRX_MOV(_produce), XRX_MOV(_map), XRX_MOV(destination_)));
@@ -5479,7 +5399,7 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         Unsubscriber subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(destination_);
             using Shared_ = SharedState_Async_Async<Map, Observer, Produce, source_type, ProducedObservable>;
             using AllObservablesRef = std::shared_ptr<typename Shared_::AllObservables>;
             using OuterObserver_ = OuterObserver_Async_Async<Shared_, source_type, Produce>;
@@ -5532,43 +5452,30 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        template<typename F, typename Map>
-        struct RememberFlatMap
-        {
-            [[no_unique_address]] F _produce;
-            [[no_unique_address]] Map _map;
-
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::FlatMap
-                    , SourceObservable, F, Map>
-            {
-                static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-                return make_operator(operator_tag::FlatMap()
-                    , XRX_MOV(source), XRX_MOV(_produce), XRX_MOV(_map));
-            }
-        };
-    } // namespace detail
-
     template<typename F>
     auto flat_map(XRX_RVALUE(F&&) produce)
     {
-        static_assert(not std::is_lvalue_reference_v<F>);
-        using F_ = std::remove_reference_t<F>;
-        using IdentityMap = detail::FlatMapIdentity;
-        return detail::RememberFlatMap<F_, IdentityMap>(XRX_MOV(produce), IdentityMap());
+        XRX_CHECK_RVALUE(produce);
+        return [_produce = XRX_MOV(produce)](XRX_RVALUE(auto&&) source) mutable
+        {
+            XRX_CHECK_RVALUE(source);
+            using IdentityMap = detail::FlatMapIdentity;
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::FlatMap()
+                , XRX_MOV(source), XRX_MOV(_produce), IdentityMap());
+        };
     }
 
     template<typename F, typename Map>
     auto flat_map(XRX_RVALUE(F&&) produce, XRX_RVALUE(Map&&) map)
     {
-        static_assert(not std::is_lvalue_reference_v<F>);
-        static_assert(not std::is_lvalue_reference_v<Map>);
-        using F_ = std::remove_reference_t<F>;
-        using Map_ = std::remove_reference_t<Map>;
-        return detail::RememberFlatMap<F_, Map_>(XRX_MOV(produce), XRX_MOV(map));
+        XRX_CHECK_RVALUE(produce);
+        XRX_CHECK_RVALUE(map);
+        return [_produce = XRX_MOV(produce), _map = XRX_MOV(map)](XRX_RVALUE(auto&&) source) mutable
+        {
+            XRX_CHECK_RVALUE(source);
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::FlatMap()
+                , XRX_MOV(source), XRX_MOV(_produce), XRX_MOV(_map));
+        };
     }
 } // namespace xrx
 
@@ -5650,7 +5557,7 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         decltype(auto) subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(observer);
             using Observer_ = std::remove_reference_t<Observer>;
             using ReduceObserver_ = ReduceObserver<Observer_>;
             return XRX_MOV(_source).subscribe(ReduceObserver_(
@@ -5664,9 +5571,9 @@ namespace xrx::detail
             requires ConceptObservable<SourceObservable>
                 && requires { { op(XRX_MOV(value), std::declval<typename SourceObservable::value_type>()) } -> std::convertible_to<Value>; }
     {
-        static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-        static_assert(not std::is_lvalue_reference_v<Value>);
-        static_assert(not std::is_lvalue_reference_v<F>);
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(value);
+        XRX_CHECK_RVALUE(op);
         using SourceObservable_ = std::remove_reference_t<SourceObservable>;
         using F_ = std::remove_reference_t<F>;
         using Value_ = std::remove_reference_t<Value>;
@@ -5677,34 +5584,17 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        template<typename Value, typename F>
-        struct RememberReduce
-        {
-            Value _value;
-            F _f;
-
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Reduce
-                    , SourceObservable, Value, F>
-            {
-                static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-                return make_operator(operator_tag::Reduce()
-                    , XRX_MOV(source), XRX_MOV(_value), XRX_MOV(_f));
-            }
-        };
-    } // namespace detail
-
     template<typename Value, typename F>
     auto reduce(XRX_RVALUE(Value&&) initial, XRX_RVALUE(F&&) op)
     {
-        static_assert(not std::is_lvalue_reference_v<Value>);
-        static_assert(not std::is_lvalue_reference_v<F>);
-        using F_ = std::remove_reference_t<F>;
-        using Value_ = std::remove_reference_t<Value>;
-        return detail::RememberReduce<Value_, F_>(XRX_MOV(initial), XRX_MOV(op));
+        XRX_CHECK_RVALUE(initial);
+        XRX_CHECK_RVALUE(op);
+        return [_value = XRX_MOV(initial), _f = XRX_MOV(op)](XRX_RVALUE(auto&&) source) mutable
+        {
+            XRX_CHECK_RVALUE(source);
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::Reduce()
+                , XRX_MOV(source), XRX_MOV(_value), XRX_MOV(_f));
+        };
     }
 } // namespace xrx
 
@@ -5840,8 +5730,7 @@ namespace xrx::detail
             template<typename Observer>
             Unsubscriber_Child subscribe_child(XRX_RVALUE(Observer&&) observer, bool do_refcount)
             {
-                static_assert(not std::is_lvalue_reference_v<Observer>);
-
+                XRX_CHECK_RVALUE(observer);
                 AnyObserver_ erased_observer(XRX_MOV(observer));
                 auto guard = std::lock_guard(_mutex);
                 std::size_t count_before = _subscriptions.size();
@@ -5933,8 +5822,7 @@ namespace xrx::detail
         template<typename Observer>
         Unsubscriber_Child subscribe(XRX_RVALUE(Observer&&) observer)
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
-
+            XRX_CHECK_RVALUE(observer);
             if (auto shared = _shared_weak.lock(); shared)
             {
                 return shared->subscribe_child(XRX_MOV(observer), false/*no refcount*/);
@@ -6029,7 +5917,7 @@ namespace xrx::detail
     auto ConnectObservableState_<SourceObservable>::RefCountObservable_::subscribe(
         XRX_RVALUE(Observer&&) observer) &&
     {
-        static_assert(not std::is_lvalue_reference_v<Observer>);
+        XRX_CHECK_RVALUE(observer);
         assert(_shared);
         return Unsubscriber_RefCount(_shared->subscribe_child(
             XRX_MOV(observer), true/*refcount*/));
@@ -6046,23 +5934,14 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        struct RememberPublish
-        {
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Publish
-                    , SourceObservable>
-            {
-                return make_operator(operator_tag::Publish(), XRX_MOV(source));
-            }
-        };
-    } // namespace detail
-
     inline auto publish()
     {
-        return detail::RememberPublish();
+        return [](XRX_RVALUE(auto&&) source)
+        {
+            XRX_CHECK_RVALUE(source);
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::Publish()
+                , XRX_MOV(source));
+        };
     }
 } // namespace xrx
 
@@ -6149,7 +6028,7 @@ namespace xrx
                 requires ConceptValueObserverOf<Observer, Value>
             Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
-                static_assert(not std::is_lvalue_reference_v<Observer>);
+                XRX_CHECK_RVALUE(observer);
                 auto shared = _shared_weak.lock();
                 if (not shared)
                 {
@@ -6177,7 +6056,7 @@ namespace xrx
         // once subscribed, _same_ Subject instance is used to emit values.
         Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer)
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(observer);
             return as_observable().subscribe(XRX_MOV(observer));
         }
 
@@ -6613,10 +6492,9 @@ namespace xrx::detail
         , XRX_RVALUE(OpeningsObservable&&) openings
         , XRX_RVALUE(CloseObservableProducer&&) close_producer)
     {
-        static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-        static_assert(not std::is_lvalue_reference_v<OpeningsObservable>);
-        static_assert(not std::is_lvalue_reference_v<CloseObservableProducer>);
-
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(openings);
+        XRX_CHECK_RVALUE(close_producer);
         using opening_value = typename OpeningsObservable::value_type;
         using CloseObservable = decltype(close_producer(std::declval<opening_value>()));
         static_assert(not std::is_reference_v<CloseObservable>);

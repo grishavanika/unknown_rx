@@ -74,7 +74,7 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         decltype(auto) subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(observer);
             using Observer_ = std::remove_reference_t<Observer>;
             using ReduceObserver_ = ReduceObserver<Observer_>;
             return XRX_MOV(_source).subscribe(ReduceObserver_(
@@ -88,9 +88,9 @@ namespace xrx::detail
             requires ConceptObservable<SourceObservable>
                 && requires { { op(XRX_MOV(value), std::declval<typename SourceObservable::value_type>()) } -> std::convertible_to<Value>; }
     {
-        static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-        static_assert(not std::is_lvalue_reference_v<Value>);
-        static_assert(not std::is_lvalue_reference_v<F>);
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(value);
+        XRX_CHECK_RVALUE(op);
         using SourceObservable_ = std::remove_reference_t<SourceObservable>;
         using F_ = std::remove_reference_t<F>;
         using Value_ = std::remove_reference_t<Value>;
@@ -101,33 +101,16 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        template<typename Value, typename F>
-        struct RememberReduce
-        {
-            Value _value;
-            F _f;
-
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Reduce
-                    , SourceObservable, Value, F>
-            {
-                static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-                return make_operator(operator_tag::Reduce()
-                    , XRX_MOV(source), XRX_MOV(_value), XRX_MOV(_f));
-            }
-        };
-    } // namespace detail
-
     template<typename Value, typename F>
     auto reduce(XRX_RVALUE(Value&&) initial, XRX_RVALUE(F&&) op)
     {
-        static_assert(not std::is_lvalue_reference_v<Value>);
-        static_assert(not std::is_lvalue_reference_v<F>);
-        using F_ = std::remove_reference_t<F>;
-        using Value_ = std::remove_reference_t<Value>;
-        return detail::RememberReduce<Value_, F_>(XRX_MOV(initial), XRX_MOV(op));
+        XRX_CHECK_RVALUE(initial);
+        XRX_CHECK_RVALUE(op);
+        return [_value = XRX_MOV(initial), _f = XRX_MOV(op)](XRX_RVALUE(auto&&) source) mutable
+        {
+            XRX_CHECK_RVALUE(source);
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::Reduce()
+                , XRX_MOV(source), XRX_MOV(_value), XRX_MOV(_f));
+        };
     }
 } // namespace xrx

@@ -32,7 +32,7 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         decltype(auto) subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(observer);
             // #XXX: we can require nothing if is_async == false, I guess.
             static_assert(std::is_move_constructible_v<Observer>);
             return XRX_MOV(_source).subscribe(XRX_MOV(observer));
@@ -46,7 +46,7 @@ namespace xrx::detail
         template<typename Scheduler>
         auto subscribe_on(XRX_RVALUE(Scheduler&&) scheduler) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Scheduler>);
+            XRX_CHECK_RVALUE(scheduler);
             return make_operator(detail::operator_tag::SubscribeOn()
                 , XRX_MOV(*this), XRX_MOV(scheduler));
         }
@@ -54,7 +54,7 @@ namespace xrx::detail
         template<typename Scheduler>
         auto observe_on(XRX_RVALUE(Scheduler&&) scheduler) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Scheduler>);
+            XRX_CHECK_RVALUE(scheduler);
             return make_operator(detail::operator_tag::ObserveOn()
                 , XRX_MOV(*this), XRX_MOV(scheduler));
         }
@@ -144,32 +144,22 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        template<typename Observer>
-        struct RememberSubscribe
-        {
-            Observer _observer;
-
-            template<typename SourceObservable>
-            auto pipe_(SourceObservable source) &&
-                requires requires { XRX_MOV(source).subscribe(XRX_MOV(_observer)); }
-            {
-                return XRX_MOV(source).subscribe(XRX_MOV(_observer));
-            }
-        };
-    } // namespace detail
-
     template<typename Observer>
-    inline auto subscribe(Observer observer)
+    inline auto subscribe(XRX_RVALUE(Observer&&) observer)
     {
-        return detail::RememberSubscribe<Observer>(XRX_MOV(observer));
+        XRX_CHECK_RVALUE(observer);
+        return [_observer = XRX_MOV(observer)](XRX_RVALUE(auto&&) source) mutable
+        {
+            return XRX_MOV(source).subscribe(XRX_MOV(_observer));
+        };
     }
 } // namespace xrx
 
 template<typename SourceObservable, typename PipeConnect>
-auto operator|(::xrx::detail::Observable_<SourceObservable>&& source_rvalue, PipeConnect connect)
-    requires requires { XRX_MOV(connect).pipe_(XRX_MOV(source_rvalue)); }
+auto operator|(XRX_RVALUE(::xrx::detail::Observable_<SourceObservable>&&) source_rvalue, XRX_RVALUE(PipeConnect&&) connect)
+    requires requires { XRX_MOV(connect)(XRX_MOV(source_rvalue)); }
 {
-    return XRX_MOV(connect).pipe_(XRX_MOV(source_rvalue));
+    XRX_CHECK_RVALUE(source_rvalue);
+    XRX_CHECK_RVALUE(connect);
+    return XRX_MOV(connect)(XRX_MOV(source_rvalue));
 }

@@ -17,10 +17,10 @@ namespace xrx::detail
     struct FlatMapIdentity
     {
         template<typename SourceValue, typename InnerValue>
-        InnerValue operator()(XRX_RVALUE(SourceValue&&) /*main_value*/, XRX_RVALUE(InnerValue&&) inner_value) const
+        InnerValue operator()(XRX_RVALUE(SourceValue&&) main_value, XRX_RVALUE(InnerValue&&) inner_value) const
         {
-            static_assert(not std::is_lvalue_reference_v<SourceValue>);
-            static_assert(not std::is_lvalue_reference_v<InnerValue>);
+            XRX_CHECK_RVALUE(main_value);
+            XRX_CHECK_RVALUE(inner_value);
             return XRX_MOV(inner_value);
         }
     };
@@ -69,7 +69,7 @@ namespace xrx::detail
 
         XRX_FORCEINLINE() auto on_next(XRX_RVALUE(Value&&) value)
         {
-            static_assert(not std::is_lvalue_reference_v<Value>);
+            XRX_CHECK_RVALUE(value);
             assert(not _state->_end_with_error);
             assert(not _state->_completed);
             assert(not _state->_unsubscribed);
@@ -109,8 +109,8 @@ namespace xrx::detail
         , Map& map
         , XRX_RVALUE(SourceValue&&) source_value)
     {
-        static_assert(not std::is_lvalue_reference_v<Observable>);
-        static_assert(not std::is_lvalue_reference_v<SourceValue>);
+        XRX_CHECK_RVALUE(inner);
+        XRX_CHECK_RVALUE(source_value);
         using InnerSync_ = InnerObserver_Sync_Sync<Observer, ProducedValue, Map, SourceValue>;
         State_Sync_Sync state;
         auto unsubscribe = XRX_MOV(inner).subscribe(
@@ -222,7 +222,7 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         Unsubscriber subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(destination_);
             using Observer_ = std::remove_reference_t<Observer>;
             using Root_ = OuterObserver_Sync_Sync<Observer_, Produce, Map, source_type, produce_type>;
             State_Sync_Sync state;
@@ -526,7 +526,7 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         Unsubscriber subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(destination_);
             using Observer_ = std::remove_reference_t<Observer>;
             using Root_ = OuterObserver_Sync_Async<Observer_, Produce, ProducedObservable, source_type>;
             using AllObsevables = AllObservablesState_Sync_Async<ProducedObservable, source_type>;
@@ -676,7 +676,7 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         Unsubscriber subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(destination_);
             using OuterObserver_ = OuterObserver_Async_Sync<Observer, Produce, Map, source_type, produce_type>;
             return XRX_MOV(_source).subscribe(OuterObserver_(
                 XRX_MOV(_produce), XRX_MOV(_map), XRX_MOV(destination_)));
@@ -964,7 +964,7 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         Unsubscriber subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
+            XRX_CHECK_RVALUE(destination_);
             using Shared_ = SharedState_Async_Async<Map, Observer, Produce, source_type, ProducedObservable>;
             using AllObservablesRef = std::shared_ptr<typename Shared_::AllObservables>;
             using OuterObserver_ = OuterObserver_Async_Async<Shared_, source_type, Produce>;
@@ -1017,42 +1017,29 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        template<typename F, typename Map>
-        struct RememberFlatMap
-        {
-            [[no_unique_address]] F _produce;
-            [[no_unique_address]] Map _map;
-
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::FlatMap
-                    , SourceObservable, F, Map>
-            {
-                static_assert(not std::is_lvalue_reference_v<SourceObservable>);
-                return make_operator(operator_tag::FlatMap()
-                    , XRX_MOV(source), XRX_MOV(_produce), XRX_MOV(_map));
-            }
-        };
-    } // namespace detail
-
     template<typename F>
     auto flat_map(XRX_RVALUE(F&&) produce)
     {
-        static_assert(not std::is_lvalue_reference_v<F>);
-        using F_ = std::remove_reference_t<F>;
-        using IdentityMap = detail::FlatMapIdentity;
-        return detail::RememberFlatMap<F_, IdentityMap>(XRX_MOV(produce), IdentityMap());
+        XRX_CHECK_RVALUE(produce);
+        return [_produce = XRX_MOV(produce)](XRX_RVALUE(auto&&) source) mutable
+        {
+            XRX_CHECK_RVALUE(source);
+            using IdentityMap = detail::FlatMapIdentity;
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::FlatMap()
+                , XRX_MOV(source), XRX_MOV(_produce), IdentityMap());
+        };
     }
 
     template<typename F, typename Map>
     auto flat_map(XRX_RVALUE(F&&) produce, XRX_RVALUE(Map&&) map)
     {
-        static_assert(not std::is_lvalue_reference_v<F>);
-        static_assert(not std::is_lvalue_reference_v<Map>);
-        using F_ = std::remove_reference_t<F>;
-        using Map_ = std::remove_reference_t<Map>;
-        return detail::RememberFlatMap<F_, Map_>(XRX_MOV(produce), XRX_MOV(map));
+        XRX_CHECK_RVALUE(produce);
+        XRX_CHECK_RVALUE(map);
+        return [_produce = XRX_MOV(produce), _map = XRX_MOV(map)](XRX_RVALUE(auto&&) source) mutable
+        {
+            XRX_CHECK_RVALUE(source);
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::FlatMap()
+                , XRX_MOV(source), XRX_MOV(_produce), XRX_MOV(_map));
+        };
     }
 } // namespace xrx

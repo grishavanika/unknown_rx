@@ -128,8 +128,7 @@ namespace xrx::detail
             template<typename Observer>
             Unsubscriber_Child subscribe_child(XRX_RVALUE(Observer&&) observer, bool do_refcount)
             {
-                static_assert(not std::is_lvalue_reference_v<Observer>);
-
+                XRX_CHECK_RVALUE(observer);
                 AnyObserver_ erased_observer(XRX_MOV(observer));
                 auto guard = std::lock_guard(_mutex);
                 std::size_t count_before = _subscriptions.size();
@@ -221,8 +220,7 @@ namespace xrx::detail
         template<typename Observer>
         Unsubscriber_Child subscribe(XRX_RVALUE(Observer&&) observer)
         {
-            static_assert(not std::is_lvalue_reference_v<Observer>);
-
+            XRX_CHECK_RVALUE(observer);
             if (auto shared = _shared_weak.lock(); shared)
             {
                 return shared->subscribe_child(XRX_MOV(observer), false/*no refcount*/);
@@ -317,7 +315,7 @@ namespace xrx::detail
     auto ConnectObservableState_<SourceObservable>::RefCountObservable_::subscribe(
         XRX_RVALUE(Observer&&) observer) &&
     {
-        static_assert(not std::is_lvalue_reference_v<Observer>);
+        XRX_CHECK_RVALUE(observer);
         assert(_shared);
         return Unsubscriber_RefCount(_shared->subscribe_child(
             XRX_MOV(observer), true/*refcount*/));
@@ -334,22 +332,13 @@ namespace xrx::detail
 
 namespace xrx
 {
-    namespace detail
-    {
-        struct RememberPublish
-        {
-            template<typename SourceObservable>
-            auto pipe_(XRX_RVALUE(SourceObservable&&) source) &&
-                requires is_cpo_invocable_v<tag_t<make_operator>, operator_tag::Publish
-                    , SourceObservable>
-            {
-                return make_operator(operator_tag::Publish(), XRX_MOV(source));
-            }
-        };
-    } // namespace detail
-
     inline auto publish()
     {
-        return detail::RememberPublish();
+        return [](XRX_RVALUE(auto&&) source)
+        {
+            XRX_CHECK_RVALUE(source);
+            return ::xrx::detail::make_operator(::xrx::detail::operator_tag::Publish()
+                , XRX_MOV(source));
+        };
     }
 } // namespace xrx

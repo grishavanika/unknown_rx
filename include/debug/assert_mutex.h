@@ -49,7 +49,7 @@ namespace xrx::debug
 
     private:
         [[no_unique_address]] Action _action;
-        std::shared_mutex _mutex;
+        std::recursive_mutex _mutex;
     };
 
     template<typename Mutex>
