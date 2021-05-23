@@ -5721,6 +5721,7 @@ namespace xrx
 #include <type_traits>
 #include <utility>
 #include <memory>
+#include <mutex>
 #include <optional>
 
 namespace xrx::detail
@@ -5738,7 +5739,7 @@ namespace xrx::detail
 
         struct SharedImpl_;
 
-        struct Observer_
+        struct ConnectObserver_
         {
             std::shared_ptr<SharedImpl_> _shared;
             bool _do_refcount = false;
@@ -5749,31 +5750,37 @@ namespace xrx::detail
             void on_completed();
         };
 
-        struct Unsubscriber
+        struct Unsubscriber_Child
         {
             using has_effect = std::true_type;
 
-            // #XXX: note strong reference, not weak one.
-            // #TODO: add a test that makes sure we can't use weak there.
             std::shared_ptr<SharedImpl_> _shared;
             Handle _handle;
 
             bool detach(bool do_refcount = false);
         };
 
-        struct RefCountUnsubscriber
+        struct Unsubscriber_Connect
         {
-            Unsubscriber _unsubscriber;
+            using has_effect = std::true_type;
 
-            RefCountUnsubscriber() = default;
-            explicit RefCountUnsubscriber(Unsubscriber unsubscriber)
-                : _unsubscriber(XRX_MOV(unsubscriber))
+            std::shared_ptr<SharedImpl_> _shared;
+
+            bool detach();
+
+            explicit operator bool() const
             {
+                return !!_shared;
             }
+        };
+
+        struct Unsubscriber_RefCount
+        {
+            Unsubscriber_Child _child;
 
             bool detach()
             {
-                return std::exchange(_unsubscriber, {}).detach(true/*do_refcount*/);
+                return std::exchange(_child, {}).detach(true/*do_refcount*/);
             }
         };
 
@@ -5782,7 +5789,7 @@ namespace xrx::detail
             using value_type = typename SourceObservable::value_type;
             using error_type = typename SourceObservable::error_type;
             using is_async = IsAsyncObservable<SourceObservable>;
-            using Unsubscriber = RefCountUnsubscriber;
+            using Unsubscriber = Unsubscriber_RefCount;
 
             std::shared_ptr<SharedImpl_> _shared;
 
@@ -5795,96 +5802,109 @@ namespace xrx::detail
 
         struct SharedImpl_ : public std::enable_shared_from_this<SharedImpl_>
         {
-            using Base = std::enable_shared_from_this<SharedImpl_>;
-
-            [[no_unique_address]] debug::AssertMutex<> _assert_mutex;
+            std::recursive_mutex _mutex;
             SourceObservable _source;
             Subscriptions _subscriptions;
             std::optional<SourceUnsubscriber> _connected;
 
             explicit SharedImpl_(XRX_RVALUE(SourceObservable&&) source)
-                : Base()
+                : _mutex()
                 , _source(XRX_MOV(source))
                 , _subscriptions()
                 , _connected(std::nullopt)
             {
             }
 
-            SourceUnsubscriber connect(bool do_refcount)
+            Unsubscriber_Connect connect_once(bool do_refcount)
             {
-                auto guard = std::unique_lock(_assert_mutex);
+                auto guard = std::unique_lock(_mutex);
+                if (not _connected)
+                {
+                    auto self = this->shared_from_this();
+                    _connected.emplace(_source.fork().subscribe(ConnectObserver_(self, do_refcount)));
+                    return Unsubscriber_Connect(XRX_MOV(self));
+                }
+                return Unsubscriber_Connect();
+            }
+
+            bool disconnect_once()
+            {
+                auto guard = std::unique_lock(_mutex);
                 if (_connected)
                 {
-                    return SourceUnsubscriber();
+                    return std::exchange(_connected, {})->detach();
                 }
-
-                using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
-                SourceUnsubscriber unsubscriber;
-                {
-                    auto unguard = debug::ScopeUnlock(guard);
-                    // #XXX: `_source` that remembers Observer that takes strong reference to this.
-                    // Circular dependency ? Check this.
-                    unsubscriber = _source.fork().subscribe(
-                        Observer_(this->shared_from_this(), do_refcount));
-                }
-                // #TODO: if this fires, we need to take a lock while doing
-                // .subscribe() above. Since .subscribe() itself can trigger
-                // .on_next() call, we need to have recursive mutex.
-                assert(not _connected && "Multiple parallel .connect() calls.");
-                _connected = unsubscriber;
-                return unsubscriber;
+                return false;
             }
 
             template<typename Observer>
-            Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer, bool do_refcount = false)
+            Unsubscriber_Child subscribe_child(XRX_RVALUE(Observer&&) observer, bool do_refcount)
             {
                 static_assert(not std::is_lvalue_reference_v<Observer>);
-                std::size_t count_before = 0;
+
                 AnyObserver_ erased_observer(XRX_MOV(observer));
-                Unsubscriber unsubscriber;
-                unsubscriber._shared = Base::shared_from_this();
-                {
-                    auto guard = std::lock_guard(_assert_mutex);
-                    count_before = _subscriptions.size();
-                    unsubscriber._handle = _subscriptions.push_back(XRX_MOV(erased_observer));
-                }
+                auto guard = std::lock_guard(_mutex);
+                std::size_t count_before = _subscriptions.size();
+                auto handle = _subscriptions.push_back(XRX_MOV(erased_observer));
                 if (do_refcount && (count_before == 0))
                 {
-                    connect(do_refcount);
+                    (void)connect_once(do_refcount);
                 }
-                return unsubscriber;
+                return Unsubscriber_Child(this->shared_from_this(), XRX_MOV(handle));
             }
 
-            bool unsubscribe(Handle handle, bool do_refcount)
+            bool unsubscribe_child(Handle handle, bool do_refcount)
             {
-                auto guard = std::lock_guard(_assert_mutex);
+                auto guard = std::lock_guard(_mutex);
                 const std::size_t count_before = _subscriptions.size();
                 const bool ok = _subscriptions.erase(handle);
                 const std::size_t count_now = _subscriptions.size();
                 if (do_refcount && (count_now == 0) && (count_before > 0))
                 {
-                    if (_connected)
-                    {
-                        _connected->detach();
-                        _connected.reset();
-                    }
+                    (void)disconnect_once();
                 }
                 return ok;
             }
 
             void on_next_impl(XRX_RVALUE(value_type&&) v, bool do_refcount)
             {
-                auto lock = std::unique_lock(_assert_mutex);
+                auto guard = std::unique_lock(_mutex);
                 for (auto&& [observer, handle] : _subscriptions.iterate_with_handle())
                 {
-                    auto unguard = debug::ScopeUnlock(lock);
                     const auto action = observer.on_next(value_type(v)); // copy.
                     if (action._stop)
                     {
-                        unsubscribe(handle, do_refcount);
+                        // #XXX: when refcount is active AND child is last one,
+                        // this will trigger disconnect_once() that will trigger
+                        // our Observer's detach; that is self-destroy ?
+                        // Just increase self-shared_ptr ref-count ?
+                        unsubscribe_child(handle, do_refcount);
                     }
                 }
-                // #XXX: should we return there for caller's on_next() ?
+            }
+            template<typename... VoidOrError>
+            void on_error_impl(XRX_RVALUE(VoidOrError&&)... e)
+            {
+                auto guard = std::unique_lock(_mutex);
+                for (AnyObserver_& observer : _subscriptions)
+                {
+                    if constexpr ((sizeof...(e)) == 0)
+                    {
+                        observer.on_error();
+                    }
+                    else
+                    {
+                        observer.on_error(error_type(e)...); // copy error.
+                    }
+                }
+            }
+            void on_completed_impl()
+            {
+                auto guard = std::unique_lock(_mutex);
+                for (AnyObserver_& observer : _subscriptions)
+                {
+                    observer.on_completed();
+                }
             }
         };
 
@@ -5901,7 +5921,8 @@ namespace xrx::detail
     {
         using State_ = ConnectObservableState_<SourceObservable>;
         using SharedImpl_ = typename State_::SharedImpl_;
-        using Unsubscriber = typename State_::Unsubscriber;
+        using Unsubscriber_Child = typename State_::Unsubscriber_Child;
+        using Unsubscriber = Unsubscriber_Child;
 
         using value_type = typename SourceObservable::value_type;
         using error_type = typename SourceObservable::error_type;
@@ -5910,14 +5931,15 @@ namespace xrx::detail
         std::weak_ptr<SharedImpl_> _shared_weak;
 
         template<typename Observer>
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer)
+        Unsubscriber_Child subscribe(XRX_RVALUE(Observer&&) observer)
         {
             static_assert(not std::is_lvalue_reference_v<Observer>);
+
             if (auto shared = _shared_weak.lock(); shared)
             {
-                return shared->subscribe(XRX_MOV(observer));
+                return shared->subscribe_child(XRX_MOV(observer), false/*no refcount*/);
             }
-            return Unsubscriber();
+            return Unsubscriber_Child();
         }
 
         ConnectObservableSource_ fork() { return ConnectObservableSource_(_shared_weak); }
@@ -5925,40 +5947,41 @@ namespace xrx::detail
 
     template<typename SourceObservable
         , typename SharedState_ = ConnectObservableState_<SourceObservable>
-        , typename Source_      = ConnectObservableSource_<SourceObservable>>
+        , typename ConnectObservableSource = ConnectObservableSource_<SourceObservable>
+        , typename ConnectObservableInterface = Observable_<ConnectObservableSource>>
     struct ConnectObservable_
         : private SharedState_
-        , public  Observable_<Source_>
+        , public ConnectObservableInterface
     {
-        using ObservableImpl_ = Observable_<Source_>;
-        using value_type = typename ObservableImpl_::value_type;
-        using error_type = typename ObservableImpl_::error_type;
+        using value_type = typename ConnectObservableInterface::value_type;
+        using error_type = typename ConnectObservableInterface::error_type;
         using SharedImpl_ = typename SharedState_::SharedImpl_;
-        using Unsubscriber = typename SourceObservable::Unsubscriber;
+        using RefCountObservable_ = typename SharedState_::RefCountObservable_;
+        using Unsubscriber_Connect = typename SharedState_::Unsubscriber_Connect;
+        using Unsubscriber = Unsubscriber_Connect;
+        using RefCountObservableInterface = Observable_<RefCountObservable_>;
 
         XRX_FORCEINLINE() SharedState_& state() { return static_cast<SharedState_&>(*this); }
 
         explicit ConnectObservable_(XRX_RVALUE(SourceObservable&&) source)
             : SharedState_(XRX_MOV(source))
-            , ObservableImpl_(Source_(state()._shared))
+            , ConnectObservableInterface(ConnectObservableSource(state()._shared))
         {
         }
 
-        Unsubscriber connect()
+        Unsubscriber_Connect connect()
         {
-            const bool do_refcount = false;
-            return state()._shared->connect(do_refcount);
+            return state()._shared->connect_once(false/*no refcount*/);
         }
 
-        auto ref_count()
+        RefCountObservableInterface ref_count()
         {
-            using RefCountObservable_ = typename SharedState_::RefCountObservable_;
-            return Observable_<RefCountObservable_>(RefCountObservable_(state()._shared));
+            return RefCountObservableInterface(RefCountObservable_(state()._shared));
         }
     };
 
     template<typename SourceObservable>
-    void ConnectObservableState_<SourceObservable>::Observer_::on_next(XRX_RVALUE(value_type&&) v)
+    void ConnectObservableState_<SourceObservable>::ConnectObserver_::on_next(XRX_RVALUE(value_type&&) v)
     {
         assert(_shared);
         _shared->on_next_impl(XRX_MOV(v), _do_refcount);
@@ -5966,53 +5989,50 @@ namespace xrx::detail
 
     template<typename SourceObservable>
     template<typename... VoidOrError>
-    void ConnectObservableState_<SourceObservable>::Observer_::on_error(XRX_RVALUE(VoidOrError&&)... e)
+    void ConnectObservableState_<SourceObservable>::ConnectObserver_::on_error(XRX_RVALUE(VoidOrError&&)... e)
     {
         assert(_shared);
-        auto lock = std::unique_lock(_shared->_assert_mutex);
-        for (AnyObserver_& observer : _shared->_subscriptions)
-        {
-            auto unguard = debug::ScopeUnlock(lock);
-            if constexpr ((sizeof...(e)) == 0)
-            {
-                observer.on_error();
-            }
-            else
-            {
-                observer.on_error(error_type(e)...); // copy error.
-            }
-        }
+        _shared->on_error_impl(XRX_MOV(e)...);
     }
 
     template<typename SourceObservable>
-    void ConnectObservableState_<SourceObservable>::Observer_::on_completed()
+    void ConnectObservableState_<SourceObservable>::ConnectObserver_::on_completed()
     {
         assert(_shared);
-        auto lock = std::unique_lock(_shared->_assert_mutex);
-        for (AnyObserver_& observer : _shared->_subscriptions)
-        {
-            auto unguard = debug::ScopeUnlock(lock);
-            observer.on_completed();
-        }
+        _shared->on_completed_impl();
     }
 
     template<typename SourceObservable>
-    bool ConnectObservableState_<SourceObservable>::Unsubscriber::detach(bool do_refcount /*= false*/)
+    bool ConnectObservableState_<SourceObservable>::Unsubscriber_Child::detach(bool do_refcount /*= false*/)
     {
-        assert(_shared);
-        return _shared->unsubscribe(_handle, do_refcount);
+        auto shared = std::exchange(_shared, {});
+        if (shared)
+        {
+            return shared->unsubscribe_child(_handle, do_refcount);
+        }
+        return false;
+    }
+
+    template<typename SourceObservable>
+    bool ConnectObservableState_<SourceObservable>::Unsubscriber_Connect::detach()
+    {
+        auto shared = std::exchange(_shared, {});
+        if (shared)
+        {
+            return shared->disconnect_once();
+        }
+        return false;
     }
 
     template<typename SourceObservable>
     template<typename Observer>
-    auto ConnectObservableState_<SourceObservable>::RefCountObservable_
-        ::subscribe(XRX_RVALUE(Observer&&) observer) &&
+    auto ConnectObservableState_<SourceObservable>::RefCountObservable_::subscribe(
+        XRX_RVALUE(Observer&&) observer) &&
     {
         static_assert(not std::is_lvalue_reference_v<Observer>);
         assert(_shared);
-        const bool do_refcount = true;
-        return RefCountUnsubscriber(_shared->subscribe(
-            XRX_MOV(observer), do_refcount));
+        return Unsubscriber_RefCount(_shared->subscribe_child(
+            XRX_MOV(observer), true/*refcount*/));
     }
 
     template<typename SourceObservable>
