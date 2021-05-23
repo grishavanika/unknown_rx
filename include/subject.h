@@ -130,20 +130,15 @@ namespace xrx
                 return;
             }
             auto lock = std::unique_lock(_shared->_mutex);
-            _shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer, Handle handle)
+            for (auto&& [observer, handle] : _shared->_subscriptions.iterate_with_handle())
             {
-                bool do_unsubscribe = false;
-                {
-                    auto unguard = debug::ScopeUnlock(lock);
-                    const auto action = observer.on_next(value_type(v)); // copy.
-                    do_unsubscribe = action._stop;
-                }
-                if (do_unsubscribe)
+                const auto action = observer.on_next(value_type(v)); // copy.
+                if (action._stop)
                 {
                     // Notice: we have mutex lock.
                     _shared->_subscriptions.erase(handle);
                 }
-            });
+            }
             // Note: should we unsubscribe if there are no observers/subscriptions anymore ?
             // Seems like nope, someone can subscribe later.
         }
@@ -159,9 +154,8 @@ namespace xrx
                 return;
             }
             auto lock = std::unique_lock(shared->_mutex);
-            shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
+            for (AnyObserver<Value, Error>& observer : shared->_subscriptions)
             {
-                auto unguard = debug::ScopeUnlock(lock);
                 if constexpr (sizeof...(errors) == 0)
                 {
                     observer.on_error();
@@ -171,7 +165,7 @@ namespace xrx
                     static_assert(sizeof...(errors) == 1);
                     observer.on_error(Es(errors)...); // copy.
                 }
-            });
+            }
         }
 
         void on_completed()
@@ -184,11 +178,10 @@ namespace xrx
                 return;
             }
             auto lock = std::unique_lock(shared->_mutex);
-            shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
+            for (AnyObserver<Value, Error>& observer : shared->_subscriptions)
             {
-                auto unguard = debug::ScopeUnlock(lock);
                 observer.on_completed();
-            });
+            }
         }
     };
 } // namespace xrx

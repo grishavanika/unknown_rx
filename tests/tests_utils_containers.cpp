@@ -218,4 +218,143 @@ TEST(SmallVector, PushBack_Dynamic_Move_WithCapacityLeft)
     }
 }
 
+TEST(HandleVector, Iterator)
+{
+    HandleVector<int> vs;
+    vs.push_back(42);
+    vs.push_back(43);
+    std::vector<int> copy;
+    for (int& v : vs)
+    {
+        copy.push_back(v);
+    }
+    ASSERT_EQ(2, int(copy.size()));
+    ASSERT_EQ(42, copy[0]);
+    ASSERT_EQ(43, copy[1]);
+}
 
+TEST(HandleVector, Iterator_SkipsFirstInvalid)
+{
+    HandleVector<int> vs;
+    auto handle1 = vs.push_back(42);
+    auto handle2 = vs.push_back(43);
+    vs.push_back(44);
+    vs.push_back(45);
+
+    ASSERT_EQ(4, int(vs.size()));
+    ASSERT_TRUE(vs.erase(handle1));
+    ASSERT_TRUE(vs.erase(handle2));
+    ASSERT_EQ(2, int(vs.size()));
+
+    std::vector<int> copy;
+    for (int& v : vs)
+    {
+        copy.push_back(v);
+    }
+    ASSERT_EQ(2, int(copy.size()));
+    ASSERT_EQ(44, copy[0]);
+    ASSERT_EQ(45, copy[1]);
+}
+
+TEST(HandleVector, Iterator_SkipsMiddleInvalid)
+{
+    HandleVector<int> vs;
+    vs.push_back(42);
+    auto handle1 = vs.push_back(43);
+    auto handle2 = vs.push_back(44);
+    vs.push_back(45);
+
+    ASSERT_EQ(4, int(vs.size()));
+    ASSERT_TRUE(vs.erase(handle1));
+    ASSERT_TRUE(vs.erase(handle2));
+    ASSERT_EQ(2, int(vs.size()));
+
+    std::vector<int> copy;
+    for (int& v : vs)
+    {
+        copy.push_back(v);
+    }
+    ASSERT_EQ(2, int(copy.size()));
+    ASSERT_EQ(42, copy[0]);
+    ASSERT_EQ(45, copy[1]);
+}
+
+TEST(HandleVector, Iterator_SkipsLastInvalid)
+{
+    HandleVector<int> vs;
+    vs.push_back(42);
+    vs.push_back(43);
+    auto handle1 = vs.push_back(44);
+    auto handle2 = vs.push_back(45);
+
+    ASSERT_EQ(4, int(vs.size()));
+    ASSERT_TRUE(vs.erase(handle1));
+    ASSERT_TRUE(vs.erase(handle2));
+    ASSERT_EQ(2, int(vs.size()));
+
+    std::vector<int> copy;
+    for (int& v : vs)
+    {
+        copy.push_back(v);
+    }
+    ASSERT_EQ(2, int(copy.size()));
+    ASSERT_EQ(42, copy[0]);
+    ASSERT_EQ(43, copy[1]);
+}
+
+TEST(HandleVector, Iterator_CanEraseHandle_WhileIterating)
+{
+    HandleVector<int> vs;
+    vs.push_back(42);
+    auto handle1 = vs.push_back(44);
+    vs.push_back(45);
+
+    std::vector<int> copy;
+    for (int& v : vs)
+    {
+        copy.push_back(v);
+        // Remove 2nd element once.
+        (void)vs.erase(handle1);
+    }
+    ASSERT_EQ(2, int(copy.size()));
+    ASSERT_EQ(42, copy[0]);
+    ASSERT_EQ(45, copy[1]);
+}
+
+TEST(HandleVector, Iterator_WithHandle)
+{
+    HandleVector<int> vs;
+    vs.push_back(42);
+    vs.push_back(43);
+
+    auto [ref, _] = *vs.iterate_with_handle().begin();
+    static_assert(std::is_lvalue_reference_v<decltype(ref)>);
+
+    std::vector<int> copy;
+    for (auto [value, handle] : vs.iterate_with_handle())
+    {
+        ASSERT_TRUE(handle);
+        copy.push_back(value);
+    }
+    ASSERT_EQ(2, int(copy.size()));
+    ASSERT_EQ(42, copy[0]);
+    ASSERT_EQ(43, copy[1]);
+}
+
+TEST(HandleVector, Iterator_WithHandle_EraseAll)
+{
+    HandleVector<int> vs;
+
+    vs.push_back(42);
+    vs.push_back(43);
+
+    std::vector<int> copy;
+    for (auto&& [value, handle] : vs.iterate_with_handle())
+    {
+        copy.push_back(value);
+        ASSERT_TRUE(vs.erase(handle));
+    }
+    ASSERT_EQ(0, int(vs.size()));
+    ASSERT_EQ(42, copy[0]);
+    ASSERT_EQ(43, copy[1]);
+}

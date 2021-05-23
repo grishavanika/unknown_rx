@@ -82,44 +82,37 @@ namespace xrx::detail
         void on_next_source(auto source_value)
         {
             // 1. We own the mutex.
-            _windows.for_each([&](Subject& window)
+            for (Subject& window : _windows)
             {
                 auto copy = source_value;
                 // Unsubscriptions are handled by the Subject_<> itself.
                 window.on_next(XRX_MOV(copy));
-            });
+            }
         }
         // From Source stream.
         void on_completed_source()
         {
             // 1. We own the mutex.
-            _windows.for_each([&](Subject& window)
+            for (Subject& window : _windows)
             {
                 window.on_completed();
-            });
+            }
         }
         // From any of (Openings, Closings, Source) stream.
         template<typename... VoidOrError>
         void on_any_error_unsafe(XRX_RVALUE(VoidOrError&&)... e)
         {
             // 1. We own the mutex.
-            if constexpr ((sizeof...(e)) == 0)
+            for (Subject& window : _windows)
             {
-                _windows.for_each([](Subject& window)
+                if constexpr ((sizeof...(e)) == 0)
                 {
                     window.on_error();
-                });
-            }
-            else
-            {
-                // #TODO: what's with "Allow pack expansion in lambda init-capture", http://wg21.link/p0780 ?
-                _windows.for_each([es = std::make_tuple(XRX_MOV(e)...)](Subject& window) mutable
+                }
+                else
                 {
-                    using Es = decltype(es);
-                    static_assert(std::tuple_size_v<Es> == 1);
-                    auto e = std::get<0>(es); // copy.
-                    window.on_error(XRX_MOV(e));
-                });
+                    window.on_error(XRX_MOV(e)...);
+                }
             }
         }
     };

@@ -147,7 +147,7 @@ namespace xrx::debug
             {
                 auto guard = std::lock_guard(_assert_mutex_tick);
                 clock_duration smallest = clock_duration::max();
-                _tick_actions.for_each([&](TickAction& action, ActionHandle handle)
+                for (auto&& [action, handle] : _tick_actions.iterate_with_handle())
                 {
                     const clock_duration point = (action->_last_tick + action->_period).time_since_epoch();
                     if (point < smallest)
@@ -155,7 +155,7 @@ namespace xrx::debug
                         smallest = point;
                         to_execute = handle;
                     }
-                });
+                }
             }
             if (not to_execute)
             {

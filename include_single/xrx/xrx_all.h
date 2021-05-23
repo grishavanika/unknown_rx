@@ -154,14 +154,16 @@ concept tag_invocable =
   #define XRX_FORCEINLINE() __forceinline
   #define XRX_FORCEINLINE_LAMBDA()
 #else
-  // #XXX: temporary disabled, need to see why GCC says:
+  // #XXX: check why GCC says:
   // warning: 'always_inline' function might not be inlinable [-Wattributes]
   // on simple functions. Something done in a wrong way.
-  // 
-  // #define XRX_FORCEINLINE() __attribute__((always_inline))
-  // #define XRX_FORCEINLINE_LAMBDA() __attribute__((always_inline))
-  #define XRX_FORCEINLINE() 
-  #define XRX_FORCEINLINE_LAMBDA() 
+#  if (1)
+#    define XRX_FORCEINLINE() __attribute__((always_inline))
+#    define XRX_FORCEINLINE_LAMBDA() __attribute__((always_inline))
+#  else
+#    define XRX_FORCEINLINE() 
+#    define XRX_FORCEINLINE_LAMBDA() 
+#  endif
 #endif
 
 // Header: concepts_observable.h.
@@ -680,12 +682,12 @@ namespace xrx::detail
             std::uint32_t _version = 0;
             std::uint32_t _index = 0;
 
-            explicit operator bool() const
+            XRX_FORCEINLINE() explicit operator bool() const
             {
                 return (_version > 0);
             }
 
-            friend bool operator==(Handle lhs, Handle rhs) noexcept
+            XRX_FORCEINLINE() friend bool operator==(Handle lhs, Handle rhs) noexcept
             {
                 return (lhs._version == rhs._version)
                     && (lhs._index == rhs._index);
@@ -713,7 +715,7 @@ namespace xrx::detail
             return Handle(version, std::uint32_t(index));
         }
 
-        std::size_t size() const
+        XRX_FORCEINLINE() std::size_t size() const
         {
             assert(_values.size() >= _free_indexes.size());
             return (_values.size() - _free_indexes.size());
@@ -742,35 +744,159 @@ namespace xrx::detail
             return false;
         }
 
-        template<typename F>
-        void for_each(F&& f)
-            requires requires { f(std::declval<T&>()); }
+        struct ValueTraits
         {
-            // Using raw for with computing size() every loop for a case where
-            // `f()` can erase element from our vector we iterate.
-            for (std::size_t i = 0; i < _values.size(); ++i)
-            {
-                if (_values[i]._version > 0)
-                {
-                    f(_values[i]._data);
-                }
-            }
-        }
+            using value_type = T;
+            using pointer = T*;
+            using reference = T&;
 
-        template<typename F>
-        void for_each(F&& f)
-            requires requires { f(std::declval<T&>(), Handle()); }
-        {
-            // Using raw for with computing size() every loop for a case where
-            // `f()` can erase element from our vector we iterate.
-            for (std::size_t i = 0; i < _values.size(); ++i)
+            XRX_FORCEINLINE() static T& as_reference(std::size_t, Value& v)
             {
-                if (_values[i]._version > 0)
-                {
-                    f(_values[i]._data
-                        , Handle(_values[i]._version, std::uint32_t(i)));
-                }
+                return v._data;
             }
+            XRX_FORCEINLINE() static T* as_pointer(std::size_t, Value& v)
+            {
+                return &v._data;
+            }
+        };
+
+        struct ValueWithHandle
+        {
+            T& _value;
+            Handle _handle;
+        };
+
+        struct ValueWithHandleTraits
+        {
+            struct Proxy_
+            {
+                ValueWithHandle _data;
+                explicit Proxy_(Value& value, Handle handle)
+                    : _data(value, XRX_MOV(handle))
+                {
+                }
+
+                ValueWithHandle* operator->() const
+                {
+                    return &_data;
+                }
+            };
+
+            using value_type = ValueWithHandle;
+            using pointer = Proxy_;
+            using reference = ValueWithHandle;
+
+            XRX_FORCEINLINE() static ValueWithHandle as_reference(std::size_t index, Value& v)
+            {
+                return ValueWithHandle(v._data, Handle(v._version, std::uint32_t(index)));
+            }
+            XRX_FORCEINLINE() static Proxy_ as_pointer(std::size_t index, Value& v)
+            {
+                return Proxy_(v._data, Handle(v._version, std::uint32_t(index)));
+            }
+        };
+
+        template<typename Traits>
+        struct Iterator
+        {
+            using iterator_category = std::forward_iterator_tag;
+            using difference_type = std::ptrdiff_t;
+            using value_type = typename Traits::value_type;
+            using pointer = typename Traits::pointer;
+            using reference = typename Traits::reference;
+
+            HandleVector* _self = nullptr;
+            std::size_t _index = 0;
+
+            XRX_FORCEINLINE() static Iterator invalid(HandleVector& self)
+            {
+                return Iterator(&self, std::size_t(-1));
+            }
+
+            XRX_FORCEINLINE() static Iterator first_valid(HandleVector& self)
+            {
+                const std::size_t count = self._values.size();
+                for (std::size_t index = 0; index < count; ++index)
+                {
+                    if (self._values[index]._version > 0)
+                    {
+                        return Iterator(&self, index);
+                    }
+                }
+                return invalid(self);
+            }
+
+            XRX_FORCEINLINE() reference operator*() const
+            {
+                assert(_index < _self->_values.size());
+                assert(_self->_values[_index]._version > 0);
+                return Traits::as_reference(_index, _self->_values[_index]);
+            }
+
+            XRX_FORCEINLINE() pointer operator->() const
+            {
+                assert(_index < _self->_values.size());
+                assert(_self->_values[_index]._version > 0);
+                return Traits::as_pointer(_index, _self->_values[_index]);
+            }
+
+            // Prefix increment: ++it.
+            XRX_FORCEINLINE() Iterator& operator++()
+            {
+                ++_index;
+                for (auto count = _self->_values.size(); _index < count; ++_index)
+                {
+                    if (_self->_values[_index]._version > 0)
+                    {
+                        return *this;
+                    }
+                }
+                // Past the end.
+                _index = std::size_t(-1);
+                return *this;
+            }
+
+            // Postfix increment: ++it.
+            XRX_FORCEINLINE() Iterator operator++(int)
+            {
+                Iterator copy = *this;
+                ++(*this);
+                return copy;
+            }
+
+            XRX_FORCEINLINE() friend bool operator==(const Iterator& lhs, const Iterator& rhs)
+            {
+                return (lhs._self == rhs._self)
+                    && (lhs._index  == rhs._index);
+            }
+            XRX_FORCEINLINE() friend bool operator!=(const Iterator& lhs, const Iterator& rhs)
+            {
+                return !operator==(lhs, rhs);
+            }
+        };
+
+        using iterator = Iterator<ValueTraits>;
+
+        iterator begin() &  { return iterator::first_valid(*this); }
+        iterator end() &    { return iterator::invalid(*this); }
+        iterator cbegin() & { return iterator::first_valid(*this); }
+        iterator cend() &   { return iterator::invalid(*this); }
+
+        struct IterateWithHandle
+        {
+            HandleVector* _self = nullptr;
+
+            using iterator_ = Iterator<ValueWithHandleTraits>;
+
+            iterator_ begin()  { return iterator_::first_valid(*_self); }
+            iterator_ end()    { return iterator_::invalid(*_self); }
+            iterator_ cbegin() { return iterator_::first_valid(*_self); }
+            iterator_ cend()   { return iterator_::invalid(*_self); }
+        };
+
+        IterateWithHandle iterate_with_handle() &
+        {
+            return IterateWithHandle(this);
         }
 
         T* get(Handle h)
@@ -1099,7 +1225,7 @@ namespace xrx::debug
             {
                 auto guard = std::lock_guard(_assert_mutex_tick);
                 clock_duration smallest = clock_duration::max();
-                _tick_actions.for_each([&](TickAction& action, ActionHandle handle)
+                for (auto&& [action, handle] : _tick_actions.iterate_with_handle())
                 {
                     const clock_duration point = (action->_last_tick + action->_period).time_since_epoch();
                     if (point < smallest)
@@ -1107,7 +1233,7 @@ namespace xrx::debug
                         smallest = point;
                         to_execute = handle;
                     }
-                });
+                }
             }
             if (not to_execute)
             {
@@ -1848,7 +1974,7 @@ namespace xrx::detail
             }
             else
             {
-                on_error_optional(XRX_MOV(*_observer), XRX_MOV(e...));
+                on_error_optional(XRX_MOV(*_observer), XRX_MOV(e)...);
             }
             _state->_with_error = true;
         }
@@ -3163,7 +3289,7 @@ namespace xrx::detail
                 }
                 else
                 {
-                    return on_error_optional(XRX_MOV(_observer.get()), XRX_MOV(e...));
+                    return on_error_optional(XRX_MOV(_observer.get()), XRX_MOV(e)...);
                 }
             }
         };
@@ -3488,8 +3614,9 @@ namespace xrx::detail
                 }
                 else
                 {
-                    (void)on_error_optional(XRX_MOV(_listener.get()), XRX_MOV(e...));
-                    return on_error_optional(XRX_MOV(_observer.get()), XRX_MOV(e...));
+                    auto copy = [](auto e) { return XRX_MOV(e); };
+                    (void)on_error_optional(XRX_MOV(_listener.get()), copy(e)...);
+                    return on_error_optional(XRX_MOV(_observer.get()), XRX_MOV(e)...);
                 }
             }
         };
@@ -3619,7 +3746,7 @@ namespace xrx::detail
                 }
                 else
                 {
-                    on_error_optional(XRX_MOV(*_destination), XRX_MOV(e...));
+                    on_error_optional(XRX_MOV(*_destination), XRX_MOV(e)...);
                 }
                 _state->_end_with_error = true;
             }
@@ -4061,7 +4188,7 @@ namespace xrx::detail
                 }
                 else
                 {
-                    on_error_optional(XRX_MOV(*_observer), XRX_MOV(e...));
+                    on_error_optional(XRX_MOV(*_observer), XRX_MOV(e)...);
                 }
                 _state->_end_with_error = true;
             }
@@ -4192,7 +4319,7 @@ namespace xrx::detail
                 }
                 else
                 {
-                    return on_error_optional(XRX_MOV(_observer.get()), XRX_MOV(e...));
+                    return on_error_optional(XRX_MOV(_observer.get()), XRX_MOV(e)...);
                 }
             }
         };
@@ -4485,7 +4612,7 @@ namespace xrx::detail
             }
             else
             {
-                on_error_optional(XRX_MOV(*_destination), XRX_MOV(e...));
+                on_error_optional(XRX_MOV(*_destination), XRX_MOV(e)...);
             }
             _state->_end_with_error = true;
         }
@@ -4553,7 +4680,7 @@ namespace xrx::detail
             }
             else
             {
-                on_error_optional(XRX_MOV(*_destination), XRX_MOV(e...));
+                on_error_optional(XRX_MOV(*_destination), XRX_MOV(e)...);
             }
             _state->_end_with_error = true;
         }
@@ -4766,7 +4893,7 @@ namespace xrx::detail
             else
             {
                 auto guard = std::lock_guard(_observables._serialize);
-                on_error_optional(XRX_MOV(_observer), XRX_MOV(e...));
+                on_error_optional(XRX_MOV(_observer), XRX_MOV(e)...);
             }
             _observables._unsubscribe = true;
             unsubscribe_all(child_index);
@@ -4813,7 +4940,7 @@ namespace xrx::detail
             }
             else
             {
-                return _shared->on_error(_index, XRX_MOV(e...));
+                return _shared->on_error(_index, XRX_MOV(e)...);
             }
         }
     };
@@ -4856,7 +4983,7 @@ namespace xrx::detail
             }
             else
             {
-                on_error_optional(XRX_MOV(*_destination), XRX_MOV(e...));
+                on_error_optional(XRX_MOV(*_destination), XRX_MOV(e)...);
             }
             _state->_end_with_error = true;
         }
@@ -5006,7 +5133,7 @@ namespace xrx::detail
             }
             else
             {
-                on_error_optional(XRX_MOV(_destination), XRX_MOV(e...));
+                on_error_optional(XRX_MOV(_destination), XRX_MOV(e)...);
             }
             _state._end_with_error = true;
         }
@@ -5228,7 +5355,7 @@ namespace xrx::detail
             }
             else
             {
-                on_error_optional(XRX_MOV(_destination), XRX_MOV(e...));
+                on_error_optional(XRX_MOV(_destination), XRX_MOV(e)...);
             }
         }
 
@@ -5511,7 +5638,7 @@ namespace xrx::detail
                 }
                 else
                 {
-                    return on_error_optional(XRX_MOV(_observer.get()), XRX_MOV(e...));
+                    return on_error_optional(XRX_MOV(_observer.get()), XRX_MOV(e)...);
                 }
             }
         };
@@ -5748,7 +5875,7 @@ namespace xrx::detail
             void on_next_impl(XRX_RVALUE(value_type&&) v, bool do_refcount)
             {
                 auto lock = std::unique_lock(_assert_mutex);
-                _subscriptions.for_each([&](AnyObserver_& observer, Handle handle)
+                for (auto&& [observer, handle] : _subscriptions.iterate_with_handle())
                 {
                     auto unguard = debug::ScopeUnlock(lock);
                     const auto action = observer.on_next(value_type(v)); // copy.
@@ -5756,7 +5883,7 @@ namespace xrx::detail
                     {
                         unsubscribe(handle, do_refcount);
                     }
-                });
+                }
                 // #XXX: should we return there for caller's on_next() ?
             }
         };
@@ -5843,7 +5970,7 @@ namespace xrx::detail
     {
         assert(_shared);
         auto lock = std::unique_lock(_shared->_assert_mutex);
-        _shared->_subscriptions.for_each([&](AnyObserver_& observer)
+        for (AnyObserver_& observer : _shared->_subscriptions)
         {
             auto unguard = debug::ScopeUnlock(lock);
             if constexpr ((sizeof...(e)) == 0)
@@ -5854,7 +5981,7 @@ namespace xrx::detail
             {
                 observer.on_error(error_type(e)...); // copy error.
             }
-        });
+        }
     }
 
     template<typename SourceObservable>
@@ -5862,11 +5989,11 @@ namespace xrx::detail
     {
         assert(_shared);
         auto lock = std::unique_lock(_shared->_assert_mutex);
-        _shared->_subscriptions.for_each([&](AnyObserver_& observer)
+        for (AnyObserver_& observer : _shared->_subscriptions)
         {
             auto unguard = debug::ScopeUnlock(lock);
             observer.on_completed();
-        });
+        }
     }
 
     template<typename SourceObservable>
@@ -6053,20 +6180,15 @@ namespace xrx
                 return;
             }
             auto lock = std::unique_lock(_shared->_mutex);
-            _shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer, Handle handle)
+            for (auto&& [observer, handle] : _shared->_subscriptions.iterate_with_handle())
             {
-                bool do_unsubscribe = false;
-                {
-                    auto unguard = debug::ScopeUnlock(lock);
-                    const auto action = observer.on_next(value_type(v)); // copy.
-                    do_unsubscribe = action._stop;
-                }
-                if (do_unsubscribe)
+                const auto action = observer.on_next(value_type(v)); // copy.
+                if (action._stop)
                 {
                     // Notice: we have mutex lock.
                     _shared->_subscriptions.erase(handle);
                 }
-            });
+            }
             // Note: should we unsubscribe if there are no observers/subscriptions anymore ?
             // Seems like nope, someone can subscribe later.
         }
@@ -6082,9 +6204,8 @@ namespace xrx
                 return;
             }
             auto lock = std::unique_lock(shared->_mutex);
-            shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
+            for (AnyObserver<Value, Error>& observer : shared->_subscriptions)
             {
-                auto unguard = debug::ScopeUnlock(lock);
                 if constexpr (sizeof...(errors) == 0)
                 {
                     observer.on_error();
@@ -6094,7 +6215,7 @@ namespace xrx
                     static_assert(sizeof...(errors) == 1);
                     observer.on_error(Es(errors)...); // copy.
                 }
-            });
+            }
         }
 
         void on_completed()
@@ -6107,11 +6228,10 @@ namespace xrx
                 return;
             }
             auto lock = std::unique_lock(shared->_mutex);
-            shared->_subscriptions.for_each([&](AnyObserver<Value, Error>& observer)
+            for (AnyObserver<Value, Error>& observer : shared->_subscriptions)
             {
-                auto unguard = debug::ScopeUnlock(lock);
                 observer.on_completed();
-            });
+            }
         }
     };
 } // namespace xrx
@@ -6202,44 +6322,37 @@ namespace xrx::detail
         void on_next_source(auto source_value)
         {
             // 1. We own the mutex.
-            _windows.for_each([&](Subject& window)
+            for (Subject& window : _windows)
             {
                 auto copy = source_value;
                 // Unsubscriptions are handled by the Subject_<> itself.
                 window.on_next(XRX_MOV(copy));
-            });
+            }
         }
         // From Source stream.
         void on_completed_source()
         {
             // 1. We own the mutex.
-            _windows.for_each([&](Subject& window)
+            for (Subject& window : _windows)
             {
                 window.on_completed();
-            });
+            }
         }
         // From any of (Openings, Closings, Source) stream.
         template<typename... VoidOrError>
         void on_any_error_unsafe(XRX_RVALUE(VoidOrError&&)... e)
         {
             // 1. We own the mutex.
-            if constexpr ((sizeof...(e)) == 0)
+            for (Subject& window : _windows)
             {
-                _windows.for_each([](Subject& window)
+                if constexpr ((sizeof...(e)) == 0)
                 {
                     window.on_error();
-                });
-            }
-            else
-            {
-                // #TODO: what's with "Allow pack expansion in lambda init-capture", http://wg21.link/p0780 ?
-                _windows.for_each([es = std::make_tuple(XRX_MOV(e)...)](Subject& window) mutable
+                }
+                else
                 {
-                    using Es = decltype(es);
-                    static_assert(std::tuple_size_v<Es> == 1);
-                    auto e = std::get<0>(es); // copy.
-                    window.on_error(XRX_MOV(e));
-                });
+                    window.on_error(XRX_MOV(e)...);
+                }
             }
         }
     };

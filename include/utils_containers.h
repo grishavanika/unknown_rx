@@ -34,12 +34,12 @@ namespace xrx::detail
             std::uint32_t _version = 0;
             std::uint32_t _index = 0;
 
-            explicit operator bool() const
+            XRX_FORCEINLINE() explicit operator bool() const
             {
                 return (_version > 0);
             }
 
-            friend bool operator==(Handle lhs, Handle rhs) noexcept
+            XRX_FORCEINLINE() friend bool operator==(Handle lhs, Handle rhs) noexcept
             {
                 return (lhs._version == rhs._version)
                     && (lhs._index == rhs._index);
@@ -67,7 +67,7 @@ namespace xrx::detail
             return Handle(version, std::uint32_t(index));
         }
 
-        std::size_t size() const
+        XRX_FORCEINLINE() std::size_t size() const
         {
             assert(_values.size() >= _free_indexes.size());
             return (_values.size() - _free_indexes.size());
@@ -96,35 +96,159 @@ namespace xrx::detail
             return false;
         }
 
-        template<typename F>
-        void for_each(F&& f)
-            requires requires { f(std::declval<T&>()); }
+        struct ValueTraits
         {
-            // Using raw for with computing size() every loop for a case where
-            // `f()` can erase element from our vector we iterate.
-            for (std::size_t i = 0; i < _values.size(); ++i)
-            {
-                if (_values[i]._version > 0)
-                {
-                    f(_values[i]._data);
-                }
-            }
-        }
+            using value_type = T;
+            using pointer = T*;
+            using reference = T&;
 
-        template<typename F>
-        void for_each(F&& f)
-            requires requires { f(std::declval<T&>(), Handle()); }
-        {
-            // Using raw for with computing size() every loop for a case where
-            // `f()` can erase element from our vector we iterate.
-            for (std::size_t i = 0; i < _values.size(); ++i)
+            XRX_FORCEINLINE() static T& as_reference(std::size_t, Value& v)
             {
-                if (_values[i]._version > 0)
-                {
-                    f(_values[i]._data
-                        , Handle(_values[i]._version, std::uint32_t(i)));
-                }
+                return v._data;
             }
+            XRX_FORCEINLINE() static T* as_pointer(std::size_t, Value& v)
+            {
+                return &v._data;
+            }
+        };
+
+        struct ValueWithHandle
+        {
+            T& _value;
+            Handle _handle;
+        };
+
+        struct ValueWithHandleTraits
+        {
+            struct Proxy_
+            {
+                ValueWithHandle _data;
+                explicit Proxy_(Value& value, Handle handle)
+                    : _data(value, XRX_MOV(handle))
+                {
+                }
+
+                ValueWithHandle* operator->() const
+                {
+                    return &_data;
+                }
+            };
+
+            using value_type = ValueWithHandle;
+            using pointer = Proxy_;
+            using reference = ValueWithHandle;
+
+            XRX_FORCEINLINE() static ValueWithHandle as_reference(std::size_t index, Value& v)
+            {
+                return ValueWithHandle(v._data, Handle(v._version, std::uint32_t(index)));
+            }
+            XRX_FORCEINLINE() static Proxy_ as_pointer(std::size_t index, Value& v)
+            {
+                return Proxy_(v._data, Handle(v._version, std::uint32_t(index)));
+            }
+        };
+
+        template<typename Traits>
+        struct Iterator
+        {
+            using iterator_category = std::forward_iterator_tag;
+            using difference_type = std::ptrdiff_t;
+            using value_type = typename Traits::value_type;
+            using pointer = typename Traits::pointer;
+            using reference = typename Traits::reference;
+
+            HandleVector* _self = nullptr;
+            std::size_t _index = 0;
+
+            XRX_FORCEINLINE() static Iterator invalid(HandleVector& self)
+            {
+                return Iterator(&self, std::size_t(-1));
+            }
+
+            XRX_FORCEINLINE() static Iterator first_valid(HandleVector& self)
+            {
+                const std::size_t count = self._values.size();
+                for (std::size_t index = 0; index < count; ++index)
+                {
+                    if (self._values[index]._version > 0)
+                    {
+                        return Iterator(&self, index);
+                    }
+                }
+                return invalid(self);
+            }
+
+            XRX_FORCEINLINE() reference operator*() const
+            {
+                assert(_index < _self->_values.size());
+                assert(_self->_values[_index]._version > 0);
+                return Traits::as_reference(_index, _self->_values[_index]);
+            }
+
+            XRX_FORCEINLINE() pointer operator->() const
+            {
+                assert(_index < _self->_values.size());
+                assert(_self->_values[_index]._version > 0);
+                return Traits::as_pointer(_index, _self->_values[_index]);
+            }
+
+            // Prefix increment: ++it.
+            XRX_FORCEINLINE() Iterator& operator++()
+            {
+                ++_index;
+                for (auto count = _self->_values.size(); _index < count; ++_index)
+                {
+                    if (_self->_values[_index]._version > 0)
+                    {
+                        return *this;
+                    }
+                }
+                // Past the end.
+                _index = std::size_t(-1);
+                return *this;
+            }
+
+            // Postfix increment: ++it.
+            XRX_FORCEINLINE() Iterator operator++(int)
+            {
+                Iterator copy = *this;
+                ++(*this);
+                return copy;
+            }
+
+            XRX_FORCEINLINE() friend bool operator==(const Iterator& lhs, const Iterator& rhs)
+            {
+                return (lhs._self == rhs._self)
+                    && (lhs._index  == rhs._index);
+            }
+            XRX_FORCEINLINE() friend bool operator!=(const Iterator& lhs, const Iterator& rhs)
+            {
+                return !operator==(lhs, rhs);
+            }
+        };
+
+        using iterator = Iterator<ValueTraits>;
+
+        iterator begin() &  { return iterator::first_valid(*this); }
+        iterator end() &    { return iterator::invalid(*this); }
+        iterator cbegin() & { return iterator::first_valid(*this); }
+        iterator cend() &   { return iterator::invalid(*this); }
+
+        struct IterateWithHandle
+        {
+            HandleVector* _self = nullptr;
+
+            using iterator_ = Iterator<ValueWithHandleTraits>;
+
+            iterator_ begin()  { return iterator_::first_valid(*_self); }
+            iterator_ end()    { return iterator_::invalid(*_self); }
+            iterator_ cbegin() { return iterator_::first_valid(*_self); }
+            iterator_ cend()   { return iterator_::invalid(*_self); }
+        };
+
+        IterateWithHandle iterate_with_handle() &
+        {
+            return IterateWithHandle(this);
         }
 
         T* get(Handle h)

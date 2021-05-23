@@ -163,7 +163,7 @@ namespace xrx::detail
             void on_next_impl(XRX_RVALUE(value_type&&) v, bool do_refcount)
             {
                 auto lock = std::unique_lock(_assert_mutex);
-                _subscriptions.for_each([&](AnyObserver_& observer, Handle handle)
+                for (auto&& [observer, handle] : _subscriptions.iterate_with_handle())
                 {
                     auto unguard = debug::ScopeUnlock(lock);
                     const auto action = observer.on_next(value_type(v)); // copy.
@@ -171,7 +171,7 @@ namespace xrx::detail
                     {
                         unsubscribe(handle, do_refcount);
                     }
-                });
+                }
                 // #XXX: should we return there for caller's on_next() ?
             }
         };
@@ -258,7 +258,7 @@ namespace xrx::detail
     {
         assert(_shared);
         auto lock = std::unique_lock(_shared->_assert_mutex);
-        _shared->_subscriptions.for_each([&](AnyObserver_& observer)
+        for (AnyObserver_& observer : _shared->_subscriptions)
         {
             auto unguard = debug::ScopeUnlock(lock);
             if constexpr ((sizeof...(e)) == 0)
@@ -269,7 +269,7 @@ namespace xrx::detail
             {
                 observer.on_error(error_type(e)...); // copy error.
             }
-        });
+        }
     }
 
     template<typename SourceObservable>
@@ -277,11 +277,11 @@ namespace xrx::detail
     {
         assert(_shared);
         auto lock = std::unique_lock(_shared->_assert_mutex);
-        _shared->_subscriptions.for_each([&](AnyObserver_& observer)
+        for (AnyObserver_& observer : _shared->_subscriptions)
         {
             auto unguard = debug::ScopeUnlock(lock);
             observer.on_completed();
-        });
+        }
     }
 
     template<typename SourceObservable>

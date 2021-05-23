@@ -97,7 +97,7 @@ namespace xrx::detail
             }
             else
             {
-                on_error_optional(XRX_MOV(*_destination), XRX_MOV(e...));
+                on_error_optional(XRX_MOV(*_destination), XRX_MOV(e)...);
             }
             _state->_end_with_error = true;
         }
@@ -165,7 +165,7 @@ namespace xrx::detail
             }
             else
             {
-                on_error_optional(XRX_MOV(*_destination), XRX_MOV(e...));
+                on_error_optional(XRX_MOV(*_destination), XRX_MOV(e)...);
             }
             _state->_end_with_error = true;
         }
@@ -378,7 +378,7 @@ namespace xrx::detail
             else
             {
                 auto guard = std::lock_guard(_observables._serialize);
-                on_error_optional(XRX_MOV(_observer), XRX_MOV(e...));
+                on_error_optional(XRX_MOV(_observer), XRX_MOV(e)...);
             }
             _observables._unsubscribe = true;
             unsubscribe_all(child_index);
@@ -425,7 +425,7 @@ namespace xrx::detail
             }
             else
             {
-                return _shared->on_error(_index, XRX_MOV(e...));
+                return _shared->on_error(_index, XRX_MOV(e)...);
             }
         }
     };
@@ -468,7 +468,7 @@ namespace xrx::detail
             }
             else
             {
-                on_error_optional(XRX_MOV(*_destination), XRX_MOV(e...));
+                on_error_optional(XRX_MOV(*_destination), XRX_MOV(e)...);
             }
             _state->_end_with_error = true;
         }
@@ -618,7 +618,7 @@ namespace xrx::detail
             }
             else
             {
-                on_error_optional(XRX_MOV(_destination), XRX_MOV(e...));
+                on_error_optional(XRX_MOV(_destination), XRX_MOV(e)...);
             }
             _state._end_with_error = true;
         }
@@ -840,7 +840,7 @@ namespace xrx::detail
             }
             else
             {
-                on_error_optional(XRX_MOV(_destination), XRX_MOV(e...));
+                on_error_optional(XRX_MOV(_destination), XRX_MOV(e)...);
             }
         }
 

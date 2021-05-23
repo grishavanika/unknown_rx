@@ -55,8 +55,9 @@ namespace xrx::detail
                 }
                 else
                 {
-                    (void)on_error_optional(XRX_MOV(_listener.get()), XRX_MOV(e...));
-                    return on_error_optional(XRX_MOV(_observer.get()), XRX_MOV(e...));
+                    auto copy = [](auto e) { return XRX_MOV(e); };
+                    (void)on_error_optional(XRX_MOV(_listener.get()), copy(e)...);
+                    return on_error_optional(XRX_MOV(_observer.get()), XRX_MOV(e)...);
                 }
             }
         };
