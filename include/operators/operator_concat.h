@@ -5,6 +5,7 @@
 #include "utils_observers.h"
 #include "utils_observable.h"
 #include "utils_fast_FWD.h"
+#include "utils_ref_tracking_observer.h"
 #include <utility>
 #include <type_traits>
 #include <tuple>
@@ -39,7 +40,7 @@ namespace xrx::detail
                 ? ((bool)XRX_FWD(f)(std::get<Is>(tuple)))
                 : false) || ...);
             return yes_;
-        }((std::make_index_sequence<Size_>()));
+        }(std::make_index_sequence<Size_>());
     }
 
     template<std::size_t I, typename Variant, typename Value>
@@ -72,7 +73,7 @@ namespace xrx::detail
                 ? variant_emplace_at<Is>(variant, index, XRX_FWD(value))
                 : false) || ...);
             return yes_;
-        }((std::make_index_sequence<Size_>()));
+        }(std::make_index_sequence<Size_>());
     }
 
     template<typename Tuple, bool IsAsync>
@@ -95,50 +96,6 @@ namespace xrx::detail
         // #XXX: wrong - make a tuple with .fork() for each Observable.
         ConcatObservable fork() &  { return ConcatObservable(_tuple); }
 
-        struct State
-        {
-            bool _unsubscribed = false;
-            bool _end_with_error = false;
-            bool _completed = false;
-        };
-
-        template<typename Observer>
-        struct OneObserver
-        {
-            Observer* _destination = nullptr;
-            State* _state = nullptr;
-
-            XRX_FORCEINLINE() auto on_next(XRX_RVALUE(value_type&&) value)
-            {
-                assert(not _state->_end_with_error);
-                assert(not _state->_completed);
-                assert(not _state->_unsubscribed);
-                const auto action = on_next_with_action(*_destination, XRX_MOV(value));
-                _state->_unsubscribed = action._stop;
-                return action;
-            }
-            XRX_FORCEINLINE() void on_completed()
-            {
-                assert(not _state->_end_with_error);
-                assert(not _state->_completed);
-                assert(not _state->_unsubscribed);
-                _state->_completed = true; // on_completed(): nothing to do, move to next observable.
-            }
-            template<typename... VoidOrError>
-            XRX_FORCEINLINE() void on_error(XRX_RVALUE(VoidOrError&&)... e)
-            {
-                if constexpr ((sizeof...(e)) == 0)
-                {
-                    on_error_optional(XRX_MOV(*_destination));
-                }
-                else
-                {
-                    on_error_optional(XRX_MOV(*_destination), XRX_MOV(e)...);
-                }
-                _state->_end_with_error = true;
-            }
-        };
-
         template<typename Observer>
         NoopDetach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
@@ -146,12 +103,12 @@ namespace xrx::detail
             using Observer_ = std::remove_reference_t<Observer>;
             auto invoke_ = [](auto&& observer, auto&& observable)
             {
-                State state;
-                auto detach = XRX_FWD(observable).subscribe(
-                    OneObserver<Observer_>(&observer, &state));
+                RefObserverState state;
+                using OnePass = RefTrackingObserver_<Observer_, false/*no on_completed*/>;
+                auto detach = XRX_FWD(observable).subscribe(OnePass(&observer, &state));
                 static_assert(not decltype(detach)::has_effect::value
                     , "Sync Observable should not have unsubscribe.");
-                const bool stop = (state._unsubscribed || state._end_with_error);
+                const bool stop = (state._unsubscribed || state._with_error);
                 assert((state._completed || stop)
                     && "Sync Observable should be ended after .subscribe() return.");
                 return (not stop);
@@ -223,7 +180,7 @@ namespace xrx::detail
         struct Shared_;
 
         template<typename Observer>
-        struct OneObserver
+        struct OnePassObserver
         {
             std::shared_ptr<Shared_<Observer>> _shared;
 
@@ -258,7 +215,7 @@ namespace xrx::detail
                 const bool ok = runtime_tuple_get(_observables, index
                     , [&](auto& observable)
                 {
-                    using Impl = OneObserver<Observer>;
+                    using Impl = OnePassObserver<Observer>;
                     return runtime_variant_emplace(
                         _unsubscription._unsubscribers
                         , index
@@ -319,20 +276,20 @@ namespace xrx::detail
 
     template<typename Tuple>
     template<typename Observer>
-    auto ConcatObservable<Tuple, true>::OneObserver<Observer>::on_next(XRX_RVALUE(value_type&&) value)
+    auto ConcatObservable<Tuple, true/*Async*/>::OnePassObserver<Observer>::on_next(XRX_RVALUE(value_type&&) value)
     {
         return _shared->on_next(XRX_MOV(value));
     }
     template<typename Tuple>
     template<typename Observer>
-    void ConcatObservable<Tuple, true>::OneObserver<Observer>::on_completed()
+    void ConcatObservable<Tuple, true/*Async*/>::OnePassObserver<Observer>::on_completed()
     {
         return _shared->on_completed();
     }
     template<typename Tuple>
     template<typename Observer>
     template<typename... VoidOrError>
-    void ConcatObservable<Tuple, true>::OneObserver<Observer>::on_error(XRX_RVALUE(VoidOrError&&)... e)
+    void ConcatObservable<Tuple, true/*Async*/>::OnePassObserver<Observer>::on_error(XRX_RVALUE(VoidOrError&&)... e)
     {
         return _shared->on_error(XRX_MOV(e)...);
     }
