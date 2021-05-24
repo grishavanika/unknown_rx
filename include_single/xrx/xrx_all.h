@@ -2267,6 +2267,7 @@ namespace xrx
 // #include "operator_tags.h"
 // #include "cpo_make_operator.h"
 // #include "utils_fast_FWD.h"
+// #include "utils_defines.h"
 
 #include <type_traits>
 
@@ -2305,6 +2306,9 @@ namespace xrx::detail
         Observable_   fork() &       { return Observable_(_source.fork()); }
         Observable_&& fork_move() && { return XRX_MOV(*this); }
         Observable_   fork_move() &  { return XRX_MOV(*this); }
+
+        template<typename F, typename... Fs>
+        XRX_FORCEINLINE() auto pipe(XRX_RVALUE(F&&) f, XRX_RVALUE(Fs&&)... fs) &&;
 
         template<typename Scheduler>
         auto subscribe_on(XRX_RVALUE(Scheduler&&) scheduler) &&
@@ -2436,13 +2440,13 @@ namespace xrx::detail
     struct PipeFold_
     {
         template<typename O>
-        auto operator()(O&& source)
+        XRX_FORCEINLINE() auto operator()(XRX_RVALUE(O&&) source)
         {
             XRX_CHECK_RVALUE(source);
             return XRX_MOV(source);
         }
         template<typename O, typename F, typename... Fs>
-        auto operator()(O&& source, F&& f, Fs&&... fs)
+        XRX_FORCEINLINE() auto operator()(XRX_RVALUE(O&&) source, XRX_RVALUE(F&&) f, XRX_RVALUE(Fs&&)... fs)
         {
             XRX_CHECK_RVALUE(source);
             XRX_CHECK_RVALUE(f);
@@ -2451,23 +2455,36 @@ namespace xrx::detail
     };
 } // namespace xrx::detail
 
-template<typename F, typename... Fs>
-auto pipe(XRX_RVALUE(F&&) f, XRX_RVALUE(Fs&&)... fs)
+namespace xrx
 {
-    using PipeFold = ::xrx::detail::PipeFold_;
-    return [_f = XRX_MOV(f), ..._fs = XRX_MOV(fs)](XRX_RVALUE(auto&&) source) mutable
+    template<typename F, typename... Fs>
+    XRX_FORCEINLINE() auto pipe(XRX_RVALUE(F&&) f, XRX_RVALUE(Fs&&)... fs)
     {
-        return PipeFold()(XRX_MOV(_f)(XRX_MOV(source)), XRX_MOV(_fs)...);
-    };
-}
+        using PipeFold = ::xrx::detail::PipeFold_;
+        return [_f = XRX_MOV(f), ..._fs = XRX_MOV(fs)](XRX_RVALUE(auto&&) source) mutable XRX_FORCEINLINE_LAMBDA()
+        {
+            return PipeFold()(XRX_MOV(_f)(XRX_MOV(source)), XRX_MOV(_fs)...);
+        };
+    }
 
-template<typename SourceObservable, typename F, typename... Fs>
-auto pipe(XRX_RVALUE(::xrx::detail::Observable_<SourceObservable>&&) source
-    , XRX_RVALUE(F&&) f, XRX_RVALUE(Fs&&)... fs)
+    template<typename SourceObservable, typename F, typename... Fs>
+    XRX_FORCEINLINE() auto pipe(XRX_RVALUE(::xrx::detail::Observable_<SourceObservable>&&) source
+        , XRX_RVALUE(F&&) f, XRX_RVALUE(Fs&&)... fs)
+    {
+        using PipeFold = ::xrx::detail::PipeFold_;
+        return PipeFold()(XRX_MOV(f)(XRX_MOV(source)), XRX_MOV(fs)...);
+    }
+} // namespace xrx
+
+namespace xrx::detail
 {
-    using PipeFold = ::xrx::detail::PipeFold_;
-    return PipeFold()(XRX_MOV(f)(XRX_MOV(source)), XRX_MOV(fs)...);
-}
+    template<typename SourceObservable>
+    template<typename F, typename... Fs>
+    XRX_FORCEINLINE() auto Observable_<SourceObservable>::pipe(XRX_RVALUE(F&&) f, XRX_RVALUE(Fs&&)... fs) &&
+    {
+        return ::xrx::pipe(XRX_MOV(*this), XRX_MOV(f), XRX_MOV(fs)...);
+    }
+} // namespace xrx::detail
 
 // Header: operators/operator_subscribe_on.h.
 

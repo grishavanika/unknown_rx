@@ -70,3 +70,17 @@ TEST(Pipe, FreeFunction)
         , custom_processor // because of this.
         , subscribe(observer.ref()));
 }
+
+TEST(Pipe, Compose_WithPipe_AsMemberFunction)
+{
+    ObserverMock observer;
+    Sequence s;
+
+    EXPECT_CALL(observer, on_next(0)).InSequence(s);
+    EXPECT_CALL(observer, on_completed()).InSequence(s);
+
+    observable::range(0).pipe(
+        take(1)
+        , filter([](int) { return true; }))
+        .subscribe(observer.ref());
+}
