@@ -35,7 +35,7 @@ namespace xrx::detail
         else if constexpr (std::is_same_v<Return_, ::xrx::unsubscribe>)
         {
             const ::xrx::unsubscribe state = ::xrx::detail::on_next(XRX_FWD(observer), XRX_FWD(value));
-            return OnNextAction{._stop = state._do_unsubscribe};
+            return OnNextAction{._stop = state._stop};
         }
         else
         {
@@ -64,7 +64,7 @@ namespace xrx::detail
         else if constexpr (std::is_same_v<Return_, ::xrx::unsubscribe>)
         {
             const ::xrx::unsubscribe state = ::xrx::detail::on_next(XRX_FWD(observer));
-            return OnNextAction{ ._stop = state._do_unsubscribe };
+            return OnNextAction{ ._stop = state._stop };
         }
         else
         {

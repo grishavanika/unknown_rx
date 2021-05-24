@@ -15,24 +15,24 @@
 
 namespace xrx::detail
 {
-    template<typename SourceUnsubscriber
-        , typename OpeningsUnsubscriber
-        , typename ClosingsUnsubscriber
+    template<typename SourceDetach
+        , typename OpeningsDetach
+        , typename ClosingsDetach
         , typename WindowHandle>
     struct Unsubscribers
     {
         struct CloseState
         {
             WindowHandle _window;
-            ClosingsUnsubscriber _unsubscriber;
-            bool detach()
+            ClosingsDetach _detach;
+            bool close()
             {
-                return std::exchange(_unsubscriber, {})();
+                return std::exchange(_detach, {})();
             }
         };
 
-        SourceUnsubscriber _source;
-        OpeningsUnsubscriber _openings;
+        SourceDetach _source;
+        OpeningsDetach _openings;
         std::vector<CloseState> _closings;
         debug::AssertMutex<> _mutex;
     };
@@ -134,11 +134,11 @@ namespace xrx::detail
                 if (closer._window == _window)
                 {
                     // Invalidate self-reference.
-                    closer._unsubscriber = {};
+                    closer._detach = {};
                 }
                 else
                 {
-                    closer.detach();
+                    closer.close();
                 }
             }
             closings.clear();
@@ -180,7 +180,7 @@ namespace xrx::detail
             auto& closings = _shared->_unsubscribers._closings;
             for (auto& closer : closings)
             {
-                closer.detach();
+                closer.close();
             }
             closings.clear();
         }
@@ -228,7 +228,7 @@ namespace xrx::detail
             auto& closings = _shared->_unsubscribers._closings;
             for (auto& closer : closings)
             {
-                closer.detach();
+                closer.close();
             }
             closings.clear();
         }
@@ -254,7 +254,7 @@ namespace xrx::detail
     };
 
     template<typename Unsubscribers_>
-    struct WindowToggleUnsubscriber
+    struct WindowToggleDetach
     {
         using has_effect = std::true_type;
 
@@ -319,21 +319,21 @@ namespace xrx::detail
         using Windows = HandleVector<Subject>;
         using WindowHandle = typename Windows::Handle;
         using UnsubscribersState = Unsubscribers<
-              typename SourceObservable::detach
-            , typename OpeningsObservable::detach
-            , typename CloseObservable::detach
+              typename SourceObservable::DetachHandle
+            , typename OpeningsObservable::DetachHandle
+            , typename CloseObservable::DetachHandle
             , WindowHandle>;
         using Window = typename Subject::Observable;
         using value_type = Window;
         using is_async = std::true_type;
-        using detach = WindowToggleUnsubscriber<UnsubscribersState>;
+        using DetachHandle = WindowToggleDetach<UnsubscribersState>;
 
         WindowToggleObservableImpl_ fork() && { return WindowToggleObservableImpl_(XRX_MOV(_source), XRX_MOV(_openings), XRX_MOV(_close_producer)); }
         WindowToggleObservableImpl_ fork() &  { return WindowToggleObservableImpl_(_source.fork(), _openings, _close_producer); }
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        detach subscribe(XRX_RVALUE(Observer&&) observer) &&
+        DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             using Shared_ = WindowToggleShared_<UnsubscribersState, Observer, source_type, error_type>;
             using OpeningsObserver = OpeningsObserver_<CloseObservableProducer, CloseObservable, Shared_>;
@@ -343,7 +343,7 @@ namespace xrx::detail
             std::shared_ptr<UnsubscribersState> unsubscribers(shared, &shared->_unsubscribers);
             unsubscribers->_openings = XRX_MOV(_openings).subscribe(OpeningsObserver(XRX_MOV(_close_producer), shared));
             unsubscribers->_source = XRX_MOV(_source).subscribe(WindowSourceObserver(shared));
-            return detach(XRX_MOV(unsubscribers));
+            return DetachHandle(XRX_MOV(unsubscribers));
         }
     };
 

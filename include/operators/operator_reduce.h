@@ -23,7 +23,7 @@ namespace xrx::detail
         using value_type   = Value;
         using error_type   = typename SourceObservable::error_type;
         using is_async     = IsAsyncObservable<SourceObservable>;
-        using detach = typename SourceObservable::detach;
+        using DetachHandle = typename SourceObservable::DetachHandle;
 
         SourceObservable _source;
         Value _initial;

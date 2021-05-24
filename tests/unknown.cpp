@@ -71,10 +71,10 @@ struct InitialSourceObservable_
 {
     using value_type = int;
     using error_type = none_tag;
-    using detach = NoopDetach;
+    using DetachHandle = NoopDetach;
 
     template<typename Observer>
-    detach subscribe(Observer&& observer) &&
+    DetachHandle subscribe(Observer&& observer) &&
     {
         // #XXX: handle unsubscribe.
         (void)::xrx::detail::on_next(observer, 1);
@@ -82,7 +82,7 @@ struct InitialSourceObservable_
         (void)::xrx::detail::on_next(observer, 3);
         (void)::xrx::detail::on_next(observer, 4);
         (void)::xrx::detail::on_completed_optional(std::move(observer));
-        return detach();
+        return DetachHandle();
     }
 
     InitialSourceObservable_ fork() { return *this; }
@@ -107,7 +107,7 @@ int main(int argc, char* argv[])
             std::printf("Observer: %i.\n", value);
         });
         using Unsubscriber = typename decltype(unsubscriber);
-        static_assert(std::is_same_v<Unsubscriber, InitialSourceObservable_::detach>);
+        static_assert(std::is_same_v<Unsubscriber, InitialSourceObservable_::DetachHandle>);
         static_assert(not Unsubscriber::has_effect());
     }
 
@@ -121,13 +121,13 @@ int main(int argc, char* argv[])
             std::printf("Filtered even numbers: %i.\n", value);
         });
         using Unsubscriber = typename decltype(unsubscriber);
-        static_assert(std::is_same_v<Unsubscriber, InitialSourceObservable_::detach>);
+        static_assert(std::is_same_v<Unsubscriber, InitialSourceObservable_::DetachHandle>);
         static_assert(not Unsubscriber::has_effect());
     }
 
     {
         Subject_<int, int> subject;
-        using ExpectedUnsubscriber = typename decltype(subject)::detach;
+        using ExpectedUnsubscriber = typename decltype(subject)::DetachHandle;
 
         subject.subscribe([](int) {});
 

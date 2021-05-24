@@ -87,7 +87,7 @@ namespace xrx::detail
         using value_type = typename ObservablePrototype::value_type;
         using error_type = typename ObservablePrototype::error_type;
         using is_async = std::false_type;
-        using detach = NoopDetach;
+        using DetachHandle = NoopDetach;
 
         Tuple _tuple;
 
@@ -147,9 +147,9 @@ namespace xrx::detail
             auto invoke_ = [](auto&& observer, auto&& observable)
             {
                 State state;
-                auto unsubscribe = XRX_FWD(observable).subscribe(
+                auto detach = XRX_FWD(observable).subscribe(
                     OneObserver<Observer_>(&observer, &state));
-                static_assert(not decltype(unsubscribe)::has_effect::value
+                static_assert(not decltype(detach)::has_effect::value
                     , "Sync Observable should not have unsubscribe.");
                 const bool stop = (state._unsubscribed || state._end_with_error);
                 assert((state._completed || stop)
@@ -186,7 +186,7 @@ namespace xrx::detail
         struct ObservableToDetach
         {
             template<typename O>
-            using invoke_ = typename O::detach;
+            using invoke_ = typename O::DetachHandle;
         };
 
         using DetachVariant = typename TupleAsVariant<ObservableToDetach, Tuple>::variant_type;
@@ -209,15 +209,15 @@ namespace xrx::detail
                     return false;
                 }
                 auto guard = std::lock_guard(shared->_mutex);
-                auto handle = [](auto&& detach)
+                auto handle = [](auto&& DetachHandle)
                 {
-                    return detach();
+                    return DetachHandle();
                 };
                 return std::visit(XRX_MOV(handle), shared->_unsubscribers);
             }
         };
 
-        using detach = Detach;
+        using DetachHandle = Detach;
 
         template<typename Observer>
         struct Shared_;
@@ -306,14 +306,14 @@ namespace xrx::detail
         ConcatObservable fork() &  { return ConcatObservable(_observables); }
 
         template<typename Observer>
-        detach subscribe(XRX_RVALUE(Observer&&) observer) &&
+        DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
             using Observer_ = std::remove_reference_t<Observer>;
             auto shared = std::make_shared<Shared_<Observer_>>(XRX_MOV(observer), XRX_MOV(_observables));
             shared->start_impl(0);
             std::shared_ptr<Unsubscription> unsubscription(shared, &shared->_unsubscription);
-            return detach(XRX_MOV(unsubscription));
+            return DetachHandle(XRX_MOV(unsubscription));
         }
     };
 

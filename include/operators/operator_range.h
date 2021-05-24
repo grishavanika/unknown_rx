@@ -17,7 +17,7 @@ namespace xrx::detail
         using value_type   = Integer;
         using error_type   = none_tag;
         using is_async = std::false_type;
-        using detach = NoopDetach;
+        using DetachHandle = NoopDetach;
 
         explicit RangeObservable(Integer first, Integer last, std::intmax_t step)
             : _first(first)
@@ -54,7 +54,7 @@ namespace xrx::detail
         }
 
         template<typename Observer>
-        detach subscribe(XRX_RVALUE(Observer&&) observer) &&
+        DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
             constexpr std::bool_constant<Endless> _edless;
@@ -64,12 +64,12 @@ namespace xrx::detail
                 const OnNextAction action = on_next_with_action(observer, Integer(current));
                 if (action._stop)
                 {
-                    return detach();
+                    return DetachHandle();
                 }
                 current = do_step_(current, _step);
             }
             (void)on_completed_optional(XRX_MOV(observer));
-            return detach();
+            return DetachHandle();
         }
 
         RangeObservable fork()

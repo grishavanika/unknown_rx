@@ -24,7 +24,7 @@ namespace xrx::detail
         using value_type = Value;
         using error_type = none_tag;
         using is_async = std::false_type;
-        using detach = NoopDetach;
+        using DetachHandle = NoopDetach;
 
         using Storage = SmallVector<value_type, 1>;
         Storage _values;
@@ -65,7 +65,7 @@ namespace xrx::detail
         using value_type   = Observable_<ObservableValue_>;
         using error_type   = typename SourceObservable::error_type;
         using is_async     = std::false_type;
-        using detach = NoopDetach;
+        using DetachHandle = NoopDetach;
 
         using Storage = ObservableValue_::Storage;
 
@@ -152,24 +152,24 @@ namespace xrx::detail
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        detach subscribe(XRX_RVALUE(Observer&&) observer) &&
+        DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             if (_count == 0)
             {
                 // It's unknown how many observables we should emit, just end the sequence.
                 (void)on_completed_optional(XRX_MOV(observer));
-                return detach();
+                return DetachHandle();
             }
             State_ state;
-            auto unsubscribe = XRX_FWD(_source).subscribe(
+            auto detach = XRX_FWD(_source).subscribe(
                 ObserverImpl_<Observer>(&state, &observer, _count, Storage()));
-            static_assert(not decltype(unsubscribe)::has_effect::value
+            static_assert(not decltype(detach)::has_effect::value
                 , "Sync Observable should not have unsubscribe.");
             const bool stop = (state._unsubscribed || state._end_with_error);
             (void)stop;
             assert((state._completed || stop)
                 && "Sync Observable should be ended after .subscribe() return.");
-            return detach();
+            return DetachHandle();
         }
 
         WindowProducerObservable fork() && { return WindowProducerObservable(XRX_MOV(_source), _count); };

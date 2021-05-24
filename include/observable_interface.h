@@ -19,7 +19,7 @@ namespace xrx::detail
 
         using value_type   = typename SourceObservable::value_type;
         using error_type   = typename SourceObservable::error_type;
-        using detach = typename SourceObservable::detach;
+        using DetachHandle = typename SourceObservable::DetachHandle;
         using is_async = IsAsyncObservable<SourceObservable>;
 
         static_assert(not std::is_reference_v<value_type>

@@ -39,14 +39,14 @@ namespace xrx::observable
                     return false;
                 }
             };
-            using detach = Detach;
+            using DetachHandle = Detach;
 
             Duration _period;
             Scheduler _scheduler;
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, value_type>
-            detach subscribe(XRX_RVALUE(Observer&&) observer) &&
+            DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
                 XRX_CHECK_RVALUE(observer);
                 using Observer_ = std::remove_reference_t<Observer>;
@@ -70,7 +70,7 @@ namespace xrx::observable
                 }
                     , State(XRX_MOV(observer), value_type(0)));
 
-                return detach(handle, XRX_MOV(_scheduler));
+                return DetachHandle(handle, XRX_MOV(_scheduler));
             }
 
             auto fork() && { return IntervalObservable_(XRX_MOV(_period), XRX_MOV(_scheduler)); }

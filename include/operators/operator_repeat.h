@@ -24,8 +24,8 @@ namespace xrx::detail
         using value_type = typename SourceObservable::value_type;
         using error_type = typename SourceObservable::error_type;
         using is_async = std::false_type;
-        using detach = NoopDetach;
-        using SourceDetach = typename SourceObservable::detach;
+        using DetachHandle = NoopDetach;
+        using SourceDetach = typename SourceObservable::DetachHandle;
         static_assert(not SourceDetach::has_effect::value
             , "Sync Observable's Detach should have no effect.");
 
@@ -90,7 +90,7 @@ namespace xrx::detail
     {
         using value_type = typename SourceObservable::value_type;
         using error_type = typename SourceObservable::error_type;
-        using SourceDetach = typename SourceObservable::detach;
+        using SourceDetach = typename SourceObservable::DetachHandle;
         using is_async = std::true_type;
 
         SourceObservable _source;
@@ -141,7 +141,7 @@ namespace xrx::detail
             }
         };
 
-        using detach = Detach;
+        using DetachHandle = Detach;
 
         template<typename Observer>
         struct Shared_
@@ -262,10 +262,10 @@ namespace xrx::detail
             }
             // Endless or with repeats >= 2. Need to create shared state.
             auto shared = std::make_shared<Shared>(XRX_MOV(observer), XRX_MOV(_source), _max_repeats);
-            std::shared_ptr<DetachBlock> detach(shared, &shared->_detach);
+            std::shared_ptr<DetachBlock> DetachHandle(shared, &shared->_detach);
             auto self = shared;
             shared->try_subscribe_next(XRX_MOV(self));
-            return Detach(XRX_MOV(detach));
+            return Detach(XRX_MOV(DetachHandle));
         }
 
         RepeatObservable fork() && { return RepeatObservable(XRX_MOV(_source), _max_repeats); }

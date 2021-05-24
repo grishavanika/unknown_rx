@@ -51,7 +51,7 @@ namespace xrx
                 return (not _shared_weak.expired());
             }
         };
-        using detach = Detach;
+        using DetachHandle = Detach;
 
         std::shared_ptr<SharedImpl_> _shared;
 
@@ -69,7 +69,7 @@ namespace xrx
         {
             using value_type   = Subject_::value_type;
             using error_type   = Subject_::error_type;
-            using detach = Subject_::detach;
+            using DetachHandle = Subject_::DetachHandle;
 
             // [weak_ptr]: if weak reference is expired, there is no actual
             // reference to Subject<> that can push/emit new items to the stream.
@@ -78,7 +78,7 @@ namespace xrx
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, Value>
-            detach subscribe(XRX_RVALUE(Observer&&) observer) &&
+            DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
                 XRX_CHECK_RVALUE(observer);
                 auto shared = _shared_weak.lock();
@@ -87,14 +87,14 @@ namespace xrx
                     // #XXX: this is also the case when we try to
                     // subscribe on the subject that is already completed.
                     // Should we assert ? What's the expected behavior ?
-                    return detach();
+                    return DetachHandle();
                 }
                 AnyObserver<value_type, error_type> erased(XRX_MOV(observer));
                 auto guard = std::lock_guard(shared->_mutex);
-                detach unsubscriber;
-                unsubscriber._shared_weak = _shared_weak;
-                unsubscriber._handle = shared->_subscriptions.push_back(XRX_MOV(erased));
-                return unsubscriber;
+                DetachHandle detach;
+                detach._shared_weak = _shared_weak;
+                detach._handle = shared->_subscriptions.push_back(XRX_MOV(erased));
+                return detach;
             }
 
             auto fork() && { return SourceObservable(XRX_MOV(_shared_weak)); }
@@ -109,7 +109,7 @@ namespace xrx
         // This subscribe() is not ref-qualified (like the rest of Observables)
         // since it doesn't make sense for Subject<> use-case:
         // once subscribed, _same_ Subject instance is used to emit values.
-        detach subscribe(XRX_RVALUE(Observer&&) observer)
+        DetachHandle subscribe(XRX_RVALUE(Observer&&) observer)
         {
             XRX_CHECK_RVALUE(observer);
             return as_observable().subscribe(XRX_MOV(observer));

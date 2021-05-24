@@ -138,7 +138,7 @@ TEST(PublishX, RefCount_ConnectsOnFirstSubscribe)
         .publish()
         .ref_count();
 
-    { // subscribe-subscribe-detach-detach -> connect/disconnect.
+    { // subscribe-subscribe-DetachHandle-DetachHandle -> connect/disconnect.
         auto detach1 = shared.fork().subscribe(o1.ref());
         auto detach2 = shared.fork().subscribe(o1.ref());
         ASSERT_EQ(1, source_subscribe_count);
@@ -146,7 +146,7 @@ TEST(PublishX, RefCount_ConnectsOnFirstSubscribe)
         detach2();
     }
 
-    { // subscribe-detach -> connect/disconnect 2nd time.
+    { // subscribe-DetachHandle -> connect/disconnect 2nd time.
         auto detach1 = shared.fork().subscribe(o1.ref());
         ASSERT_EQ(2, source_subscribe_count);
         detach1();

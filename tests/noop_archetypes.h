@@ -12,17 +12,17 @@ namespace tests
         using has_effect = std::true_type;
         constexpr bool operator()() const noexcept { return false; }
     };
-    static_assert(::xrx::detail::ConceptUnsubscriber<Noop_Detach>);
+    static_assert(::xrx::detail::ConceptDetachHandle<Noop_Detach>);
 
     template<typename V, typename E>
     struct Noop_Observable
     {
         using value_type = V;
         using error_type = E;
-        using detach = Noop_Detach;
+        using DetachHandle = Noop_Detach;
     
         template<typename O>
-        detach subscribe(O) { return detach(); }
+        DetachHandle subscribe(O) { return DetachHandle(); }
         auto fork() { return *this; }
     };
     static_assert(::xrx::detail::ConceptObservable<Noop_Observable<int, int>>);

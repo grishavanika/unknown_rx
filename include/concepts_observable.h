@@ -22,13 +22,13 @@ namespace xrx::detail
     // #TODO: revisit is_copy/move_assignable.
 
     template<typename Detach_>
-    concept ConceptUnsubscriber =
+    concept ConceptDetachHandle =
            ConceptHandle<Detach_>
         && requires(Detach_ detach)
     {
         // MSVC fails to compile ConceptObservable<> if this line
         // is enabled (because of subscribe() -> ConceptObservable<> check.
-        // typename Unsubscriber_::has_effect;
+        // typename Detach_::has_effect;
 
         { detach() } -> std::convertible_to<bool>;
     };
@@ -66,12 +66,12 @@ namespace xrx::detail
         // #TODO: value_type and error_type should not be references.
         typename ObservableLike_::value_type;
         typename ObservableLike_::error_type;
-        typename ObservableLike_::detach;
+        typename ObservableLike_::DetachHandle;
 
         { std::declval<ObservableLike_>().subscribe(ObserverArchetype<
               typename ObservableLike_::value_type
             , typename ObservableLike_::error_type>()) }
-                -> ConceptUnsubscriber<>;
+                -> ConceptDetachHandle<>;
         // #TODO: should return Self - ConceptObservable<> ?
         { std::declval<ObservableLike_&>().fork() }
             -> ConceptHandle<>;

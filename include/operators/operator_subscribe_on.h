@@ -18,19 +18,19 @@ namespace xrx::observable
             : public std::enable_shared_from_this<SubscribeStateShared_<SourceObservable, Scheduler>>
         {
             using TaskHandle = typename Scheduler::TaskHandle;
-            using SourceDetach = typename SourceObservable::detach;
+            using SourceDetach = typename SourceObservable::DetachHandle;
 
             struct SubscribeInProgress
             {
                 std::int32_t _waiting_unsubsribers = 0;
                 std::mutex _mutex;
                 std::condition_variable _on_finish;
-                std::optional<SourceDetach> _unsubscriber;
+                std::optional<SourceDetach> _detach;
             };
 
             struct SubscribeEnded
             {
-                SourceDetach _unsubscriber;
+                SourceDetach _detach;
             };
 
             struct Subscribed
@@ -112,7 +112,7 @@ namespace xrx::observable
                     // #XXX: we should pass our own observer.
                     // And do check if unsubscribe happened while this
                     // .subscribe() is in progress.
-                    SourceDetach unsubscriber = XRX_MOV(source_).subscribe(XRX_MOV(observer_));
+                    SourceDetach detach = XRX_MOV(source_).subscribe(XRX_MOV(observer_));
 
                     if (in_progress)
                     {
@@ -122,8 +122,8 @@ namespace xrx::observable
                         if (shared->_try_cancel_subscribe)
                         {
                             // Racy unsubscribe. Detach now, but also process & resume everyone waiting.
-                            unsubscriber();
-                            unsubscriber = {};
+                            detach();
+                            detach = {};
                         }
 
                         if (in_progress->_waiting_unsubsribers > 0)
@@ -131,7 +131,7 @@ namespace xrx::observable
                             // We were too late. Can't destroy `SubscribeInProgress`.
                             const std::lock_guard lock2(in_progress->_mutex);
                             // Set the data everyone is waiting for.
-                            in_progress->_unsubscriber.emplace(XRX_MOV(unsubscriber));
+                            in_progress->_detach.emplace(XRX_MOV(detach));
                             in_progress->_on_finish.notify_all();
                         }
                         else
@@ -140,7 +140,7 @@ namespace xrx::observable
                             // and simply put final Unsubscriber.
                             Subscribed* subscribed = std::get_if<Subscribed>(&shared->_unsubscribers);
                             assert(subscribed && "No-one should change Subscribed state when it was already set");
-                            subscribed->_state.template emplace<SubscribeEnded>(XRX_MOV(unsubscriber));
+                            subscribed->_state.template emplace<SubscribeEnded>(XRX_MOV(detach));
                         }
                     }
                 });
@@ -169,7 +169,7 @@ namespace xrx::observable
 
                 if (auto* not_initialized = std::get_if<std::monostate>(&_unsubscribers); not_initialized)
                 {
-                    assert(false && "Unexpected. Calling detach() without valid subscription state");
+                    assert(false && "Unexpected. Calling DetachHandle() without valid subscription state");
                     return false;
                 }
                 else if (auto* task_handle = std::get_if<TaskHandle>(&_unsubscribers); task_handle)
@@ -194,25 +194,25 @@ namespace xrx::observable
                     ++in_progress->_waiting_unsubsribers;
                     lock.unlock(); // Unlock main data.
 
-                    std::optional<SourceDetach> unsubscriber;
+                    std::optional<SourceDetach> detach;
                     {
                         std::unique_lock wait_lock(in_progress->_mutex);
                         in_progress->_on_finish.wait(wait_lock, [in_progress]()
                         {
-                            return !!in_progress->_unsubscriber;
+                            return !!in_progress->_detach;
                         });
                         // Don't move unsubscriber, there may be multiple unsubscribers waiting.
-                        unsubscriber = in_progress->_unsubscriber;
+                        detach = in_progress->_detach;
                     }
-                    if (unsubscriber)
+                    if (detach)
                     {
-                        return unsubscriber->detach();
+                        return (*detach)();
                     }
                     return false;
                 }
                 else if (auto* ended = std::get_if<SubscribeEnded>(&subscribed->_state); ended)
                 {
-                    return ended->_unsubscriber.detach();
+                    return ended->_detach();
                 }
 
                 assert(false);
@@ -245,14 +245,14 @@ namespace xrx::observable
                     return false;
                 }
             };
-            using detach = Detach;
+            using DetachHandle = Detach;
 
             SourceObservable _source;
             Scheduler _scheduler;
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, value_type>
-            detach subscribe(XRX_RVALUE(Observer&&) observer) &&
+            DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
                 XRX_CHECK_RVALUE(observer);
                 auto shared = StateShared_::make(XRX_MOV(_scheduler));
@@ -264,7 +264,7 @@ namespace xrx::observable
 #endif
                 shared->subscribe_impl(XRX_MOV(_source), XRX_MOV(observer)
                     , remember_source());
-                return detach(shared);
+                return DetachHandle(shared);
             }
 
             auto fork() && { return SubscribeOnObservable_(XRX_MOV(_source), XRX_MOV(_scheduler)); }

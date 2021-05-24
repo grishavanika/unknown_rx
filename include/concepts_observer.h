@@ -11,9 +11,9 @@ namespace xrx
 {
     struct unsubscribe
     {
-        const bool _do_unsubscribe;
+        const bool _stop;
         constexpr explicit unsubscribe(bool do_unsubscribe = true)
-            : _do_unsubscribe(do_unsubscribe)
+            : _stop(do_unsubscribe)
         {
         }
     };

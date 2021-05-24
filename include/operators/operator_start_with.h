@@ -19,13 +19,13 @@ namespace xrx::detail
         using value_type = typename SourceObservable::value_type;
         using error_type = typename SourceObservable::error_type;
         using is_async = IsAsyncObservable<SourceObservable>;
-        using detach = typename SourceObservable::detach;
+        using DetachHandle = typename SourceObservable::DetachHandle;
 
         SourceObservable _source;
         Tuple _tuple;
 
         template<typename Observer>
-        detach subscribe(Observer&& observer) &&
+        DetachHandle subscribe(Observer&& observer) &&
         {
             auto invoke_ = [](auto& observer, auto&& value)
             {
@@ -40,7 +40,7 @@ namespace xrx::detail
                 , XRX_MOV(_tuple));
             if (not all_processed)
             {
-                return detach();
+                return DetachHandle();
             }
 
             return XRX_MOV(_source).subscribe(XRX_MOV(observer));

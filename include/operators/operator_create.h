@@ -16,8 +16,8 @@ namespace xrx::observable
         template<typename Detach_>
         struct SubscribeDispatch
         {
-            static_assert(::xrx::detail::ConceptUnsubscriber<Detach_>);
-            using detach = Detach_;
+            static_assert(::xrx::detail::ConceptDetachHandle<Detach_>);
+            using DetachHandle = Detach_;
 
             template<typename F, typename Observer>
             static auto invoke_(F&& on_subscribe, Observer&& observer)
@@ -29,17 +29,17 @@ namespace xrx::observable
         template<>
         struct SubscribeDispatch<void>
         {
-            using detach = ::xrx::detail::NoopDetach;
+            using DetachHandle = ::xrx::detail::NoopDetach;
 
             template<typename F, typename Observer>
-            static detach invoke_(F&& on_subscribe, Observer&& observer)
+            static DetachHandle invoke_(F&& on_subscribe, Observer&& observer)
             {
                 using Observer_ = std::remove_reference_t<Observer>;
                 using RefObserver = ::xrx::detail::RefTrackingObserver_<Observer_>;
                 ::xrx::detail::RefObserverState state;
                 (void)XRX_FWD(on_subscribe)(RefObserver(&observer, &state));
                 assert(state.is_finalized());
-                return detach();
+                return DetachHandle();
             }
         };
 
@@ -53,7 +53,7 @@ namespace xrx::observable
                 // return point.
                 return std::false_type();
             }
-            else if constexpr (::xrx::detail::ConceptUnsubscriber<Return_>)
+            else if constexpr (::xrx::detail::ConceptDetachHandle<Return_>)
             {
                 // Assume completed if returned unsubscriber with no effect.
                 using has_effect = typename Return_::has_effect;
@@ -85,14 +85,14 @@ namespace xrx::observable
                 , Return_
                 , void>;
             using SubscribeDispatch_ = SubscribeDispatch<ReturnIfAsync>;
-            using detach = typename SubscribeDispatch_::detach;
+            using DetachHandle = typename SubscribeDispatch_::DetachHandle;
 
             auto fork() && { return CustomObservable_(XRX_MOV(_on_subscribe)); }
             auto fork() &  { return CustomObservable_(_on_subscribe); }
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, value_type>
-            detach subscribe(Observer observer) &&
+            DetachHandle subscribe(Observer observer) &&
             {
                 return SubscribeDispatch_::invoke_(XRX_MOV(_on_subscribe), XRX_MOV(observer));
             }

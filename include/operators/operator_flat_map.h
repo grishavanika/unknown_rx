@@ -113,9 +113,9 @@ namespace xrx::detail
         XRX_CHECK_RVALUE(source_value);
         using InnerSync_ = InnerObserver_Sync_Sync<Observer, ProducedValue, Map, SourceValue>;
         State_Sync_Sync state;
-        auto unsubscribe = XRX_MOV(inner).subscribe(
+        auto detach = XRX_MOV(inner).subscribe(
             InnerSync_(&destination_, &state, &map, &source_value));
-        static_assert(not decltype(unsubscribe)::has_effect::value
+        static_assert(not decltype(detach)::has_effect::value
             , "Sync Observable should not have unsubscribe.");
         const bool stop = (state._unsubscribed || state._end_with_error);
         assert((state._completed || stop)
@@ -213,28 +213,28 @@ namespace xrx::detail
         using value_type = map_value;
         using error_type = typename Errors::E;
         using is_async = std::false_type;
-        using detach = NoopDetach;
+        using DetachHandle = NoopDetach;
 
         FlatMapObservable fork() && { return FlatMapObservable(XRX_MOV(_source), XRX_MOV(_produce), XRX_MOV(_map)); }
         FlatMapObservable fork() &  { return FlatMapObservable(_source.fork(), _produce, _map); }
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        detach subscribe(XRX_RVALUE(Observer&&) destination_) &&
+        DetachHandle subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
             XRX_CHECK_RVALUE(destination_);
             using Observer_ = std::remove_reference_t<Observer>;
             using Root_ = OuterObserver_Sync_Sync<Observer_, Produce, Map, source_type, produce_type>;
             State_Sync_Sync state;
-            auto unsubscribe = XRX_MOV(_source).subscribe(
+            auto detach = XRX_MOV(_source).subscribe(
                 Root_(&_produce, &_map, &destination_, &state));
-            static_assert(not decltype(unsubscribe)::has_effect::value
+            static_assert(not decltype(detach)::has_effect::value
                 , "Sync Observable should not have unsubscribe.");
             const bool stop = (state._unsubscribed || state._end_with_error);
             (void)stop;
             assert((state._completed || stop)
                 && "Sync Observable should be ended after .subscribe() return.");
-            return detach();
+            return DetachHandle();
         }
     };
 
@@ -242,11 +242,11 @@ namespace xrx::detail
     template<typename SourceValue, typename Observable>
     struct ChildObservableState_Sync_Async
     {
-        using detach = typename Observable::detach;
+        using DetachHandle = typename Observable::DetachHandle;
 
         SourceValue _source_value;
         std::optional<Observable> _observable;
-        std::optional<detach> _unsubscriber;
+        std::optional<DetachHandle> _detach;
     };
 
     // State for all subscriptions AND stop flag.
@@ -267,7 +267,7 @@ namespace xrx::detail
     };
 
     template<typename Observable, typename SourceValue>
-    struct Unsubscriber_Sync_Async
+    struct Detach_Sync_Async
     {
         using has_effect = std::true_type;
 
@@ -289,8 +289,8 @@ namespace xrx::detail
             for (auto& child : shared->_children)
             {
                 // #XXX: invalidate unsubscribers references.
-                assert(child._unsubscriber);
-                const bool detached = (*child._unsubscriber)();
+                assert(child._detach);
+                const bool detached = (*child._detach)();
                 at_least_one |= detached;
             }
             return at_least_one;
@@ -335,9 +335,9 @@ namespace xrx::detail
                     continue;
                 }
                 auto& child = _observables._children[i];
-                assert(child._unsubscriber);
-                (*child._unsubscriber)();
-                // Note, we never reset _unsubscriber optional.
+                assert(child._detach);
+                (*child._detach)();
+                // Note, we never reset _detach optional.
                 // May be accessed by external Unsubscriber user holds.
             }
         }
@@ -395,9 +395,9 @@ namespace xrx::detail
                 on_completed_optional(XRX_MOV(_observer));
             }
 #if (0) // #XXX: suspicious.
-            auto& kill = _observables._children[child_index]._unsubscriber;
+            auto& kill = _observables._children[child_index]._detach;
             assert(kill);
-            kill->detach();
+            kill->DetachHandle();
 #endif
         }
     };
@@ -517,14 +517,14 @@ namespace xrx::detail
         using error_type = typename Errors::E;
         using is_async = std::true_type;
 
-        using detach = Unsubscriber_Sync_Async<ProducedObservable, source_type>;
+        using DetachHandle = Detach_Sync_Async<ProducedObservable, source_type>;
 
         FlatMapObservable fork() && { return FlatMapObservable(XRX_MOV(_source), XRX_MOV(_produce), XRX_MOV(_map)); }
         FlatMapObservable fork() &  { return FlatMapObservable(_source.fork(), _produce, _map); }
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        detach subscribe(XRX_RVALUE(Observer&&) destination_) &&
+        DetachHandle subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
             XRX_CHECK_RVALUE(destination_);
             using Observer_ = std::remove_reference_t<Observer>;
@@ -546,7 +546,7 @@ namespace xrx::detail
             if (observables._children.size() == 0)
             {
                 // Done. Nothing to subscribe to.
-                return detach();
+                return DetachHandle();
             }
 
             auto shared = std::make_shared<SharedState_>(XRX_MOV(observables)
@@ -558,13 +558,13 @@ namespace xrx::detail
             {
                 auto& child = shared->_observables._children[i];
                 assert(child._observable);
-                assert(not child._unsubscriber);
-                child._unsubscriber.emplace(child._observable->fork_move()
+                assert(not child._detach);
+                child._detach.emplace(child._observable->fork_move()
                     .subscribe(InnerObserver_(i, shared)));
                 child._observable.reset();
             }
 
-            return detach(XRX_MOV(unsubscriber));
+            return DetachHandle(XRX_MOV(unsubscriber));
         }
     };
 
@@ -667,14 +667,14 @@ namespace xrx::detail
         using error_type = typename Errors::E;
         using is_async = std::true_type;
 
-        using detach = typename SourceObservable::detach;
+        using DetachHandle = typename SourceObservable::DetachHandle;
 
         FlatMapObservable fork() && { return FlatMapObservable(XRX_MOV(_source), XRX_MOV(_produce), XRX_MOV(_map)); }
         FlatMapObservable fork() &  { return FlatMapObservable(_source.fork(), _produce, _map); }
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        detach subscribe(XRX_RVALUE(Observer&&) destination_) &&
+        DetachHandle subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
             XRX_CHECK_RVALUE(destination_);
             using OuterObserver_ = OuterObserver_Async_Sync<Observer, Produce, Map, source_type, produce_type>;
@@ -687,10 +687,10 @@ namespace xrx::detail
     template<typename Observable, typename SourceValue>
     struct ChildObservableState_Async_Async
     {
-        using detach = typename Observable::detach;
+        using DetachHandle = typename Observable::DetachHandle;
 
         SourceValue _source_value;
-        detach _unsubscriber;
+        DetachHandle _detach;
     };
 
     // Tricky state for all subscriptions AND stop flag.
@@ -726,7 +726,7 @@ namespace xrx::detail
                 {
                     // We may be asked to unsubscribe during
                     // observable's on_next/on_completed/on_error calls.
-                    // detach() may destroy observer's state, hence we
+                    // DetachHandle() may destroy observer's state, hence we
                     // skip such cases.
                     // It should be fine, since we do unsubscribe in other ways
                     // (i.e., return unsubscribe(true)).
@@ -734,14 +734,14 @@ namespace xrx::detail
                 }
                 Child_& child = _children[i];
                 // #XXX: invalidate all unsubscribers references.
-                (void)child._unsubscriber();
+                (void)child._detach();
             }
             return true;
         }
     };
 
     template<typename OuterDetach, typename ObservablesState>
-    struct Unsubscriber_Async_Async
+    struct Detach_Async_Async
     {
         OuterDetach _outer;
         std::shared_ptr<ObservablesState> _observables;
@@ -756,7 +756,7 @@ namespace xrx::detail
             {
                 return false;
             }
-            const bool root_detached = std::exchange(_outer, {}).detach();
+            const bool root_detached = std::exchange(_outer, {})();
             auto guard = std::lock_guard(observables->_mutex);
             const bool at_least_one_child = observables->detach_all_unsafe(
                 std::size_t(-1)/*nothing to ignore*/);
@@ -811,7 +811,7 @@ namespace xrx::detail
             // we will known about Observable.
             auto copy = source_value;
             auto& state = _observables._children.emplace_back(XRX_MOV(source_value));
-            state._unsubscriber = _produce(XRX_MOV(copy)).subscribe(InnerObserver(index, XRX_MOV(self)));
+            state._detach = _produce(XRX_MOV(copy)).subscribe(InnerObserver(index, XRX_MOV(self)));
             return false;
         }
 
@@ -933,10 +933,10 @@ namespace xrx::detail
         using produce_type = typename ProducedObservable::value_type;
         using produce_error = typename ProducedObservable::error_type;
 
-        using OuterDetach = typename SourceObservable::detach;
-        using InnerUnsubscriber = typename ProducedObservable::detach;
+        using OuterDetach = typename SourceObservable::DetachHandle;
+        using InnerDetach = typename ProducedObservable::DetachHandle;
         using AllObservables = AllObservablesState_Async_Async<ProducedObservable, source_type>;
-        using detach = Unsubscriber_Async_Async<OuterDetach, AllObservables>;
+        using DetachHandle = Detach_Async_Async<OuterDetach, AllObservables>;
 
         using Errors = MergedErrors<source_error, produce_error>;
 
@@ -962,7 +962,7 @@ namespace xrx::detail
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        detach subscribe(XRX_RVALUE(Observer&&) destination_) &&
+        DetachHandle subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
             XRX_CHECK_RVALUE(destination_);
             using Shared_ = SharedState_Async_Async<Map, Observer, Produce, source_type, ProducedObservable>;
@@ -972,7 +972,7 @@ namespace xrx::detail
             auto shared = std::make_shared<Shared_>(XRX_MOV(_map), XRX_MOV(destination_), XRX_MOV(_produce));
             auto observables_ref = AllObservablesRef(shared, &shared->_observables);
             auto unsubscriber = XRX_MOV(_source).subscribe(OuterObserver_(XRX_MOV(shared), XRX_MOV(_produce)));
-            return detach(XRX_MOV(unsubscriber), XRX_MOV(observables_ref));
+            return DetachHandle(XRX_MOV(unsubscriber), XRX_MOV(observables_ref));
         }
     };
 

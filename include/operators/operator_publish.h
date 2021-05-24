@@ -23,7 +23,7 @@ namespace xrx::detail
         using AnyObserver_ = AnyObserver<value_type, error_type>;
         using Subscriptions = detail::HandleVector<AnyObserver_>;
         using Handle = typename Subscriptions::Handle;
-        using SourceDetach = typename SourceObservable::detach;
+        using SourceDetach = typename SourceObservable::DetachHandle;
 
         struct SharedImpl_;
 
@@ -77,7 +77,7 @@ namespace xrx::detail
             using value_type = typename SourceObservable::value_type;
             using error_type = typename SourceObservable::error_type;
             using is_async = IsAsyncObservable<SourceObservable>;
-            using detach = Detach_RefCount;
+            using DetachHandle = Detach_RefCount;
 
             std::shared_ptr<SharedImpl_> _shared;
 
@@ -163,7 +163,7 @@ namespace xrx::detail
                     {
                         // #XXX: when refcount is active AND child is last one,
                         // this will trigger disconnect_once() that will trigger
-                        // our Observer's detach; that is self-destroy ?
+                        // our Observer's DetachHandle; that is self-destroy ?
                         // Just increase self-shared_ptr ref-count ?
                         unsubscribe_child(handle, do_refcount);
                     }
@@ -209,7 +209,7 @@ namespace xrx::detail
         using State_ = ConnectObservableState_<SourceObservable>;
         using SharedImpl_ = typename State_::SharedImpl_;
         using Detach_Child = typename State_::Detach_Child;
-        using detach = Detach_Child;
+        using DetachHandle = Detach_Child;
 
         using value_type = typename SourceObservable::value_type;
         using error_type = typename SourceObservable::error_type;
@@ -244,7 +244,7 @@ namespace xrx::detail
         using SharedImpl_ = typename SharedState_::SharedImpl_;
         using RefCountObservable_ = typename SharedState_::RefCountObservable_;
         using Detach_Connect = typename SharedState_::Detach_Connect;
-        using detach = Detach_Connect;
+        using DetachHandle = Detach_Connect;
         using RefCountObservableInterface = Observable_<RefCountObservable_>;
 
         XRX_FORCEINLINE() SharedState_& state() { return static_cast<SharedState_&>(*this); }

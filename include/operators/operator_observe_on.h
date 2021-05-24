@@ -155,10 +155,10 @@ namespace xrx::observable
 
             struct Detach
             {
-                using SourceDetach = typename SourceObservable::detach;
+                using SourceDetach = typename SourceObservable::DetachHandle;
                 using has_effect = std::true_type;
 
-                SourceDetach _unsubscriber;
+                SourceDetach _detach;
                 // #TODO: does shared_ptr needed to be there.
                 // Looks like weak should work in this case.
                 std::shared_ptr<std::atomic_bool> _unsubscribed;
@@ -169,16 +169,16 @@ namespace xrx::observable
                     if (unsubscribed)
                     {
                         *unsubscribed = true;
-                        return std::exchange(_unsubscriber, {})();
+                        return std::exchange(_detach, {})();
                     }
                     return false;
                 }
             };
-            using detach = Detach;
+            using DetachHandle = Detach;
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, value_type>
-            detach subscribe(XRX_RVALUE(Observer&&) observer) &&
+            DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
                 using ObserverImpl_ = ObserveOnObserver_<value_type, error_type, Scheduler, Observer>;
                 auto shared = ObserverImpl_::make_state(XRX_MOV(_scheduler), XRX_MOV(observer));
@@ -190,11 +190,11 @@ namespace xrx::observable
                 // (Instead of scheduling task per item).
                 auto handle = XRX_MOV(_source).subscribe(ObserverImpl_(shared));
 
-                detach unsubscriber;
-                unsubscriber._unsubscriber = handle;
+                DetachHandle detach;
+                detach._detach = handle;
                 // Share only stop flag with unsubscriber.
-                unsubscriber._unsubscribed = {shared, &shared->_unsubscribed};
-                return unsubscriber;
+                detach._unsubscribed = {shared, &shared->_unsubscribed};
+                return detach;
             }
         };
     } // namespace detail

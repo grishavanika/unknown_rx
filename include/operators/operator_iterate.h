@@ -18,23 +18,23 @@ namespace xrx::detail
         using value_type = std::remove_reference_t<decltype(*std::begin(std::declval<Container>()))>;
         using error_type = none_tag;
         using is_async = std::false_type;
-        using detach = NoopDetach;
+        using DetachHandle = NoopDetach;
 
         Container _vs;
 
         template<typename Observer>
-        detach subscribe(Observer&& observer) &&
+        DetachHandle subscribe(Observer&& observer) &&
         {
             for (auto& v : _vs)
             {
                 const auto action = on_next_with_action(observer, XRX_MOV(v));
                 if (action._stop)
                 {
-                    return detach();
+                    return DetachHandle();
                 }
             }
             (void)on_completed_optional(XRX_FWD(observer));
-            return detach();
+            return DetachHandle();
         }
 
         IterateObservable fork() && { return IterateObservable(XRX_MOV(_vs)); }

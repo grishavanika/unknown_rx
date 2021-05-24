@@ -112,7 +112,7 @@ TEST(FlatMap, SyncSource_WithAsyncProducer)
     EXPECT_CALL(observer, on_error()).Times(0);
 
     Subject_<int> inner;
-    auto detach = observable::from(1)
+    auto DetachHandle = observable::from(1)
         | flat_map([&](int)
     {
         return inner.as_observable();
@@ -121,7 +121,7 @@ TEST(FlatMap, SyncSource_WithAsyncProducer)
     
     inner.on_next(42);
     inner.on_next(43);
-    detach();
+    DetachHandle();
     inner.on_next(44);
     // Unsubscribed. Should not be called.
     inner.on_completed();

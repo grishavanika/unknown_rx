@@ -20,7 +20,7 @@ namespace xrx::detail
         using value_type   = decltype(_transform(std::declval<source_type>()));
         using error_type   = typename SourceObservable::error_type;
         using is_async     = IsAsyncObservable<SourceObservable>;
-        using detach = typename SourceObservable::detach;
+        using DetachHandle = typename SourceObservable::DetachHandle;
 
         static_assert(not std::is_reference_v<value_type>);
 
@@ -63,7 +63,7 @@ namespace xrx::detail
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        detach subscribe(XRX_RVALUE(Observer&&) observer) &&
+        DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             using Observer_ = std::remove_reference_t<Observer>;
             using TransformObserver = TransformObserver<Observer_>;
