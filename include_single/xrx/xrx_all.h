@@ -2420,11 +2420,53 @@ namespace xrx
 
 template<typename SourceObservable, typename PipeConnect>
 auto operator|(XRX_RVALUE(::xrx::detail::Observable_<SourceObservable>&&) source_rvalue, XRX_RVALUE(PipeConnect&&) connect)
-    requires requires { XRX_MOV(connect)(XRX_MOV(source_rvalue)); }
+    requires requires
+    {
+        // { XRX_MOV(connect)(XRX_MOV(source_rvalue)) } -> ::xrx::detail::ConceptObservable;
+        XRX_MOV(connect)(XRX_MOV(source_rvalue));
+    }
 {
     XRX_CHECK_RVALUE(source_rvalue);
     XRX_CHECK_RVALUE(connect);
     return XRX_MOV(connect)(XRX_MOV(source_rvalue));
+}
+
+namespace xrx::detail
+{
+    struct PipeFold_
+    {
+        template<typename O>
+        auto operator()(O&& source)
+        {
+            XRX_CHECK_RVALUE(source);
+            return XRX_MOV(source);
+        }
+        template<typename O, typename F, typename... Fs>
+        auto operator()(O&& source, F&& f, Fs&&... fs)
+        {
+            XRX_CHECK_RVALUE(source);
+            XRX_CHECK_RVALUE(f);
+            return (*this)(XRX_MOV(f)(XRX_MOV(source)), XRX_MOV(fs)...);
+        }
+    };
+} // namespace xrx::detail
+
+template<typename F, typename... Fs>
+auto pipe(XRX_RVALUE(F&&) f, XRX_RVALUE(Fs&&)... fs)
+{
+    using PipeFold = ::xrx::detail::PipeFold_;
+    return [_f = XRX_MOV(f), ..._fs = XRX_MOV(fs)](XRX_RVALUE(auto&&) source) mutable
+    {
+        return PipeFold()(XRX_MOV(_f)(XRX_MOV(source)), XRX_MOV(_fs)...);
+    };
+}
+
+template<typename SourceObservable, typename F, typename... Fs>
+auto pipe(XRX_RVALUE(::xrx::detail::Observable_<SourceObservable>&&) source
+    , XRX_RVALUE(F&&) f, XRX_RVALUE(Fs&&)... fs)
+{
+    using PipeFold = ::xrx::detail::PipeFold_;
+    return PipeFold()(XRX_MOV(f)(XRX_MOV(source)), XRX_MOV(fs)...);
 }
 
 // Header: operators/operator_subscribe_on.h.
