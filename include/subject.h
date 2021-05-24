@@ -83,6 +83,9 @@ namespace xrx
                 auto shared = _shared_weak.lock();
                 if (not shared)
                 {
+                    // #XXX: this is also the case when we try to
+                    // subscribe on the subject that is already completed.
+                    // Shoul we assert ? What's the expected behavior ?
                     return Unsubscriber();
                 }
                 AnyObserver<value_type, error_type> erased(XRX_MOV(observer));
