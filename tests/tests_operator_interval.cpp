@@ -58,10 +58,10 @@ TEST(Interval, WhenSubscribed_RequestsScheduler)
     EXPECT_CALL(observer, on_completed()).Times(0);
     EXPECT_CALL(observer, on_error()).Times(0);
 
-    auto fake_handle = tick.fork_move().subscribe(observer.ref());
+    auto fake_detach = tick.fork_move().subscribe(observer.ref());
     ASSERT_TRUE(request);
     request(); // 0
     request(); // 1
     request(); // 2
-    ASSERT_TRUE(fake_handle.detach());
+    ASSERT_TRUE(fake_detach());
 }

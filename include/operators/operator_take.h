@@ -17,10 +17,10 @@ namespace xrx::detail
         SourceObservable _source;
         std::size_t _count = 0;
 
-        using value_type   = typename SourceObservable::value_type;
-        using error_type   = typename SourceObservable::error_type;
-        using is_async     = IsAsyncObservable<SourceObservable>;
-        using Unsubscriber = typename SourceObservable::Unsubscriber;
+        using value_type = typename SourceObservable::value_type;
+        using error_type = typename SourceObservable::error_type;
+        using is_async   = IsAsyncObservable<SourceObservable>;
+        using detach     = typename SourceObservable::detach;
 
         template<typename Observer>
         struct TakeObserver_
@@ -46,12 +46,12 @@ namespace xrx::detail
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        detach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             if (_count == 0)
             {
                 (void)::xrx::detail::on_completed_optional(XRX_MOV(observer));
-                return Unsubscriber();
+                return detach();
             }
             using TakeObserver_ = TakeObserver_<Observer>;
             return XRX_MOV(_source).subscribe(TakeObserver_(XRX_MOV(observer), _count));

@@ -18,19 +18,19 @@ namespace xrx::observable
             : public std::enable_shared_from_this<SubscribeStateShared_<SourceObservable, Scheduler>>
         {
             using TaskHandle = typename Scheduler::TaskHandle;
-            using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
+            using SourceDetach = typename SourceObservable::detach;
 
             struct SubscribeInProgress
             {
                 std::int32_t _waiting_unsubsribers = 0;
                 std::mutex _mutex;
                 std::condition_variable _on_finish;
-                std::optional<SourceUnsubscriber> _unsubscriber;
+                std::optional<SourceDetach> _unsubscriber;
             };
 
             struct SubscribeEnded
             {
-                SourceUnsubscriber _unsubscriber;
+                SourceDetach _unsubscriber;
             };
 
             struct Subscribed
@@ -112,7 +112,7 @@ namespace xrx::observable
                     // #XXX: we should pass our own observer.
                     // And do check if unsubscribe happened while this
                     // .subscribe() is in progress.
-                    SourceUnsubscriber unsubscriber = XRX_MOV(source_).subscribe(XRX_MOV(observer_));
+                    SourceDetach unsubscriber = XRX_MOV(source_).subscribe(XRX_MOV(observer_));
 
                     if (in_progress)
                     {
@@ -122,7 +122,7 @@ namespace xrx::observable
                         if (shared->_try_cancel_subscribe)
                         {
                             // Racy unsubscribe. Detach now, but also process & resume everyone waiting.
-                            unsubscriber.detach();
+                            unsubscriber();
                             unsubscriber = {};
                         }
 
@@ -194,7 +194,7 @@ namespace xrx::observable
                     ++in_progress->_waiting_unsubsribers;
                     lock.unlock(); // Unlock main data.
 
-                    std::optional<SourceUnsubscriber> unsubscriber;
+                    std::optional<SourceDetach> unsubscriber;
                     {
                         std::unique_lock wait_lock(in_progress->_mutex);
                         in_progress->_on_finish.wait(wait_lock, [in_progress]()
@@ -229,13 +229,13 @@ namespace xrx::observable
             using Handle = typename Scheduler::TaskHandle;
             using StateShared_ = SubscribeStateShared_<SourceObservable, Scheduler>;
 
-            struct Unsubscriber
+            struct Detach
             {
                 using has_effect = std::true_type;
 
                 std::shared_ptr<StateShared_> _shared;
 
-                bool detach()
+                bool operator()()
                 {
                     auto shared = std::exchange(_shared, {});
                     if (shared)
@@ -245,25 +245,26 @@ namespace xrx::observable
                     return false;
                 }
             };
+            using detach = Detach;
 
             SourceObservable _source;
             Scheduler _scheduler;
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, value_type>
-            Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+            detach subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
                 XRX_CHECK_RVALUE(observer);
                 auto shared = StateShared_::make(XRX_MOV(_scheduler));
 #if (0)
                 // #TODO: implement subscribe_impl(..., std::false_type);
-                using remember_source = typename StateShared_::SourceUnsubscriber::has_effect;
+                using remember_source = typename StateShared_::SourceDetach::has_effect;
 #else
                 using remember_source = std::true_type;
 #endif
                 shared->subscribe_impl(XRX_MOV(_source), XRX_MOV(observer)
                     , remember_source());
-                return Unsubscriber(shared);
+                return detach(shared);
             }
 
             auto fork() && { return SubscribeOnObservable_(XRX_MOV(_source), XRX_MOV(_scheduler)); }

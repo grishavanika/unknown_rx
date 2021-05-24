@@ -130,7 +130,7 @@ TEST(Concat, AsyncConcat_Unsubscribe_FirstObservable)
     auto unsubscriber = merged.fork_move().subscribe(observer.ref());
 
     o1.on_next(42);
-    ASSERT_TRUE(unsubscriber.detach());
+    ASSERT_TRUE(unsubscriber());
     o1.on_next(43);
     o1.on_completed();
     o2.on_next(44);
@@ -159,7 +159,7 @@ TEST(Concat, AsyncConcat_Unsubscribe_SecondObservable)
     o1.on_next(43);
     o1.on_completed();
     o2.on_next(44);
-    ASSERT_TRUE(unsubscriber.detach());
+    ASSERT_TRUE(unsubscriber());
     o2.on_next(45);
     o2.on_completed();
 }

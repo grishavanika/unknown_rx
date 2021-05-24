@@ -231,7 +231,7 @@ TEST(Repeat, Async_Simple_RepeatTwice)
     EXPECT_CALL(observer, on_error()).Times(0);
 
     debug::EventLoop event_loop;
-     auto async = observable::interval(std::chrono::milliseconds(1), event_loop.scheduler());
+    auto async = observable::interval(std::chrono::milliseconds(1), event_loop.scheduler());
     async.fork_move()
         .take(2)
         .repeat(2) // Two times !

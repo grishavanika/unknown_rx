@@ -19,6 +19,7 @@ TEST(Compile, Transform)
     static_assert(ConceptObservable<decltype(o)>);
 }
 
+
 TEST(Compile, TransformPipe)
 {
     using O = Observable_<Noop_Observable<int, void>>;

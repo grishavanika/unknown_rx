@@ -25,7 +25,7 @@ namespace xrx
         using value_type = Value;
         using error_type = Error;
 
-        struct Unsubscriber
+        struct Detach
         {
             using has_effect = std::true_type;
 
@@ -35,7 +35,7 @@ namespace xrx
             std::weak_ptr<SharedImpl_> _shared_weak;
             Handle _handle;
 
-            bool detach()
+            bool operator()()
             {
                 auto shared = std::exchange(_shared_weak, {}).lock();
                 if (not shared)
@@ -51,6 +51,7 @@ namespace xrx
                 return (not _shared_weak.expired());
             }
         };
+        using detach = Detach;
 
         std::shared_ptr<SharedImpl_> _shared;
 
@@ -68,7 +69,7 @@ namespace xrx
         {
             using value_type   = Subject_::value_type;
             using error_type   = Subject_::error_type;
-            using Unsubscriber = Subject_::Unsubscriber;
+            using detach = Subject_::detach;
 
             // [weak_ptr]: if weak reference is expired, there is no actual
             // reference to Subject<> that can push/emit new items to the stream.
@@ -77,7 +78,7 @@ namespace xrx
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, Value>
-            Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+            detach subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
                 XRX_CHECK_RVALUE(observer);
                 auto shared = _shared_weak.lock();
@@ -85,12 +86,12 @@ namespace xrx
                 {
                     // #XXX: this is also the case when we try to
                     // subscribe on the subject that is already completed.
-                    // Shoul we assert ? What's the expected behavior ?
-                    return Unsubscriber();
+                    // Should we assert ? What's the expected behavior ?
+                    return detach();
                 }
                 AnyObserver<value_type, error_type> erased(XRX_MOV(observer));
                 auto guard = std::lock_guard(shared->_mutex);
-                Unsubscriber unsubscriber;
+                detach unsubscriber;
                 unsubscriber._shared_weak = _shared_weak;
                 unsubscriber._handle = shared->_subscriptions.push_back(XRX_MOV(erased));
                 return unsubscriber;
@@ -108,7 +109,7 @@ namespace xrx
         // This subscribe() is not ref-qualified (like the rest of Observables)
         // since it doesn't make sense for Subject<> use-case:
         // once subscribed, _same_ Subject instance is used to emit values.
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer)
+        detach subscribe(XRX_RVALUE(Observer&&) observer)
         {
             XRX_CHECK_RVALUE(observer);
             return as_observable().subscribe(XRX_MOV(observer));

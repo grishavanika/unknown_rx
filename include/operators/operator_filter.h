@@ -22,7 +22,7 @@ namespace xrx::detail
         using value_type   = typename SourceObservable::value_type;
         using error_type   = typename SourceObservable::error_type;
         using is_async     = IsAsyncObservable<SourceObservable>;
-        using Unsubscriber = typename SourceObservable::Unsubscriber;
+        using detach = typename SourceObservable::detach;
 
         SourceObservable _source;
         Filter _filter;
@@ -69,7 +69,7 @@ namespace xrx::detail
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        decltype(auto) subscribe(XRX_RVALUE(Observer&&) observer) &&
+        auto subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
             using Observer_ = std::remove_reference_t<Observer>;

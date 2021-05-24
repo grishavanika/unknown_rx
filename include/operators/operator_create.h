@@ -13,11 +13,11 @@ namespace xrx::observable
 {
     namespace detail
     {
-        template<typename Unsubscriber_>
+        template<typename Detach_>
         struct SubscribeDispatch
         {
-            static_assert(::xrx::detail::ConceptUnsubscriber<Unsubscriber_>);
-            using Unsubscriber = Unsubscriber_;
+            static_assert(::xrx::detail::ConceptUnsubscriber<Detach_>);
+            using detach = Detach_;
 
             template<typename F, typename Observer>
             static auto invoke_(F&& on_subscribe, Observer&& observer)
@@ -29,17 +29,17 @@ namespace xrx::observable
         template<>
         struct SubscribeDispatch<void>
         {
-            using Unsubscriber = ::xrx::detail::NoopUnsubscriber;
+            using detach = ::xrx::detail::NoopDetach;
 
             template<typename F, typename Observer>
-            static Unsubscriber invoke_(F&& on_subscribe, Observer&& observer)
+            static detach invoke_(F&& on_subscribe, Observer&& observer)
             {
                 using Observer_ = std::remove_reference_t<Observer>;
                 using RefObserver = ::xrx::detail::RefTrackingObserver_<Observer_>;
                 ::xrx::detail::RefObserverState state;
                 (void)XRX_FWD(on_subscribe)(RefObserver(&observer, &state));
                 assert(state.is_finalized());
-                return Unsubscriber();
+                return detach();
             }
         };
 
@@ -85,14 +85,14 @@ namespace xrx::observable
                 , Return_
                 , void>;
             using SubscribeDispatch_ = SubscribeDispatch<ReturnIfAsync>;
-            using Unsubscriber = typename SubscribeDispatch_::Unsubscriber;
+            using detach = typename SubscribeDispatch_::detach;
 
             auto fork() && { return CustomObservable_(XRX_MOV(_on_subscribe)); }
             auto fork() &  { return CustomObservable_(_on_subscribe); }
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, value_type>
-            Unsubscriber subscribe(Observer observer) &&
+            detach subscribe(Observer observer) &&
             {
                 return SubscribeDispatch_::invoke_(XRX_MOV(_on_subscribe), XRX_MOV(observer));
             }

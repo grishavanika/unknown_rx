@@ -11,10 +11,10 @@
 
 namespace xrx::detail
 {
-    struct NoopUnsubscriber
+    struct NoopDetach
     {
         using has_effect = std::false_type;
-        constexpr bool detach() const noexcept { return false; }
+        constexpr bool operator()() const noexcept { return false; }
     };
 } // namespace xrx::detail
 
@@ -196,16 +196,16 @@ namespace xrx::detail
         && std::is_move_constructible_v<Handle_>;
     // #TODO: revisit is_copy/move_assignable.
 
-    template<typename Unsubscriber_>
+    template<typename Detach_>
     concept ConceptUnsubscriber =
-           ConceptHandle<Unsubscriber_>
-        && requires(Unsubscriber_ unsubscriber)
+           ConceptHandle<Detach_>
+        && requires(Detach_ detach)
     {
         // MSVC fails to compile ConceptObservable<> if this line
         // is enabled (because of subscribe() -> ConceptObservable<> check.
         // typename Unsubscriber_::has_effect;
 
-        { unsubscriber.detach() } -> std::convertible_to<bool>;
+        { detach() } -> std::convertible_to<bool>;
     };
 
     template<typename Value, typename Error>
@@ -241,7 +241,7 @@ namespace xrx::detail
         // #TODO: value_type and error_type should not be references.
         typename ObservableLike_::value_type;
         typename ObservableLike_::error_type;
-        typename ObservableLike_::Unsubscriber;
+        typename ObservableLike_::detach;
 
         { std::declval<ObservableLike_>().subscribe(ObserverArchetype<
               typename ObservableLike_::value_type
@@ -2285,7 +2285,7 @@ namespace xrx::detail
 
         using value_type   = typename SourceObservable::value_type;
         using error_type   = typename SourceObservable::error_type;
-        using Unsubscriber = typename SourceObservable::Unsubscriber;
+        using detach = typename SourceObservable::detach;
         using is_async = IsAsyncObservable<SourceObservable>;
 
         static_assert(not std::is_reference_v<value_type>
@@ -2511,19 +2511,19 @@ namespace xrx::observable
             : public std::enable_shared_from_this<SubscribeStateShared_<SourceObservable, Scheduler>>
         {
             using TaskHandle = typename Scheduler::TaskHandle;
-            using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
+            using SourceDetach = typename SourceObservable::detach;
 
             struct SubscribeInProgress
             {
                 std::int32_t _waiting_unsubsribers = 0;
                 std::mutex _mutex;
                 std::condition_variable _on_finish;
-                std::optional<SourceUnsubscriber> _unsubscriber;
+                std::optional<SourceDetach> _unsubscriber;
             };
 
             struct SubscribeEnded
             {
-                SourceUnsubscriber _unsubscriber;
+                SourceDetach _unsubscriber;
             };
 
             struct Subscribed
@@ -2605,7 +2605,7 @@ namespace xrx::observable
                     // #XXX: we should pass our own observer.
                     // And do check if unsubscribe happened while this
                     // .subscribe() is in progress.
-                    SourceUnsubscriber unsubscriber = XRX_MOV(source_).subscribe(XRX_MOV(observer_));
+                    SourceDetach unsubscriber = XRX_MOV(source_).subscribe(XRX_MOV(observer_));
 
                     if (in_progress)
                     {
@@ -2615,7 +2615,7 @@ namespace xrx::observable
                         if (shared->_try_cancel_subscribe)
                         {
                             // Racy unsubscribe. Detach now, but also process & resume everyone waiting.
-                            unsubscriber.detach();
+                            unsubscriber();
                             unsubscriber = {};
                         }
 
@@ -2687,7 +2687,7 @@ namespace xrx::observable
                     ++in_progress->_waiting_unsubsribers;
                     lock.unlock(); // Unlock main data.
 
-                    std::optional<SourceUnsubscriber> unsubscriber;
+                    std::optional<SourceDetach> unsubscriber;
                     {
                         std::unique_lock wait_lock(in_progress->_mutex);
                         in_progress->_on_finish.wait(wait_lock, [in_progress]()
@@ -2722,13 +2722,13 @@ namespace xrx::observable
             using Handle = typename Scheduler::TaskHandle;
             using StateShared_ = SubscribeStateShared_<SourceObservable, Scheduler>;
 
-            struct Unsubscriber
+            struct Detach
             {
                 using has_effect = std::true_type;
 
                 std::shared_ptr<StateShared_> _shared;
 
-                bool detach()
+                bool operator()()
                 {
                     auto shared = std::exchange(_shared, {});
                     if (shared)
@@ -2738,25 +2738,26 @@ namespace xrx::observable
                     return false;
                 }
             };
+            using detach = Detach;
 
             SourceObservable _source;
             Scheduler _scheduler;
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, value_type>
-            Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+            detach subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
                 XRX_CHECK_RVALUE(observer);
                 auto shared = StateShared_::make(XRX_MOV(_scheduler));
 #if (0)
                 // #TODO: implement subscribe_impl(..., std::false_type);
-                using remember_source = typename StateShared_::SourceUnsubscriber::has_effect;
+                using remember_source = typename StateShared_::SourceDetach::has_effect;
 #else
                 using remember_source = std::true_type;
 #endif
                 shared->subscribe_impl(XRX_MOV(_source), XRX_MOV(observer)
                     , remember_source());
-                return Unsubscriber(shared);
+                return detach(shared);
             }
 
             auto fork() && { return SubscribeOnObservable_(XRX_MOV(_source), XRX_MOV(_scheduler)); }
@@ -2937,31 +2938,32 @@ namespace xrx::observable
             auto fork() && { return ObserveOnObservable_(XRX_MOV(_source), XRX_MOV(_scheduler)); }
             auto fork() &  { return ObserveOnObservable_(_source.fork(), _scheduler); }
 
-            struct Unsubscriber
+            struct Detach
             {
-                using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
+                using SourceDetach = typename SourceObservable::detach;
                 using has_effect = std::true_type;
 
-                SourceUnsubscriber _unsubscriber;
+                SourceDetach _unsubscriber;
                 // #TODO: does shared_ptr needed to be there.
                 // Looks like weak should work in this case.
                 std::shared_ptr<std::atomic_bool> _unsubscribed;
 
-                bool detach()
+                bool operator()()
                 {
                     auto unsubscribed = std::exchange(_unsubscribed, {});
                     if (unsubscribed)
                     {
                         *unsubscribed = true;
-                        return std::exchange(_unsubscriber, {}).detach();
+                        return std::exchange(_unsubscriber, {})();
                     }
                     return false;
                 }
             };
+            using detach = Detach;
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, value_type>
-            Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+            detach subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
                 using ObserverImpl_ = ObserveOnObserver_<value_type, error_type, Scheduler, Observer>;
                 auto shared = ObserverImpl_::make_state(XRX_MOV(_scheduler), XRX_MOV(observer));
@@ -2973,7 +2975,7 @@ namespace xrx::observable
                 // (Instead of scheduling task per item).
                 auto handle = XRX_MOV(_source).subscribe(ObserverImpl_(shared));
 
-                Unsubscriber unsubscriber;
+                detach unsubscriber;
                 unsubscriber._unsubscriber = handle;
                 // Share only stop flag with unsubscriber.
                 unsubscriber._unsubscribed = {shared, &shared->_unsubscribed};
@@ -3022,10 +3024,10 @@ namespace xrx::detail
         SourceObservable _source;
         std::size_t _count = 0;
 
-        using value_type   = typename SourceObservable::value_type;
-        using error_type   = typename SourceObservable::error_type;
-        using is_async     = IsAsyncObservable<SourceObservable>;
-        using Unsubscriber = typename SourceObservable::Unsubscriber;
+        using value_type = typename SourceObservable::value_type;
+        using error_type = typename SourceObservable::error_type;
+        using is_async   = IsAsyncObservable<SourceObservable>;
+        using detach     = typename SourceObservable::detach;
 
         template<typename Observer>
         struct TakeObserver_
@@ -3051,12 +3053,12 @@ namespace xrx::detail
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        detach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             if (_count == 0)
             {
                 (void)::xrx::detail::on_completed_optional(XRX_MOV(observer));
-                return Unsubscriber();
+                return detach();
             }
             using TakeObserver_ = TakeObserver_<Observer>;
             return XRX_MOV(_source).subscribe(TakeObserver_(XRX_MOV(observer), _count));
@@ -3115,14 +3117,14 @@ namespace xrx::observable
             using clock_point = typename Scheduler::clock_point;
             using Handle = typename Scheduler::ActionHandle;
 
-            struct Unsubscriber
+            struct Detach
             {
                 using has_effect = std::true_type;
 
                 Handle _handle;
                 Scheduler _scheduler;
 
-                bool detach()
+                bool operator()()
                 {
                     auto handle = std::exchange(_handle, {});
                     if (handle)
@@ -3132,13 +3134,14 @@ namespace xrx::observable
                     return false;
                 }
             };
+            using detach = Detach;
 
             Duration _period;
             Scheduler _scheduler;
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, value_type>
-            Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+            detach subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
                 XRX_CHECK_RVALUE(observer);
                 using Observer_ = std::remove_reference_t<Observer>;
@@ -3162,7 +3165,7 @@ namespace xrx::observable
                 }
                     , State(XRX_MOV(observer), value_type(0)));
 
-                return Unsubscriber(handle, XRX_MOV(_scheduler));
+                return detach(handle, XRX_MOV(_scheduler));
             }
 
             auto fork() && { return IntervalObservable_(XRX_MOV(_period), XRX_MOV(_scheduler)); }
@@ -3205,7 +3208,7 @@ namespace xrx::detail
         using value_type   = Integer;
         using error_type   = none_tag;
         using is_async = std::false_type;
-        using Unsubscriber = NoopUnsubscriber;
+        using detach = NoopDetach;
 
         explicit RangeObservable(Integer first, Integer last, std::intmax_t step)
             : _first(first)
@@ -3242,7 +3245,7 @@ namespace xrx::detail
         }
 
         template<typename Observer>
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        detach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
             constexpr std::bool_constant<Endless> _edless;
@@ -3252,12 +3255,12 @@ namespace xrx::detail
                 const OnNextAction action = on_next_with_action(observer, Integer(current));
                 if (action._stop)
                 {
-                    return Unsubscriber();
+                    return detach();
                 }
                 current = do_step_(current, _step);
             }
             (void)on_completed_optional(XRX_MOV(observer));
-            return Unsubscriber();
+            return detach();
         }
 
         RangeObservable fork()
@@ -3299,7 +3302,7 @@ namespace xrx::detail
         using value_type   = decltype(_transform(std::declval<source_type>()));
         using error_type   = typename SourceObservable::error_type;
         using is_async     = IsAsyncObservable<SourceObservable>;
-        using Unsubscriber = typename SourceObservable::Unsubscriber;
+        using detach = typename SourceObservable::detach;
 
         static_assert(not std::is_reference_v<value_type>);
 
@@ -3342,7 +3345,7 @@ namespace xrx::detail
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        detach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             using Observer_ = std::remove_reference_t<Observer>;
             using TransformObserver = TransformObserver<Observer_>;
@@ -3398,10 +3401,10 @@ namespace xrx::detail
         SourceObservable _source;
         Listener _listener;
 
-        using value_type   = typename SourceObservable::value_type;
-        using error_type   = typename SourceObservable::error_type;
-        using is_async     = IsAsyncObservable<SourceObservable>;
-        using Unsubscriber = typename SourceObservable::Unsubscriber;
+        using value_type = typename SourceObservable::value_type;
+        using error_type = typename SourceObservable::error_type;
+        using is_async   = IsAsyncObservable<SourceObservable>;
+        using detach     = typename SourceObservable::detach;
 
         TapOrDoObservable fork() && { return TapOrDoObservable(XRX_MOV(_source), XRX_MOV(_listener)); }
         TapOrDoObservable fork()  & { return TapOrDoObservable(_source.fork(), _listener); }
@@ -3446,7 +3449,7 @@ namespace xrx::detail
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        detach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             using Observer_ = std::remove_reference_t<Observer>;
             using ListenerObserver = ListenerObserver<Observer_>;
@@ -3545,7 +3548,6 @@ namespace xrx::detail
     template<typename Variant, typename Value>
     static bool runtime_variant_emplace(Variant& variant, std::size_t index, Value&& value)
     {
-        using Value_ = std::remove_cvref_t<Value>;
         constexpr std::size_t Size_ = std::variant_size_v<Variant>;
         if (index >= Size_)
         {
@@ -3572,7 +3574,7 @@ namespace xrx::detail
         using value_type = typename ObservablePrototype::value_type;
         using error_type = typename ObservablePrototype::error_type;
         using is_async = std::false_type;
-        using Unsubscriber = NoopUnsubscriber;
+        using detach = NoopDetach;
 
         Tuple _tuple;
 
@@ -3625,7 +3627,7 @@ namespace xrx::detail
         };
 
         template<typename Observer>
-        NoopUnsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        NoopDetach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
             using Observer_ = std::remove_reference_t<Observer>;
@@ -3651,7 +3653,7 @@ namespace xrx::detail
             {
                 on_completed_optional(observer);
             }
-            return NoopUnsubscriber();
+            return NoopDetach();
         }
     };
 
@@ -3668,25 +3670,25 @@ namespace xrx::detail
 
         Tuple _observables;
 
-        struct ObservableToUnsubscriber
+        struct ObservableToDetach
         {
             template<typename O>
-            using invoke_ = typename O::Unsubscriber;
+            using invoke_ = typename O::detach;
         };
 
-        using UnsubscribersVariant = typename TupleAsVariant<ObservableToUnsubscriber, Tuple>::variant_type;
+        using DetachVariant = typename TupleAsVariant<ObservableToDetach, Tuple>::variant_type;
 
         struct Unsubscription
         {
             std::recursive_mutex _mutex;
-            UnsubscribersVariant _unsubscribers;
+            DetachVariant _unsubscribers;
         };
 
-        struct Unsubscriber
+        struct Detach
         {
             using has_effect = std::true_type;
             std::shared_ptr<Unsubscription> _unsubscription;
-            bool detach()
+            bool operator()()
             {
                 auto shared = std::exchange(_unsubscription, {});
                 if (not shared)
@@ -3694,13 +3696,15 @@ namespace xrx::detail
                     return false;
                 }
                 auto guard = std::lock_guard(shared->_mutex);
-                auto handle = [](auto&& unsubscriber)
+                auto handle = [](auto&& detach)
                 {
-                    return unsubscriber.detach();
+                    return detach();
                 };
                 return std::visit(XRX_MOV(handle), shared->_unsubscribers);
             }
         };
+
+        using detach = Detach;
 
         template<typename Observer>
         struct Shared_;
@@ -3789,14 +3793,14 @@ namespace xrx::detail
         ConcatObservable fork() &  { return ConcatObservable(_observables); }
 
         template<typename Observer>
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        detach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
             using Observer_ = std::remove_reference_t<Observer>;
             auto shared = std::make_shared<Shared_<Observer_>>(XRX_MOV(observer), XRX_MOV(_observables));
             shared->start_impl(0);
             std::shared_ptr<Unsubscription> unsubscription(shared, &shared->_unsubscription);
-            return Unsubscriber(XRX_MOV(unsubscription));
+            return detach(XRX_MOV(unsubscription));
         }
     };
 
@@ -3914,12 +3918,12 @@ namespace xrx::detail
         using value_type = typename std::tuple_element<0, Tuple>::type;
         using error_type = none_tag;
         using is_async = std::false_type;
-        using Unsubscriber = NoopUnsubscriber;
+        using detach = NoopDetach;
 
         Tuple _tuple;
 
         template<typename Observer>
-        Unsubscriber subscribe(Observer&& observer) &&
+        detach subscribe(Observer&& observer) &&
         {
             auto invoke_ = [](auto& observer, auto&& value)
             {
@@ -3936,7 +3940,7 @@ namespace xrx::detail
             {
                 (void)on_completed_optional(XRX_FWD(observer));
             }
-            return Unsubscriber();
+            return detach();
         }
 
         FromObservable fork() && { return FromObservable(XRX_MOV(_tuple)); }
@@ -3980,13 +3984,13 @@ namespace xrx::detail
         using value_type = typename SourceObservable::value_type;
         using error_type = typename SourceObservable::error_type;
         using is_async = IsAsyncObservable<SourceObservable>;
-        using Unsubscriber = typename SourceObservable::Unsubscriber;
+        using detach = typename SourceObservable::detach;
 
         SourceObservable _source;
         Tuple _tuple;
 
         template<typename Observer>
-        Unsubscriber subscribe(Observer&& observer) &&
+        detach subscribe(Observer&& observer) &&
         {
             auto invoke_ = [](auto& observer, auto&& value)
             {
@@ -4001,7 +4005,7 @@ namespace xrx::detail
                 , XRX_MOV(_tuple));
             if (not all_processed)
             {
-                return Unsubscriber();
+                return detach();
             }
 
             return XRX_MOV(_source).subscribe(XRX_MOV(observer));
@@ -4055,23 +4059,23 @@ namespace xrx::detail
         using value_type = std::remove_reference_t<decltype(*std::begin(std::declval<Container>()))>;
         using error_type = none_tag;
         using is_async = std::false_type;
-        using Unsubscriber = NoopUnsubscriber;
+        using detach = NoopDetach;
 
         Container _vs;
 
         template<typename Observer>
-        Unsubscriber subscribe(Observer&& observer) &&
+        detach subscribe(Observer&& observer) &&
         {
             for (auto& v : _vs)
             {
                 const auto action = on_next_with_action(observer, XRX_MOV(v));
                 if (action._stop)
                 {
-                    return Unsubscriber();
+                    return detach();
                 }
             }
             (void)on_completed_optional(XRX_FWD(observer));
-            return Unsubscriber();
+            return detach();
         }
 
         IterateObservable fork() && { return IterateObservable(XRX_MOV(_vs)); }
@@ -4118,7 +4122,7 @@ namespace xrx::detail
         using value_type   = typename SourceObservable::value_type;
         using error_type   = typename SourceObservable::error_type;
         using is_async     = IsAsyncObservable<SourceObservable>;
-        using Unsubscriber = typename SourceObservable::Unsubscriber;
+        using detach = typename SourceObservable::detach;
 
         SourceObservable _source;
         Filter _filter;
@@ -4165,7 +4169,7 @@ namespace xrx::detail
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        decltype(auto) subscribe(XRX_RVALUE(Observer&&) observer) &&
+        auto subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
             using Observer_ = std::remove_reference_t<Observer>;
@@ -4233,14 +4237,14 @@ namespace xrx::detail
         using value_type = Value;
         using error_type = none_tag;
         using is_async = std::false_type;
-        using Unsubscriber = NoopUnsubscriber;
+        using detach = NoopDetach;
 
         using Storage = SmallVector<value_type, 1>;
         Storage _values;
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        NoopUnsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        NoopDetach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             const bool all = _values.for_each([&](const value_type& v) XRX_FORCEINLINE_LAMBDA()
             {
@@ -4255,7 +4259,7 @@ namespace xrx::detail
             {
                 (void)on_completed_optional(XRX_MOV(observer));
             }
-            return NoopUnsubscriber();
+            return NoopDetach();
         }
 
         WindowSyncObservable fork() && { return WindowSyncObservable(XRX_MOV(*this)); }
@@ -4274,7 +4278,7 @@ namespace xrx::detail
         using value_type   = Observable_<ObservableValue_>;
         using error_type   = typename SourceObservable::error_type;
         using is_async     = std::false_type;
-        using Unsubscriber = NoopUnsubscriber;
+        using detach = NoopDetach;
 
         using Storage = ObservableValue_::Storage;
 
@@ -4361,13 +4365,13 @@ namespace xrx::detail
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        detach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             if (_count == 0)
             {
                 // It's unknown how many observables we should emit, just end the sequence.
                 (void)on_completed_optional(XRX_MOV(observer));
-                return Unsubscriber();
+                return detach();
             }
             State_ state;
             auto unsubscribe = XRX_FWD(_source).subscribe(
@@ -4378,7 +4382,7 @@ namespace xrx::detail
             (void)stop;
             assert((state._completed || stop)
                 && "Sync Observable should be ended after .subscribe() return.");
-            return Unsubscriber();
+            return detach();
         }
 
         WindowProducerObservable fork() && { return WindowProducerObservable(XRX_MOV(_source), _count); };
@@ -4436,18 +4440,17 @@ namespace xrx::detail
     {
         using value_type = typename SourceObservable::value_type;
         using error_type = typename SourceObservable::error_type;
-        using Unsubscriber = NoopUnsubscriber;
         using is_async = std::false_type;
-
-        using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
-        static_assert(not SourceUnsubscriber::has_effect::value
-            , "Sync Observable's Unsubscriber should have no effect.");
+        using detach = NoopDetach;
+        using SourceDetach = typename SourceObservable::detach;
+        static_assert(not SourceDetach::has_effect::value
+            , "Sync Observable's Detach should have no effect.");
 
         SourceObservable _source;
         int _max_repeats;
 
         template<typename Observer>
-        NoopUnsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        NoopDetach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
             using Observer_ = std::remove_reference_t<Observer>;
@@ -4469,30 +4472,30 @@ namespace xrx::detail
             while (check_repeat())
             {
                 RefObserverState state;
-                const auto unsubscriber = _source.fork()
+                (void)_source.fork()
                     .subscribe(RefObserver_(&observer, &state));
                 assert(state.is_finalized()
                     && "Sync Observable is not finalized after .subscribe()'s end.");
                 if (state._unsubscribed || state._with_error)
                 {
-                    return NoopUnsubscriber();
+                    return NoopDetach();
                 }
             }
             if (_max_repeats > 0)
             {
                 // Last loop - move-forget source Observable.
                 RefObserverState state;
-                const auto unsubscriber = _source.fork_move() // Difference.
+                (void)_source.fork_move() // Difference.
                     .subscribe(RefObserver_(&observer, &state));
                 assert(state.is_finalized()
                     && "Sync Observable is not finalized after .subscribe()'s end.");
                 if (state._unsubscribed || state._with_error)
                 {
-                    return NoopUnsubscriber();
+                    return NoopDetach();
                 }
             }
             (void)on_completed_optional(XRX_MOV(observer));
-            return NoopUnsubscriber();
+            return NoopDetach();
         }
 
         RepeatObservable fork() && { return RepeatObservable(XRX_MOV(_source), _max_repeats); }
@@ -4504,7 +4507,7 @@ namespace xrx::detail
     {
         using value_type = typename SourceObservable::value_type;
         using error_type = typename SourceObservable::error_type;
-        using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
+        using SourceDetach = typename SourceObservable::detach;
         using is_async = std::true_type;
 
         SourceObservable _source;
@@ -4513,7 +4516,7 @@ namespace xrx::detail
         struct DetachBlock
         {
             std::recursive_mutex _mutex;
-            SourceUnsubscriber _source;
+            SourceDetach _source;
             bool _do_detach = false;
         };
 
@@ -4521,41 +4524,41 @@ namespace xrx::detail
         {
             using has_effect = std::true_type;
             using State = std::variant<std::monostate
-                , SourceUnsubscriber
+                , SourceDetach
                 , std::shared_ptr<DetachBlock>>;
             State _state;
             explicit Detach() = default;
-            explicit Detach(XRX_RVALUE(SourceUnsubscriber&&) source_detach)
+            explicit Detach(XRX_RVALUE(SourceDetach&&) source_detach)
                 : _state(XRX_MOV(source_detach))
             {}
             explicit Detach(XRX_RVALUE(std::shared_ptr<DetachBlock>&&) block)
                 : _state(XRX_MOV(block))
             {}
 
-            bool detach()
+            bool operator()()
             {
                 auto state = std::exchange(_state, {});
                 if (std::get_if<std::monostate>(&state))
                 {
                     return false;
                 }
-                else if (auto* source_detach = std::get_if<SourceUnsubscriber>(&state))
+                else if (auto* source_detach = std::get_if<SourceDetach>(&state))
                 {
-                    return source_detach->detach();
+                    return (*source_detach)();
                 }
                 else if (auto* block_ptr = std::get_if<std::shared_ptr<DetachBlock>>(&state))
                 {
                     DetachBlock& block = **block_ptr;
                     auto guard = std::lock_guard(block._mutex);
                     block._do_detach = true;
-                    return block._source.detach();
+                    return block._source();
                 }
                 assert(false);
                 return false;
             }
         };
 
-        using Unsubscriber = Detach;
+        using detach = Detach;
 
         template<typename Observer>
         struct Shared_
@@ -4739,11 +4742,11 @@ namespace xrx::observable
 {
     namespace detail
     {
-        template<typename Unsubscriber_>
+        template<typename Detach_>
         struct SubscribeDispatch
         {
-            static_assert(::xrx::detail::ConceptUnsubscriber<Unsubscriber_>);
-            using Unsubscriber = Unsubscriber_;
+            static_assert(::xrx::detail::ConceptUnsubscriber<Detach_>);
+            using detach = Detach_;
 
             template<typename F, typename Observer>
             static auto invoke_(F&& on_subscribe, Observer&& observer)
@@ -4755,17 +4758,17 @@ namespace xrx::observable
         template<>
         struct SubscribeDispatch<void>
         {
-            using Unsubscriber = ::xrx::detail::NoopUnsubscriber;
+            using detach = ::xrx::detail::NoopDetach;
 
             template<typename F, typename Observer>
-            static Unsubscriber invoke_(F&& on_subscribe, Observer&& observer)
+            static detach invoke_(F&& on_subscribe, Observer&& observer)
             {
                 using Observer_ = std::remove_reference_t<Observer>;
                 using RefObserver = ::xrx::detail::RefTrackingObserver_<Observer_>;
                 ::xrx::detail::RefObserverState state;
                 (void)XRX_FWD(on_subscribe)(RefObserver(&observer, &state));
                 assert(state.is_finalized());
-                return Unsubscriber();
+                return detach();
             }
         };
 
@@ -4811,14 +4814,14 @@ namespace xrx::observable
                 , Return_
                 , void>;
             using SubscribeDispatch_ = SubscribeDispatch<ReturnIfAsync>;
-            using Unsubscriber = typename SubscribeDispatch_::Unsubscriber;
+            using detach = typename SubscribeDispatch_::detach;
 
             auto fork() && { return CustomObservable_(XRX_MOV(_on_subscribe)); }
             auto fork() &  { return CustomObservable_(_on_subscribe); }
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, value_type>
-            Unsubscriber subscribe(Observer observer) &&
+            detach subscribe(Observer observer) &&
             {
                 return SubscribeDispatch_::invoke_(XRX_MOV(_on_subscribe), XRX_MOV(observer));
             }
@@ -4874,7 +4877,7 @@ namespace xrx::detail
         using value_type   = Value;
         using error_type   = typename SourceObservable::error_type;
         using is_async     = IsAsyncObservable<SourceObservable>;
-        using Unsubscriber = typename SourceObservable::Unsubscriber;
+        using detach = typename SourceObservable::detach;
 
         SourceObservable _source;
         Value _initial;
@@ -5074,7 +5077,7 @@ namespace xrx::detail
     };
 
     template<typename ProducedValue, typename Observer, typename Observable, typename Map, typename SourceValue>
-    static bool invoke_inner_sync_sync(Observer& destination_
+    XRX_FORCEINLINE() static bool invoke_inner_sync_sync(Observer& destination_
         , XRX_RVALUE(Observable&&) inner
         , Map& map
         , XRX_RVALUE(SourceValue&&) source_value)
@@ -5183,14 +5186,14 @@ namespace xrx::detail
         using value_type = map_value;
         using error_type = typename Errors::E;
         using is_async = std::false_type;
-        using Unsubscriber = NoopUnsubscriber;
+        using detach = NoopDetach;
 
         FlatMapObservable fork() && { return FlatMapObservable(XRX_MOV(_source), XRX_MOV(_produce), XRX_MOV(_map)); }
         FlatMapObservable fork() &  { return FlatMapObservable(_source.fork(), _produce, _map); }
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) destination_) &&
+        detach subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
             XRX_CHECK_RVALUE(destination_);
             using Observer_ = std::remove_reference_t<Observer>;
@@ -5204,7 +5207,7 @@ namespace xrx::detail
             (void)stop;
             assert((state._completed || stop)
                 && "Sync Observable should be ended after .subscribe() return.");
-            return Unsubscriber();
+            return detach();
         }
     };
 
@@ -5212,11 +5215,11 @@ namespace xrx::detail
     template<typename SourceValue, typename Observable>
     struct ChildObservableState_Sync_Async
     {
-        using Unsubscriber = typename Observable::Unsubscriber;
+        using detach = typename Observable::detach;
 
         SourceValue _source_value;
         std::optional<Observable> _observable;
-        std::optional<Unsubscriber> _unsubscriber;
+        std::optional<detach> _unsubscriber;
     };
 
     // State for all subscriptions AND stop flag.
@@ -5244,7 +5247,7 @@ namespace xrx::detail
         using AllObservables_ = AllObservablesState_Sync_Async<Observable, SourceValue>;
         std::shared_ptr<AllObservables_> _shared;
 
-        bool detach()
+        bool operator()()
         {
             // Note: not thread-safe.
             auto shared = std::exchange(_shared, {});
@@ -5260,7 +5263,7 @@ namespace xrx::detail
             {
                 // #XXX: invalidate unsubscribers references.
                 assert(child._unsubscriber);
-                const bool detached = child._unsubscriber->detach();
+                const bool detached = (*child._unsubscriber)();
                 at_least_one |= detached;
             }
             return at_least_one;
@@ -5306,7 +5309,7 @@ namespace xrx::detail
                 }
                 auto& child = _observables._children[i];
                 assert(child._unsubscriber);
-                child._unsubscriber->detach();
+                (*child._unsubscriber)();
                 // Note, we never reset _unsubscriber optional.
                 // May be accessed by external Unsubscriber user holds.
             }
@@ -5487,14 +5490,14 @@ namespace xrx::detail
         using error_type = typename Errors::E;
         using is_async = std::true_type;
 
-        using Unsubscriber = Unsubscriber_Sync_Async<ProducedObservable, source_type>;
+        using detach = Unsubscriber_Sync_Async<ProducedObservable, source_type>;
 
         FlatMapObservable fork() && { return FlatMapObservable(XRX_MOV(_source), XRX_MOV(_produce), XRX_MOV(_map)); }
         FlatMapObservable fork() &  { return FlatMapObservable(_source.fork(), _produce, _map); }
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) destination_) &&
+        detach subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
             XRX_CHECK_RVALUE(destination_);
             using Observer_ = std::remove_reference_t<Observer>;
@@ -5516,7 +5519,7 @@ namespace xrx::detail
             if (observables._children.size() == 0)
             {
                 // Done. Nothing to subscribe to.
-                return Unsubscriber();
+                return detach();
             }
 
             auto shared = std::make_shared<SharedState_>(XRX_MOV(observables)
@@ -5534,7 +5537,7 @@ namespace xrx::detail
                 child._observable.reset();
             }
 
-            return Unsubscriber(XRX_MOV(unsubscriber));
+            return detach(XRX_MOV(unsubscriber));
         }
     };
 
@@ -5637,14 +5640,14 @@ namespace xrx::detail
         using error_type = typename Errors::E;
         using is_async = std::true_type;
 
-        using Unsubscriber = typename SourceObservable::Unsubscriber;
+        using detach = typename SourceObservable::detach;
 
         FlatMapObservable fork() && { return FlatMapObservable(XRX_MOV(_source), XRX_MOV(_produce), XRX_MOV(_map)); }
         FlatMapObservable fork() &  { return FlatMapObservable(_source.fork(), _produce, _map); }
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) destination_) &&
+        detach subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
             XRX_CHECK_RVALUE(destination_);
             using OuterObserver_ = OuterObserver_Async_Sync<Observer, Produce, Map, source_type, produce_type>;
@@ -5657,10 +5660,10 @@ namespace xrx::detail
     template<typename Observable, typename SourceValue>
     struct ChildObservableState_Async_Async
     {
-        using Unsubscriber = typename Observable::Unsubscriber;
+        using detach = typename Observable::detach;
 
         SourceValue _source_value;
-        Unsubscriber _unsubscriber;
+        detach _unsubscriber;
     };
 
     // Tricky state for all subscriptions AND stop flag.
@@ -5704,21 +5707,21 @@ namespace xrx::detail
                 }
                 Child_& child = _children[i];
                 // #XXX: invalidate all unsubscribers references.
-                (void)child._unsubscriber.detach();
+                (void)child._unsubscriber();
             }
             return true;
         }
     };
 
-    template<typename OuterUnsubscriber, typename ObservablesState>
+    template<typename OuterDetach, typename ObservablesState>
     struct Unsubscriber_Async_Async
     {
-        OuterUnsubscriber _outer;
+        OuterDetach _outer;
         std::shared_ptr<ObservablesState> _observables;
 
         using has_effect = std::true_type;
         
-        bool detach()
+        bool operator()()
         {
             // Note: not thread-safe.
             auto observables = std::exchange(_observables, {});
@@ -5903,10 +5906,10 @@ namespace xrx::detail
         using produce_type = typename ProducedObservable::value_type;
         using produce_error = typename ProducedObservable::error_type;
 
-        using OuterUnsubscriber = typename SourceObservable::Unsubscriber;
-        using InnerUnsubscriber = typename ProducedObservable::Unsubscriber;
+        using OuterDetach = typename SourceObservable::detach;
+        using InnerUnsubscriber = typename ProducedObservable::detach;
         using AllObservables = AllObservablesState_Async_Async<ProducedObservable, source_type>;
-        using Unsubscriber = Unsubscriber_Async_Async<OuterUnsubscriber, AllObservables>;
+        using detach = Unsubscriber_Async_Async<OuterDetach, AllObservables>;
 
         using Errors = MergedErrors<source_error, produce_error>;
 
@@ -5932,7 +5935,7 @@ namespace xrx::detail
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) destination_) &&
+        detach subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
             XRX_CHECK_RVALUE(destination_);
             using Shared_ = SharedState_Async_Async<Map, Observer, Produce, source_type, ProducedObservable>;
@@ -5942,7 +5945,7 @@ namespace xrx::detail
             auto shared = std::make_shared<Shared_>(XRX_MOV(_map), XRX_MOV(destination_), XRX_MOV(_produce));
             auto observables_ref = AllObservablesRef(shared, &shared->_observables);
             auto unsubscriber = XRX_MOV(_source).subscribe(OuterObserver_(XRX_MOV(shared), XRX_MOV(_produce)));
-            return Unsubscriber(XRX_MOV(unsubscriber), XRX_MOV(observables_ref));
+            return detach(XRX_MOV(unsubscriber), XRX_MOV(observables_ref));
         }
     };
 
@@ -6041,7 +6044,7 @@ namespace xrx::detail
         using AnyObserver_ = AnyObserver<value_type, error_type>;
         using Subscriptions = detail::HandleVector<AnyObserver_>;
         using Handle = typename Subscriptions::Handle;
-        using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
+        using SourceDetach = typename SourceObservable::detach;
 
         struct SharedImpl_;
 
@@ -6056,23 +6059,23 @@ namespace xrx::detail
             void on_completed();
         };
 
-        struct Unsubscriber_Child
+        struct Detach_Child
         {
             using has_effect = std::true_type;
 
             std::shared_ptr<SharedImpl_> _shared;
             Handle _handle;
 
-            bool detach(bool do_refcount = false);
+            bool operator()(bool do_refcount = false);
         };
 
-        struct Unsubscriber_Connect
+        struct Detach_Connect
         {
             using has_effect = std::true_type;
 
             std::shared_ptr<SharedImpl_> _shared;
 
-            bool detach();
+            bool operator()();
 
             explicit operator bool() const
             {
@@ -6080,13 +6083,13 @@ namespace xrx::detail
             }
         };
 
-        struct Unsubscriber_RefCount
+        struct Detach_RefCount
         {
-            Unsubscriber_Child _child;
+            Detach_Child _child;
 
-            bool detach()
+            bool operator()()
             {
-                return std::exchange(_child, {}).detach(true/*do_refcount*/);
+                return std::exchange(_child, {})(true/*do_refcount*/);
             }
         };
 
@@ -6095,7 +6098,7 @@ namespace xrx::detail
             using value_type = typename SourceObservable::value_type;
             using error_type = typename SourceObservable::error_type;
             using is_async = IsAsyncObservable<SourceObservable>;
-            using Unsubscriber = Unsubscriber_RefCount;
+            using detach = Detach_RefCount;
 
             std::shared_ptr<SharedImpl_> _shared;
 
@@ -6111,7 +6114,7 @@ namespace xrx::detail
             std::recursive_mutex _mutex;
             SourceObservable _source;
             Subscriptions _subscriptions;
-            std::optional<SourceUnsubscriber> _connected;
+            std::optional<SourceDetach> _connected;
 
             explicit SharedImpl_(XRX_RVALUE(SourceObservable&&) source)
                 : _mutex()
@@ -6121,16 +6124,16 @@ namespace xrx::detail
             {
             }
 
-            Unsubscriber_Connect connect_once(bool do_refcount)
+            Detach_Connect connect_once(bool do_refcount)
             {
                 auto guard = std::unique_lock(_mutex);
                 if (not _connected)
                 {
                     auto self = this->shared_from_this();
                     _connected.emplace(_source.fork().subscribe(ConnectObserver_(self, do_refcount)));
-                    return Unsubscriber_Connect(XRX_MOV(self));
+                    return Detach_Connect(XRX_MOV(self));
                 }
-                return Unsubscriber_Connect();
+                return Detach_Connect();
             }
 
             bool disconnect_once()
@@ -6138,13 +6141,13 @@ namespace xrx::detail
                 auto guard = std::unique_lock(_mutex);
                 if (_connected)
                 {
-                    return std::exchange(_connected, {})->detach();
+                    return (*std::exchange(_connected, {}))();
                 }
                 return false;
             }
 
             template<typename Observer>
-            Unsubscriber_Child subscribe_child(XRX_RVALUE(Observer&&) observer, bool do_refcount)
+            Detach_Child subscribe_child(XRX_RVALUE(Observer&&) observer, bool do_refcount)
             {
                 XRX_CHECK_RVALUE(observer);
                 AnyObserver_ erased_observer(XRX_MOV(observer));
@@ -6155,7 +6158,7 @@ namespace xrx::detail
                 {
                     (void)connect_once(do_refcount);
                 }
-                return Unsubscriber_Child(this->shared_from_this(), XRX_MOV(handle));
+                return Detach_Child(this->shared_from_this(), XRX_MOV(handle));
             }
 
             bool unsubscribe_child(Handle handle, bool do_refcount)
@@ -6226,8 +6229,8 @@ namespace xrx::detail
     {
         using State_ = ConnectObservableState_<SourceObservable>;
         using SharedImpl_ = typename State_::SharedImpl_;
-        using Unsubscriber_Child = typename State_::Unsubscriber_Child;
-        using Unsubscriber = Unsubscriber_Child;
+        using Detach_Child = typename State_::Detach_Child;
+        using detach = Detach_Child;
 
         using value_type = typename SourceObservable::value_type;
         using error_type = typename SourceObservable::error_type;
@@ -6236,14 +6239,14 @@ namespace xrx::detail
         std::weak_ptr<SharedImpl_> _shared_weak;
 
         template<typename Observer>
-        Unsubscriber_Child subscribe(XRX_RVALUE(Observer&&) observer)
+        Detach_Child subscribe(XRX_RVALUE(Observer&&) observer)
         {
             XRX_CHECK_RVALUE(observer);
             if (auto shared = _shared_weak.lock(); shared)
             {
                 return shared->subscribe_child(XRX_MOV(observer), false/*no refcount*/);
             }
-            return Unsubscriber_Child();
+            return Detach_Child();
         }
 
         ConnectObservableSource_ fork() { return ConnectObservableSource_(_shared_weak); }
@@ -6261,8 +6264,8 @@ namespace xrx::detail
         using error_type = typename ConnectObservableInterface::error_type;
         using SharedImpl_ = typename SharedState_::SharedImpl_;
         using RefCountObservable_ = typename SharedState_::RefCountObservable_;
-        using Unsubscriber_Connect = typename SharedState_::Unsubscriber_Connect;
-        using Unsubscriber = Unsubscriber_Connect;
+        using Detach_Connect = typename SharedState_::Detach_Connect;
+        using detach = Detach_Connect;
         using RefCountObservableInterface = Observable_<RefCountObservable_>;
 
         XRX_FORCEINLINE() SharedState_& state() { return static_cast<SharedState_&>(*this); }
@@ -6273,7 +6276,7 @@ namespace xrx::detail
         {
         }
 
-        Unsubscriber_Connect connect()
+        Detach_Connect connect()
         {
             return state()._shared->connect_once(false/*no refcount*/);
         }
@@ -6307,7 +6310,7 @@ namespace xrx::detail
     }
 
     template<typename SourceObservable>
-    bool ConnectObservableState_<SourceObservable>::Unsubscriber_Child::detach(bool do_refcount /*= false*/)
+    bool ConnectObservableState_<SourceObservable>::Detach_Child::operator()(bool do_refcount /*= false*/)
     {
         auto shared = std::exchange(_shared, {});
         if (shared)
@@ -6318,7 +6321,7 @@ namespace xrx::detail
     }
 
     template<typename SourceObservable>
-    bool ConnectObservableState_<SourceObservable>::Unsubscriber_Connect::detach()
+    bool ConnectObservableState_<SourceObservable>::Detach_Connect::operator()()
     {
         auto shared = std::exchange(_shared, {});
         if (shared)
@@ -6335,7 +6338,7 @@ namespace xrx::detail
     {
         XRX_CHECK_RVALUE(observer);
         assert(_shared);
-        return Unsubscriber_RefCount(_shared->subscribe_child(
+        return Detach_RefCount(_shared->subscribe_child(
             XRX_MOV(observer), true/*refcount*/));
     }
 
@@ -6390,7 +6393,7 @@ namespace xrx
         using value_type = Value;
         using error_type = Error;
 
-        struct Unsubscriber
+        struct Detach
         {
             using has_effect = std::true_type;
 
@@ -6400,7 +6403,7 @@ namespace xrx
             std::weak_ptr<SharedImpl_> _shared_weak;
             Handle _handle;
 
-            bool detach()
+            bool operator()()
             {
                 auto shared = std::exchange(_shared_weak, {}).lock();
                 if (not shared)
@@ -6416,6 +6419,7 @@ namespace xrx
                 return (not _shared_weak.expired());
             }
         };
+        using detach = Detach;
 
         std::shared_ptr<SharedImpl_> _shared;
 
@@ -6433,7 +6437,7 @@ namespace xrx
         {
             using value_type   = Subject_::value_type;
             using error_type   = Subject_::error_type;
-            using Unsubscriber = Subject_::Unsubscriber;
+            using detach = Subject_::detach;
 
             // [weak_ptr]: if weak reference is expired, there is no actual
             // reference to Subject<> that can push/emit new items to the stream.
@@ -6442,7 +6446,7 @@ namespace xrx
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, Value>
-            Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+            detach subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
                 XRX_CHECK_RVALUE(observer);
                 auto shared = _shared_weak.lock();
@@ -6450,12 +6454,12 @@ namespace xrx
                 {
                     // #XXX: this is also the case when we try to
                     // subscribe on the subject that is already completed.
-                    // Shoul we assert ? What's the expected behavior ?
-                    return Unsubscriber();
+                    // Should we assert ? What's the expected behavior ?
+                    return detach();
                 }
                 AnyObserver<value_type, error_type> erased(XRX_MOV(observer));
                 auto guard = std::lock_guard(shared->_mutex);
-                Unsubscriber unsubscriber;
+                detach unsubscriber;
                 unsubscriber._shared_weak = _shared_weak;
                 unsubscriber._handle = shared->_subscriptions.push_back(XRX_MOV(erased));
                 return unsubscriber;
@@ -6473,7 +6477,7 @@ namespace xrx
         // This subscribe() is not ref-qualified (like the rest of Observables)
         // since it doesn't make sense for Subject<> use-case:
         // once subscribed, _same_ Subject instance is used to emit values.
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer)
+        detach subscribe(XRX_RVALUE(Observer&&) observer)
         {
             XRX_CHECK_RVALUE(observer);
             return as_observable().subscribe(XRX_MOV(observer));
@@ -6585,7 +6589,7 @@ namespace xrx::detail
             ClosingsUnsubscriber _unsubscriber;
             bool detach()
             {
-                return std::exchange(_unsubscriber, {}).detach();
+                return std::exchange(_unsubscriber, {})();
             }
         };
 
@@ -6684,8 +6688,8 @@ namespace xrx::detail
 
         void unsubscribe_rest_unsafe()
         {
-            _shared->_unsubscribers._source.detach();
-            _shared->_unsubscribers._openings.detach();
+            _shared->_unsubscribers._source();
+            _shared->_unsubscribers._openings();
             auto& closings = _shared->_unsubscribers._closings;
             for (auto& closer : closings)
             {
@@ -6734,7 +6738,7 @@ namespace xrx::detail
             // 1. We own mutex.
             // 2. We cant unsubscribe ourself (self-destroy), just invalidate the reference.
             _shared->_unsubscribers._openings = {};
-            _shared->_unsubscribers._source.detach();
+            _shared->_unsubscribers._source();
             auto& closings = _shared->_unsubscribers._closings;
             for (auto& closer : closings)
             {
@@ -6782,7 +6786,7 @@ namespace xrx::detail
             // 1. We own mutex.
             // 2. We cant unsubscribe ourself (self-destroy), just invalidate the reference.
             _shared->_unsubscribers._source = {};
-            _shared->_unsubscribers._openings.detach();
+            _shared->_unsubscribers._openings();
             auto& closings = _shared->_unsubscribers._closings;
             for (auto& closer : closings)
             {
@@ -6818,7 +6822,7 @@ namespace xrx::detail
 
         std::shared_ptr<Unsubscribers_> _shared;
 
-        bool detach()
+        bool operator()()
         {
             auto shared = std::exchange(_shared, {});
             if (not shared)
@@ -6826,12 +6830,12 @@ namespace xrx::detail
                 return false;
             }
             auto guard = std::lock_guard(shared->_mutex);
-            const bool source_detached = std::exchange(shared->_source, {}).detach();
-            const bool openings_detached = std::exchange(shared->_openings, {}).detach();
+            const bool source_detached = std::exchange(shared->_source, {})();
+            const bool openings_detached = std::exchange(shared->_openings, {})();
             bool at_least_one_closer = false;
             for (auto& closer : shared->_closings)
             {
-                const bool detached = closer.detach();
+                const bool detached = closer();
                 at_least_one_closer |= detached;
             }
             shared->closings.clear();
@@ -6877,21 +6881,21 @@ namespace xrx::detail
         using Windows = HandleVector<Subject>;
         using WindowHandle = typename Windows::Handle;
         using UnsubscribersState = Unsubscribers<
-              typename SourceObservable::Unsubscriber
-            , typename OpeningsObservable::Unsubscriber
-            , typename CloseObservable::Unsubscriber
+              typename SourceObservable::detach
+            , typename OpeningsObservable::detach
+            , typename CloseObservable::detach
             , WindowHandle>;
         using Window = typename Subject::Observable;
         using value_type = Window;
         using is_async = std::true_type;
-        using Unsubscriber = WindowToggleUnsubscriber<UnsubscribersState>;
+        using detach = WindowToggleUnsubscriber<UnsubscribersState>;
 
         WindowToggleObservableImpl_ fork() && { return WindowToggleObservableImpl_(XRX_MOV(_source), XRX_MOV(_openings), XRX_MOV(_close_producer)); }
         WindowToggleObservableImpl_ fork() &  { return WindowToggleObservableImpl_(_source.fork(), _openings, _close_producer); }
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        detach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             using Shared_ = WindowToggleShared_<UnsubscribersState, Observer, source_type, error_type>;
             using OpeningsObserver = OpeningsObserver_<CloseObservableProducer, CloseObservable, Shared_>;
@@ -6901,7 +6905,7 @@ namespace xrx::detail
             std::shared_ptr<UnsubscribersState> unsubscribers(shared, &shared->_unsubscribers);
             unsubscribers->_openings = XRX_MOV(_openings).subscribe(OpeningsObserver(XRX_MOV(_close_producer), shared));
             unsubscribers->_source = XRX_MOV(_source).subscribe(WindowSourceObserver(shared));
-            return Unsubscriber(XRX_MOV(unsubscribers));
+            return detach(XRX_MOV(unsubscribers));
         }
     };
 

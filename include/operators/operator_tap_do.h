@@ -16,10 +16,10 @@ namespace xrx::detail
         SourceObservable _source;
         Listener _listener;
 
-        using value_type   = typename SourceObservable::value_type;
-        using error_type   = typename SourceObservable::error_type;
-        using is_async     = IsAsyncObservable<SourceObservable>;
-        using Unsubscriber = typename SourceObservable::Unsubscriber;
+        using value_type = typename SourceObservable::value_type;
+        using error_type = typename SourceObservable::error_type;
+        using is_async   = IsAsyncObservable<SourceObservable>;
+        using detach     = typename SourceObservable::detach;
 
         TapOrDoObservable fork() && { return TapOrDoObservable(XRX_MOV(_source), XRX_MOV(_listener)); }
         TapOrDoObservable fork()  & { return TapOrDoObservable(_source.fork(), _listener); }
@@ -64,7 +64,7 @@ namespace xrx::detail
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        detach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             using Observer_ = std::remove_reference_t<Observer>;
             using ListenerObserver = ListenerObserver<Observer_>;

@@ -23,18 +23,17 @@ namespace xrx::detail
     {
         using value_type = typename SourceObservable::value_type;
         using error_type = typename SourceObservable::error_type;
-        using Unsubscriber = NoopUnsubscriber;
         using is_async = std::false_type;
-
-        using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
-        static_assert(not SourceUnsubscriber::has_effect::value
-            , "Sync Observable's Unsubscriber should have no effect.");
+        using detach = NoopDetach;
+        using SourceDetach = typename SourceObservable::detach;
+        static_assert(not SourceDetach::has_effect::value
+            , "Sync Observable's Detach should have no effect.");
 
         SourceObservable _source;
         int _max_repeats;
 
         template<typename Observer>
-        NoopUnsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        NoopDetach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
             using Observer_ = std::remove_reference_t<Observer>;
@@ -56,30 +55,30 @@ namespace xrx::detail
             while (check_repeat())
             {
                 RefObserverState state;
-                const auto unsubscriber = _source.fork()
+                (void)_source.fork()
                     .subscribe(RefObserver_(&observer, &state));
                 assert(state.is_finalized()
                     && "Sync Observable is not finalized after .subscribe()'s end.");
                 if (state._unsubscribed || state._with_error)
                 {
-                    return NoopUnsubscriber();
+                    return NoopDetach();
                 }
             }
             if (_max_repeats > 0)
             {
                 // Last loop - move-forget source Observable.
                 RefObserverState state;
-                const auto unsubscriber = _source.fork_move() // Difference.
+                (void)_source.fork_move() // Difference.
                     .subscribe(RefObserver_(&observer, &state));
                 assert(state.is_finalized()
                     && "Sync Observable is not finalized after .subscribe()'s end.");
                 if (state._unsubscribed || state._with_error)
                 {
-                    return NoopUnsubscriber();
+                    return NoopDetach();
                 }
             }
             (void)on_completed_optional(XRX_MOV(observer));
-            return NoopUnsubscriber();
+            return NoopDetach();
         }
 
         RepeatObservable fork() && { return RepeatObservable(XRX_MOV(_source), _max_repeats); }
@@ -91,7 +90,7 @@ namespace xrx::detail
     {
         using value_type = typename SourceObservable::value_type;
         using error_type = typename SourceObservable::error_type;
-        using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
+        using SourceDetach = typename SourceObservable::detach;
         using is_async = std::true_type;
 
         SourceObservable _source;
@@ -100,7 +99,7 @@ namespace xrx::detail
         struct DetachBlock
         {
             std::recursive_mutex _mutex;
-            SourceUnsubscriber _source;
+            SourceDetach _source;
             bool _do_detach = false;
         };
 
@@ -108,41 +107,41 @@ namespace xrx::detail
         {
             using has_effect = std::true_type;
             using State = std::variant<std::monostate
-                , SourceUnsubscriber
+                , SourceDetach
                 , std::shared_ptr<DetachBlock>>;
             State _state;
             explicit Detach() = default;
-            explicit Detach(XRX_RVALUE(SourceUnsubscriber&&) source_detach)
+            explicit Detach(XRX_RVALUE(SourceDetach&&) source_detach)
                 : _state(XRX_MOV(source_detach))
             {}
             explicit Detach(XRX_RVALUE(std::shared_ptr<DetachBlock>&&) block)
                 : _state(XRX_MOV(block))
             {}
 
-            bool detach()
+            bool operator()()
             {
                 auto state = std::exchange(_state, {});
                 if (std::get_if<std::monostate>(&state))
                 {
                     return false;
                 }
-                else if (auto* source_detach = std::get_if<SourceUnsubscriber>(&state))
+                else if (auto* source_detach = std::get_if<SourceDetach>(&state))
                 {
-                    return source_detach->detach();
+                    return (*source_detach)();
                 }
                 else if (auto* block_ptr = std::get_if<std::shared_ptr<DetachBlock>>(&state))
                 {
                     DetachBlock& block = **block_ptr;
                     auto guard = std::lock_guard(block._mutex);
                     block._do_detach = true;
-                    return block._source.detach();
+                    return block._source();
                 }
                 assert(false);
                 return false;
             }
         };
 
-        using Unsubscriber = Detach;
+        using detach = Detach;
 
         template<typename Observer>
         struct Shared_

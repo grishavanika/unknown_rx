@@ -7,22 +7,22 @@
 
 namespace tests
 {
-    struct Noop_Unsubscriber
+    struct Noop_Detach
     {
         using has_effect = std::true_type;
-        constexpr bool detach() const noexcept { return false; }
+        constexpr bool operator()() const noexcept { return false; }
     };
-    static_assert(::xrx::detail::ConceptUnsubscriber<Noop_Unsubscriber>);
+    static_assert(::xrx::detail::ConceptUnsubscriber<Noop_Detach>);
 
     template<typename V, typename E>
     struct Noop_Observable
     {
         using value_type = V;
         using error_type = E;
-        using Unsubscriber = Noop_Unsubscriber;
+        using detach = Noop_Detach;
     
         template<typename O>
-        Unsubscriber subscribe(O) { return Unsubscriber(); }
+        detach subscribe(O) { return detach(); }
         auto fork() { return *this; }
     };
     static_assert(::xrx::detail::ConceptObservable<Noop_Observable<int, int>>);

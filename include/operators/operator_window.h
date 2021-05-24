@@ -24,14 +24,14 @@ namespace xrx::detail
         using value_type = Value;
         using error_type = none_tag;
         using is_async = std::false_type;
-        using Unsubscriber = NoopUnsubscriber;
+        using detach = NoopDetach;
 
         using Storage = SmallVector<value_type, 1>;
         Storage _values;
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        NoopUnsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        NoopDetach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             const bool all = _values.for_each([&](const value_type& v) XRX_FORCEINLINE_LAMBDA()
             {
@@ -46,7 +46,7 @@ namespace xrx::detail
             {
                 (void)on_completed_optional(XRX_MOV(observer));
             }
-            return NoopUnsubscriber();
+            return NoopDetach();
         }
 
         WindowSyncObservable fork() && { return WindowSyncObservable(XRX_MOV(*this)); }
@@ -65,7 +65,7 @@ namespace xrx::detail
         using value_type   = Observable_<ObservableValue_>;
         using error_type   = typename SourceObservable::error_type;
         using is_async     = std::false_type;
-        using Unsubscriber = NoopUnsubscriber;
+        using detach = NoopDetach;
 
         using Storage = ObservableValue_::Storage;
 
@@ -152,13 +152,13 @@ namespace xrx::detail
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        detach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             if (_count == 0)
             {
                 // It's unknown how many observables we should emit, just end the sequence.
                 (void)on_completed_optional(XRX_MOV(observer));
-                return Unsubscriber();
+                return detach();
             }
             State_ state;
             auto unsubscribe = XRX_FWD(_source).subscribe(
@@ -169,7 +169,7 @@ namespace xrx::detail
             (void)stop;
             assert((state._completed || stop)
                 && "Sync Observable should be ended after .subscribe() return.");
-            return Unsubscriber();
+            return detach();
         }
 
         WindowProducerObservable fork() && { return WindowProducerObservable(XRX_MOV(_source), _count); };

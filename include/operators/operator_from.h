@@ -19,12 +19,12 @@ namespace xrx::detail
         using value_type = typename std::tuple_element<0, Tuple>::type;
         using error_type = none_tag;
         using is_async = std::false_type;
-        using Unsubscriber = NoopUnsubscriber;
+        using detach = NoopDetach;
 
         Tuple _tuple;
 
         template<typename Observer>
-        Unsubscriber subscribe(Observer&& observer) &&
+        detach subscribe(Observer&& observer) &&
         {
             auto invoke_ = [](auto& observer, auto&& value)
             {
@@ -41,7 +41,7 @@ namespace xrx::detail
             {
                 (void)on_completed_optional(XRX_FWD(observer));
             }
-            return Unsubscriber();
+            return detach();
         }
 
         FromObservable fork() && { return FromObservable(XRX_MOV(_tuple)); }

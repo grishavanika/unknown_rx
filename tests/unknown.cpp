@@ -71,10 +71,10 @@ struct InitialSourceObservable_
 {
     using value_type = int;
     using error_type = none_tag;
-    using Unsubscriber = NoopUnsubscriber;
+    using detach = NoopDetach;
 
     template<typename Observer>
-    Unsubscriber subscribe(Observer&& observer) &&
+    detach subscribe(Observer&& observer) &&
     {
         // #XXX: handle unsubscribe.
         (void)::xrx::detail::on_next(observer, 1);
@@ -82,7 +82,7 @@ struct InitialSourceObservable_
         (void)::xrx::detail::on_next(observer, 3);
         (void)::xrx::detail::on_next(observer, 4);
         (void)::xrx::detail::on_completed_optional(std::move(observer));
-        return Unsubscriber();
+        return detach();
     }
 
     InitialSourceObservable_ fork() { return *this; }
@@ -107,7 +107,7 @@ int main(int argc, char* argv[])
             std::printf("Observer: %i.\n", value);
         });
         using Unsubscriber = typename decltype(unsubscriber);
-        static_assert(std::is_same_v<Unsubscriber, InitialSourceObservable_::Unsubscriber>);
+        static_assert(std::is_same_v<Unsubscriber, InitialSourceObservable_::detach>);
         static_assert(not Unsubscriber::has_effect());
     }
 
@@ -121,13 +121,13 @@ int main(int argc, char* argv[])
             std::printf("Filtered even numbers: %i.\n", value);
         });
         using Unsubscriber = typename decltype(unsubscriber);
-        static_assert(std::is_same_v<Unsubscriber, InitialSourceObservable_::Unsubscriber>);
+        static_assert(std::is_same_v<Unsubscriber, InitialSourceObservable_::detach>);
         static_assert(not Unsubscriber::has_effect());
     }
 
     {
         Subject_<int, int> subject;
-        using ExpectedUnsubscriber = typename decltype(subject)::Unsubscriber;
+        using ExpectedUnsubscriber = typename decltype(subject)::detach;
 
         subject.subscribe([](int) {});
 
@@ -157,7 +157,7 @@ int main(int argc, char* argv[])
         subject.on_next(1);
         subject.on_next(2);
 
-        unsubscriber.detach();
+        unsubscriber();
 
         subject.on_next(3);
         subject.on_next(4);
@@ -172,7 +172,7 @@ int main(int argc, char* argv[])
             printf("Shared: %i.\n", v);
         });
         subject.on_next(1);
-        unsubscriber.detach();
+        unsubscriber();
         subject.on_next(2);
     }
 
@@ -199,7 +199,7 @@ int main(int argc, char* argv[])
             executed_total += executed_now;
             if (executed_total == 10)
             {
-                unsubscriber.detach();
+                unsubscriber();
             }
         }
     }
@@ -239,7 +239,7 @@ int main(int argc, char* argv[])
             {
                 for (Unregister& unregister : to_unregister)
                 {
-                    unregister.detach();
+                    unregister();
                 }
                 to_unregister.clear();
             }
@@ -255,7 +255,7 @@ int main(int argc, char* argv[])
         })
             .filter([](int) { return true; })
             .subscribe([](int v) { printf("[create] %i\n", v); });
-        unsubscriber.detach();
+        unsubscriber();
     }
 
     {
@@ -272,7 +272,7 @@ int main(int argc, char* argv[])
         event_loop.poll_one();
         event_loop.poll_one();
         event_loop.poll_one();
-        unsubscriber.detach();
+        unsubscriber();
         assert(event_loop.work_count() == 0);
     }
 

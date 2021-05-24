@@ -41,13 +41,13 @@ TEST(Subject, DoesntEmitAfterUnsubscribe)
     EXPECT_CALL(observer, on_error()).Times(0);
 
     Subject_<int> subject;
-    auto unsubscriber = subject.subscribe(observer.ref());
+    auto detach = subject.subscribe(observer.ref());
 
     subject.on_next(1);
     subject.on_next(2);
-    ASSERT_TRUE(unsubscriber);
-    ASSERT_TRUE(unsubscriber.detach());
-    ASSERT_FALSE(unsubscriber);
+    ASSERT_TRUE(detach);
+    ASSERT_TRUE(detach());
+    ASSERT_FALSE(detach);
     subject.on_next(42);
     subject.on_completed();
 }

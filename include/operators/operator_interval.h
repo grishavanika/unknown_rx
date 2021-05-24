@@ -22,14 +22,14 @@ namespace xrx::observable
             using clock_point = typename Scheduler::clock_point;
             using Handle = typename Scheduler::ActionHandle;
 
-            struct Unsubscriber
+            struct Detach
             {
                 using has_effect = std::true_type;
 
                 Handle _handle;
                 Scheduler _scheduler;
 
-                bool detach()
+                bool operator()()
                 {
                     auto handle = std::exchange(_handle, {});
                     if (handle)
@@ -39,13 +39,14 @@ namespace xrx::observable
                     return false;
                 }
             };
+            using detach = Detach;
 
             Duration _period;
             Scheduler _scheduler;
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, value_type>
-            Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+            detach subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
                 XRX_CHECK_RVALUE(observer);
                 using Observer_ = std::remove_reference_t<Observer>;
@@ -69,7 +70,7 @@ namespace xrx::observable
                 }
                     , State(XRX_MOV(observer), value_type(0)));
 
-                return Unsubscriber(handle, XRX_MOV(_scheduler));
+                return detach(handle, XRX_MOV(_scheduler));
             }
 
             auto fork() && { return IntervalObservable_(XRX_MOV(_period), XRX_MOV(_scheduler)); }

@@ -3,9 +3,9 @@
 
 namespace xrx::detail
 {
-    struct NoopUnsubscriber
+    struct NoopDetach
     {
         using has_effect = std::false_type;
-        constexpr bool detach() const noexcept { return false; }
+        constexpr bool operator()() const noexcept { return false; }
     };
 } // namespace xrx::detail

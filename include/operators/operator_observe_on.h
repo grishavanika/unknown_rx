@@ -153,31 +153,32 @@ namespace xrx::observable
             auto fork() && { return ObserveOnObservable_(XRX_MOV(_source), XRX_MOV(_scheduler)); }
             auto fork() &  { return ObserveOnObservable_(_source.fork(), _scheduler); }
 
-            struct Unsubscriber
+            struct Detach
             {
-                using SourceUnsubscriber = typename SourceObservable::Unsubscriber;
+                using SourceDetach = typename SourceObservable::detach;
                 using has_effect = std::true_type;
 
-                SourceUnsubscriber _unsubscriber;
+                SourceDetach _unsubscriber;
                 // #TODO: does shared_ptr needed to be there.
                 // Looks like weak should work in this case.
                 std::shared_ptr<std::atomic_bool> _unsubscribed;
 
-                bool detach()
+                bool operator()()
                 {
                     auto unsubscribed = std::exchange(_unsubscribed, {});
                     if (unsubscribed)
                     {
                         *unsubscribed = true;
-                        return std::exchange(_unsubscriber, {}).detach();
+                        return std::exchange(_unsubscriber, {})();
                     }
                     return false;
                 }
             };
+            using detach = Detach;
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, value_type>
-            Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+            detach subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
                 using ObserverImpl_ = ObserveOnObserver_<value_type, error_type, Scheduler, Observer>;
                 auto shared = ObserverImpl_::make_state(XRX_MOV(_scheduler), XRX_MOV(observer));
@@ -189,7 +190,7 @@ namespace xrx::observable
                 // (Instead of scheduling task per item).
                 auto handle = XRX_MOV(_source).subscribe(ObserverImpl_(shared));
 
-                Unsubscriber unsubscriber;
+                detach unsubscriber;
                 unsubscriber._unsubscriber = handle;
                 // Share only stop flag with unsubscriber.
                 unsubscriber._unsubscribed = {shared, &shared->_unsubscribed};

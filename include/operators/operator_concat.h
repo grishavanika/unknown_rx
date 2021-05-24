@@ -61,7 +61,6 @@ namespace xrx::detail
     template<typename Variant, typename Value>
     static bool runtime_variant_emplace(Variant& variant, std::size_t index, Value&& value)
     {
-        using Value_ = std::remove_cvref_t<Value>;
         constexpr std::size_t Size_ = std::variant_size_v<Variant>;
         if (index >= Size_)
         {
@@ -88,7 +87,7 @@ namespace xrx::detail
         using value_type = typename ObservablePrototype::value_type;
         using error_type = typename ObservablePrototype::error_type;
         using is_async = std::false_type;
-        using Unsubscriber = NoopUnsubscriber;
+        using detach = NoopDetach;
 
         Tuple _tuple;
 
@@ -141,7 +140,7 @@ namespace xrx::detail
         };
 
         template<typename Observer>
-        NoopUnsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        NoopDetach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
             using Observer_ = std::remove_reference_t<Observer>;
@@ -167,7 +166,7 @@ namespace xrx::detail
             {
                 on_completed_optional(observer);
             }
-            return NoopUnsubscriber();
+            return NoopDetach();
         }
     };
 
@@ -184,25 +183,25 @@ namespace xrx::detail
 
         Tuple _observables;
 
-        struct ObservableToUnsubscriber
+        struct ObservableToDetach
         {
             template<typename O>
-            using invoke_ = typename O::Unsubscriber;
+            using invoke_ = typename O::detach;
         };
 
-        using UnsubscribersVariant = typename TupleAsVariant<ObservableToUnsubscriber, Tuple>::variant_type;
+        using DetachVariant = typename TupleAsVariant<ObservableToDetach, Tuple>::variant_type;
 
         struct Unsubscription
         {
             std::recursive_mutex _mutex;
-            UnsubscribersVariant _unsubscribers;
+            DetachVariant _unsubscribers;
         };
 
-        struct Unsubscriber
+        struct Detach
         {
             using has_effect = std::true_type;
             std::shared_ptr<Unsubscription> _unsubscription;
-            bool detach()
+            bool operator()()
             {
                 auto shared = std::exchange(_unsubscription, {});
                 if (not shared)
@@ -210,13 +209,15 @@ namespace xrx::detail
                     return false;
                 }
                 auto guard = std::lock_guard(shared->_mutex);
-                auto handle = [](auto&& unsubscriber)
+                auto handle = [](auto&& detach)
                 {
-                    return unsubscriber.detach();
+                    return detach();
                 };
                 return std::visit(XRX_MOV(handle), shared->_unsubscribers);
             }
         };
+
+        using detach = Detach;
 
         template<typename Observer>
         struct Shared_;
@@ -305,14 +306,14 @@ namespace xrx::detail
         ConcatObservable fork() &  { return ConcatObservable(_observables); }
 
         template<typename Observer>
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        detach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
             using Observer_ = std::remove_reference_t<Observer>;
             auto shared = std::make_shared<Shared_<Observer_>>(XRX_MOV(observer), XRX_MOV(_observables));
             shared->start_impl(0);
             std::shared_ptr<Unsubscription> unsubscription(shared, &shared->_unsubscription);
-            return Unsubscriber(XRX_MOV(unsubscription));
+            return detach(XRX_MOV(unsubscription));
         }
     };
 

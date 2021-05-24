@@ -27,7 +27,7 @@ namespace xrx::detail
             ClosingsUnsubscriber _unsubscriber;
             bool detach()
             {
-                return std::exchange(_unsubscriber, {}).detach();
+                return std::exchange(_unsubscriber, {})();
             }
         };
 
@@ -126,8 +126,8 @@ namespace xrx::detail
 
         void unsubscribe_rest_unsafe()
         {
-            _shared->_unsubscribers._source.detach();
-            _shared->_unsubscribers._openings.detach();
+            _shared->_unsubscribers._source();
+            _shared->_unsubscribers._openings();
             auto& closings = _shared->_unsubscribers._closings;
             for (auto& closer : closings)
             {
@@ -176,7 +176,7 @@ namespace xrx::detail
             // 1. We own mutex.
             // 2. We cant unsubscribe ourself (self-destroy), just invalidate the reference.
             _shared->_unsubscribers._openings = {};
-            _shared->_unsubscribers._source.detach();
+            _shared->_unsubscribers._source();
             auto& closings = _shared->_unsubscribers._closings;
             for (auto& closer : closings)
             {
@@ -224,7 +224,7 @@ namespace xrx::detail
             // 1. We own mutex.
             // 2. We cant unsubscribe ourself (self-destroy), just invalidate the reference.
             _shared->_unsubscribers._source = {};
-            _shared->_unsubscribers._openings.detach();
+            _shared->_unsubscribers._openings();
             auto& closings = _shared->_unsubscribers._closings;
             for (auto& closer : closings)
             {
@@ -260,7 +260,7 @@ namespace xrx::detail
 
         std::shared_ptr<Unsubscribers_> _shared;
 
-        bool detach()
+        bool operator()()
         {
             auto shared = std::exchange(_shared, {});
             if (not shared)
@@ -268,12 +268,12 @@ namespace xrx::detail
                 return false;
             }
             auto guard = std::lock_guard(shared->_mutex);
-            const bool source_detached = std::exchange(shared->_source, {}).detach();
-            const bool openings_detached = std::exchange(shared->_openings, {}).detach();
+            const bool source_detached = std::exchange(shared->_source, {})();
+            const bool openings_detached = std::exchange(shared->_openings, {})();
             bool at_least_one_closer = false;
             for (auto& closer : shared->_closings)
             {
-                const bool detached = closer.detach();
+                const bool detached = closer();
                 at_least_one_closer |= detached;
             }
             shared->closings.clear();
@@ -319,21 +319,21 @@ namespace xrx::detail
         using Windows = HandleVector<Subject>;
         using WindowHandle = typename Windows::Handle;
         using UnsubscribersState = Unsubscribers<
-              typename SourceObservable::Unsubscriber
-            , typename OpeningsObservable::Unsubscriber
-            , typename CloseObservable::Unsubscriber
+              typename SourceObservable::detach
+            , typename OpeningsObservable::detach
+            , typename CloseObservable::detach
             , WindowHandle>;
         using Window = typename Subject::Observable;
         using value_type = Window;
         using is_async = std::true_type;
-        using Unsubscriber = WindowToggleUnsubscriber<UnsubscribersState>;
+        using detach = WindowToggleUnsubscriber<UnsubscribersState>;
 
         WindowToggleObservableImpl_ fork() && { return WindowToggleObservableImpl_(XRX_MOV(_source), XRX_MOV(_openings), XRX_MOV(_close_producer)); }
         WindowToggleObservableImpl_ fork() &  { return WindowToggleObservableImpl_(_source.fork(), _openings, _close_producer); }
 
         template<typename Observer>
             requires ConceptValueObserverOf<Observer, value_type>
-        Unsubscriber subscribe(XRX_RVALUE(Observer&&) observer) &&
+        detach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             using Shared_ = WindowToggleShared_<UnsubscribersState, Observer, source_type, error_type>;
             using OpeningsObserver = OpeningsObserver_<CloseObservableProducer, CloseObservable, Shared_>;
@@ -343,7 +343,7 @@ namespace xrx::detail
             std::shared_ptr<UnsubscribersState> unsubscribers(shared, &shared->_unsubscribers);
             unsubscribers->_openings = XRX_MOV(_openings).subscribe(OpeningsObserver(XRX_MOV(_close_producer), shared));
             unsubscribers->_source = XRX_MOV(_source).subscribe(WindowSourceObserver(shared));
-            return Unsubscriber(XRX_MOV(unsubscribers));
+            return detach(XRX_MOV(unsubscribers));
         }
     };
 
