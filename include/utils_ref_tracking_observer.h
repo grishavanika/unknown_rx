@@ -20,7 +20,7 @@ namespace xrx::detail
         }
     };
 
-    template<typename Observer_>
+    template<typename Observer_, bool InvokeComplete = true>
     struct RefTrackingObserver_
     {
         Observer_* _observer = nullptr;
@@ -43,7 +43,10 @@ namespace xrx::detail
             assert(not _state->_unsubscribed);
             assert(not _state->_with_error);
 
-            on_completed_optional(XRX_MOV(*_observer));
+            if constexpr (InvokeComplete)
+            {
+                on_completed_optional(XRX_MOV(*_observer));
+            }
             _state->_completed = true;
         }
 
