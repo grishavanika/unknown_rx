@@ -61,7 +61,9 @@ namespace xrx::debug
         {
             XRX_CHECK_RVALUE(f);
             XRX_CHECK_RVALUE(state);
-            using Action_ = ActionCallback_<std::remove_reference_t<F>, std::remove_reference_t<State>>;
+            XRX_CHECK_TYPE_NOT_REF(F);
+            XRX_CHECK_TYPE_NOT_REF(State);
+            using Action_ = ActionCallback_<F, State>;
             auto action = std::make_unique<Action_>(XRX_MOV(f), XRX_MOV(state));
             action->_start_from = start_from;
             action->_last_tick = {};

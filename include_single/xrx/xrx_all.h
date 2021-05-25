@@ -33,6 +33,7 @@ namespace xrx::detail
 #define XRX_FWD(...) ::std::forward<decltype(__VA_ARGS__)>(__VA_ARGS__)
 #define XRX_MOV(...) ::std::move(__VA_ARGS__)
 
+// #XXX: move to utils_defines.h.
 // Just an annotation that T&& should be rvalue reference
 // (because of constraints from other places).
 // XRX_MOV() can be used.
@@ -40,6 +41,11 @@ namespace xrx::detail
 #define XRX_CHECK_RVALUE(...) \
     static_assert(not std::is_lvalue_reference_v<decltype(__VA_ARGS__)> \
         , "Expected to have rvalue reference. " \
+        # __VA_ARGS__)
+
+#define XRX_CHECK_TYPE_NOT_REF(...) \
+    static_assert(not std::is_reference_v<__VA_ARGS__> \
+        , "Expected to have non-reference type (not T& ot T&&; to be moved from). " \
         # __VA_ARGS__)
 
 // Header: meta_utils.h.
@@ -1144,7 +1150,9 @@ namespace xrx::debug
         {
             XRX_CHECK_RVALUE(f);
             XRX_CHECK_RVALUE(state);
-            using Action_ = ActionCallback_<std::remove_reference_t<F>, std::remove_reference_t<State>>;
+            XRX_CHECK_TYPE_NOT_REF(F);
+            XRX_CHECK_TYPE_NOT_REF(State);
+            using Action_ = ActionCallback_<F, State>;
             auto action = std::make_unique<Action_>(XRX_MOV(f), XRX_MOV(state));
             action->_start_from = start_from;
             action->_last_tick = {};
@@ -2774,9 +2782,9 @@ namespace xrx::detail::operator_tag
     {
         XRX_CHECK_RVALUE(source);
         XRX_CHECK_RVALUE(scheduler);
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using Scheduler_ = std::remove_reference_t<Scheduler>;
-        using Impl = ::xrx::observable::detail::SubscribeOnObservable_<SourceObservable_, Scheduler_>;
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(Scheduler);
+        using Impl = ::xrx::observable::detail::SubscribeOnObservable_<SourceObservable, Scheduler>;
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(scheduler)));
     }
 } // namespace xrx::detail::operator_tag
@@ -2994,9 +3002,9 @@ namespace xrx::detail::operator_tag
     {
         XRX_CHECK_RVALUE(source);
         XRX_CHECK_RVALUE(scheduler);
-        using Source_ = std::remove_reference_t<SourceObservable>;
-        using Scheduler_ = std::remove_reference_t<Scheduler>;
-        using Impl = ::xrx::observable::detail::ObserveOnObservable_<Source_, Scheduler_>;
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(Scheduler);
+        using Impl = ::xrx::observable::detail::ObserveOnObservable_<SourceObservable, Scheduler>;
         // #TODO: add overload that directly accepts `StreamScheduler` so
         // client can pass more narrow interface.
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(scheduler).stream_scheduler()));
@@ -3144,7 +3152,7 @@ namespace xrx::observable
             DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
                 XRX_CHECK_RVALUE(observer);
-                using Observer_ = std::remove_reference_t<Observer>;
+                XRX_CHECK_TYPE_NOT_REF(Observer);
 
                 const clock_duration period(_period);
                 // To get zero tick at first. #TODO: revisit this logic.
@@ -3152,7 +3160,7 @@ namespace xrx::observable
                 
                 struct State
                 {
-                    Observer_ _observer;
+                    Observer _observer;
                     value_type _ticks = 0;
                 };
 
@@ -3181,8 +3189,9 @@ namespace xrx::detail::operator_tag
         , xrx::detail::operator_tag::Interval
         , Duration period, XRX_RVALUE(Scheduler&&) scheduler)
     {
-        using Scheduler_ = std::remove_reference_t<Scheduler>;
-        using Impl = ::xrx::observable::detail::IntervalObservable_<Duration, Scheduler_>;
+        XRX_CHECK_RVALUE(scheduler);
+        XRX_CHECK_TYPE_NOT_REF(Scheduler);
+        using Impl = ::xrx::observable::detail::IntervalObservable_<Duration, Scheduler>;
         return Observable_<Impl>(Impl(XRX_MOV(period), XRX_MOV(scheduler)));
     }
 } // namespace xrx::detail::operator_tag
@@ -3256,8 +3265,9 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
-            using Observer_ = std::remove_reference_t<Observer>;
-            using TransformObserver = TransformObserver<Observer_>;
+            XRX_CHECK_RVALUE(observer);
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            using TransformObserver = TransformObserver<Observer>;
             return XRX_MOV(_source).subscribe(TransformObserver(
                 XRX_MOV_IF_ASYNC(observer), XRX_MOV_IF_ASYNC(_transform)));
         }
@@ -3268,9 +3278,11 @@ namespace xrx::detail
         , XRX_RVALUE(SourceObservable&&) source, XRX_RVALUE(F&&) transform)
             requires requires(typename SourceObservable::value_type v) { transform(v); }
     {
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using F_ = std::remove_reference_t<F>;
-        using Impl = TransformObservable<SourceObservable_, F_>;
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(transform);
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(F);
+        using Impl = TransformObservable<SourceObservable, F>;
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(transform)));
     }
 } // namespace xrx::detail
@@ -3451,9 +3463,9 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
-            using Observer_ = std::remove_reference_t<Observer>;
-            using ListenerObserver = ListenerObserver<Observer_>;
-            return XRX_MOV(_source).subscribe(ListenerObserver(
+            XRX_CHECK_RVALUE(observer);
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            return XRX_MOV(_source).subscribe(ListenerObserver<Observer>(
                 XRX_MOV_IF_ASYNC(observer), XRX_MOV_IF_ASYNC(_listener)));
         }
     };
@@ -3462,9 +3474,11 @@ namespace xrx::detail
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::TapOrDo
         , XRX_RVALUE(SourceObservable&&) source, XRX_RVALUE(Observer&&) observer)
     {
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using Observer_ = std::remove_reference_t<Observer>;
-        using Impl = TapOrDoObservable<SourceObservable_, Observer_>;
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(observer);
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(Observer);
+        using Impl = TapOrDoObservable<SourceObservable, Observer>;
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(observer)));
     }
 } // namespace xrx::detail
@@ -3533,11 +3547,11 @@ namespace xrx::detail
         , XRX_RVALUE(Container&&) values)
     {
         XRX_CHECK_RVALUE(values);
-        using Container_ = std::remove_reference_t<Container>;
+        XRX_CHECK_TYPE_NOT_REF(Container);
         using Iterator = decltype(std::begin(values));
         static_assert(std::forward_iterator<Iterator>);
 
-        using Impl = IterateObservable<Container_>;
+        using Impl = IterateObservable<Container>;
         return Observable_<Impl>(Impl(XRX_MOV(values)));
     }
 } // namespace xrx::detail
@@ -3602,18 +3616,19 @@ namespace xrx::detail
     {
         XRX_CHECK_RVALUE(source);
         XRX_CHECK_RVALUE(v0);
-        static_assert(((not std::is_lvalue_reference_v<Vs>) && ...)
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(V);
+        static_assert(((not std::is_reference_v<Vs>) && ...)
             , ".start_with(Vs...) requires Vs to be value-like type.");
 
-        using Tuple = std::tuple<std::remove_reference_t<V>, std::remove_reference_t<Vs>...>;
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-
+        using Tuple = std::tuple<V, Vs...>;
+        // #XXX: finalize this.
 #if (0)
         static_assert(std::is_same_v<typename std::tuple_element<0, Tuple>::type
-            , typename SourceObservable_::value_type>);
+            , typename SourceObservable::value_type>);
 #endif
 
-        using Impl = StartWithObservable<SourceObservable_, Tuple>;
+        using Impl = StartWithObservable<SourceObservable, Tuple>;
         return Observable_<Impl>(Impl(XRX_MOV(source), Tuple(XRX_MOV(v0), XRX_MOV(vs)...)));
     }
 } // namespace xrx::detail
@@ -3675,10 +3690,13 @@ namespace xrx::detail
         , XRX_RVALUE(V&&) v0, XRX_RVALUE(Vs&&)... vs)
     {
         XRX_CHECK_RVALUE(v0);
+        XRX_CHECK_TYPE_NOT_REF(V);
         static_assert(((not std::is_lvalue_reference_v<Vs>) && ...)
+            , ".from(Vs...) requires owns passed values.");
+        static_assert(((not std::is_reference_v<Vs>) && ...)
             , ".from(Vs...) requires Vs to be value-like type.");
 
-        using Tuple = std::tuple<std::remove_reference_t<V>, std::remove_reference_t<Vs>...>;
+        using Tuple = std::tuple<V, Vs...>;
         using Impl = FromObservable<Tuple>;
         return Observable_<Impl>(Impl(Tuple(XRX_MOV(v0), XRX_MOV(vs)...)));
     }
@@ -3704,9 +3722,6 @@ namespace xrx::detail
     template<typename SourceObservable, typename Filter>
     struct FilterObservable
     {
-        static_assert(not std::is_reference_v<SourceObservable>);
-        static_assert(not std::is_reference_v<Filter>);
-
         using value_type   = typename SourceObservable::value_type;
         using error_type   = typename SourceObservable::error_type;
         using is_async     = IsAsyncObservable<SourceObservable>;
@@ -3760,9 +3775,8 @@ namespace xrx::detail
         auto subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
-            using Observer_ = std::remove_reference_t<Observer>;
-            using FilterObserver = FilterObserver<Observer_>;
-            return XRX_MOV(_source).subscribe(FilterObserver(
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            return XRX_MOV(_source).subscribe(FilterObserver<Observer>(
                 XRX_MOV_IF_ASYNC(observer), XRX_MOV_IF_ASYNC(_filter)));
         }
     };
@@ -3775,9 +3789,9 @@ namespace xrx::detail
     {
         XRX_CHECK_RVALUE(source);
         XRX_CHECK_RVALUE(filter);
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using F_ = std::remove_reference_t<F>;
-        using Impl = FilterObservable<SourceObservable_, F_>;
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(F);
+        using Impl = FilterObservable<SourceObservable, F>;
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(filter)));
     }
 } // namespace xrx::detail
@@ -3982,9 +3996,10 @@ namespace xrx::detail
         , XRX_RVALUE(SourceObservable&&) source, std::size_t count)
             requires ConceptObservable<SourceObservable>
     {
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using Impl = WindowProducerObservable<SourceObservable_
-            , IsAsyncObservable<SourceObservable_>::value>;
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        using Impl = WindowProducerObservable<SourceObservable
+            , IsAsyncObservable<SourceObservable>::value>;
         return Observable_<Impl>(Impl(XRX_MOV(source), count));
     }
 } // namespace xrx::detail
@@ -4021,9 +4036,6 @@ namespace xrx::detail
     template<typename SourceObservable, typename Value, typename Op>
     struct ReduceObservable
     {
-        static_assert(not std::is_reference_v<SourceObservable>);
-        static_assert(not std::is_reference_v<Op>);
-
         using source_type = typename SourceObservable::value_type;
         using value_type   = Value;
         using error_type   = typename SourceObservable::error_type;
@@ -4080,8 +4092,8 @@ namespace xrx::detail
         decltype(auto) subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
-            using Observer_ = std::remove_reference_t<Observer>;
-            using ReduceObserver_ = ReduceObserver<Observer_>;
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            using ReduceObserver_ = ReduceObserver<Observer>;
             return XRX_MOV(_source).subscribe(ReduceObserver_(
                 XRX_MOV_IF_ASYNC(observer), XRX_MOV_IF_ASYNC(_op), XRX_MOV(_initial)));
         }
@@ -4096,10 +4108,10 @@ namespace xrx::detail
         XRX_CHECK_RVALUE(source);
         XRX_CHECK_RVALUE(value);
         XRX_CHECK_RVALUE(op);
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using F_ = std::remove_reference_t<F>;
-        using Value_ = std::remove_reference_t<Value>;
-        using Impl = ReduceObservable<SourceObservable_, Value_, F_>;
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(Value);
+        XRX_CHECK_TYPE_NOT_REF(F);
+        using Impl = ReduceObservable<SourceObservable, Value, F>;
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(value), XRX_MOV(op)));
     }
 } // namespace xrx::detail
@@ -4307,9 +4319,6 @@ namespace xrx::detail
         , false/*Sync source Observable*/
         , false/*Sync Observables produced*/>
     {
-        static_assert(ConceptObservable<ProducedObservable>
-            , "Return value of Produce should be Observable.");
-
         [[no_unique_address]] SourceObservable _source;
         [[no_unique_address]] Produce _produce;
         [[no_unique_address]] Map _map;
@@ -4347,8 +4356,8 @@ namespace xrx::detail
         DetachHandle subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
             XRX_CHECK_RVALUE(destination_);
-            using Observer_ = std::remove_reference_t<Observer>;
-            using Root_ = OuterObserver_Sync_Sync<Observer_, Produce, Map, source_type, produce_type>;
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            using Root_ = OuterObserver_Sync_Sync<Observer, Produce, Map, source_type, produce_type>;
             State_Sync_Sync state;
             auto detach = XRX_MOV(_source).subscribe(
                 Root_(&_produce, &_map, &destination_, &state));
@@ -4610,9 +4619,6 @@ namespace xrx::detail
         , false /*Sync source Observable*/
         , true  /*Async Observables produced*/>
     {
-        static_assert(ConceptObservable<ProducedObservable>
-            , "Return value of Produce should be Observable.");
-
         [[no_unique_address]] SourceObservable _source;
         [[no_unique_address]] Produce _produce;
         [[no_unique_address]] Map _map;
@@ -4651,10 +4657,10 @@ namespace xrx::detail
         DetachHandle subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
             XRX_CHECK_RVALUE(destination_);
-            using Observer_ = std::remove_reference_t<Observer>;
-            using Root_ = OuterObserver_Sync_Async<Observer_, Produce, ProducedObservable, source_type>;
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            using Root_ = OuterObserver_Sync_Async<Observer, Produce, ProducedObservable, source_type>;
             using AllObsevables = AllObservablesState_Sync_Async<ProducedObservable, source_type>;
-            using SharedState_ = SharedState_Sync_Async<Observer_, Map, ProducedObservable, source_type, produce_type>;
+            using SharedState_ = SharedState_Sync_Async<Observer, Map, ProducedObservable, source_type, produce_type>;
             using InnerObserver_ = InnerObserver_Sync_Async<SharedState_, produce_type, error_type>;
 
             State_Sync_Sync state;
@@ -4760,9 +4766,6 @@ namespace xrx::detail
         , true  /*Async source Observable*/
         , false /*Sync Observables produced*/>
     {
-        static_assert(ConceptObservable<ProducedObservable>
-            , "Return value of Produce should be Observable.");
-
         [[no_unique_address]] SourceObservable _source;
         [[no_unique_address]] Produce _produce;
         [[no_unique_address]] Map _map;
@@ -5045,9 +5048,6 @@ namespace xrx::detail
         , true /*Async source Observable*/
         , true /*Async Observables produced*/>
     {
-        static_assert(ConceptObservable<ProducedObservable>
-            , "Return value of Produce should be Observable.");
-
         [[no_unique_address]] SourceObservable _source;
         [[no_unique_address]] Produce _produce;
         [[no_unique_address]] Map _map;
@@ -5104,17 +5104,23 @@ namespace xrx::detail
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::FlatMap
         , XRX_RVALUE(SourceObservable&&) source, XRX_RVALUE(Produce&&) produce, XRX_RVALUE(Map&&) map)
             requires ConceptObservable<SourceObservable>
-                  && ConceptObservable<decltype(produce(std::declval<typename SourceObservable::value_type>()))>
     {
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using Map_ = std::remove_reference_t<Map>;
-        using ProducedObservable = decltype(produce(std::declval<typename SourceObservable_::value_type>()));
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(produce);
+        XRX_CHECK_RVALUE(map);
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(Map);
+        XRX_CHECK_TYPE_NOT_REF(Produce);
+        using value_type = typename SourceObservable::value_type;
+        using ProducedObservable = decltype(produce(std::declval<value_type>()));
+        static_assert(ConceptObservable<ProducedObservable>
+            , "Return value of Produce should be Observable.");
         using Impl = FlatMapObservable<
-              SourceObservable_
+              SourceObservable
             , ProducedObservable
             , Produce
-            , Map_
-            , IsAsyncObservable<SourceObservable_>::value
+            , Map
+            , IsAsyncObservable<SourceObservable>::value
             , IsAsyncObservable<ProducedObservable>::value>;
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(produce), XRX_MOV(map)));
     }
@@ -5125,17 +5131,23 @@ namespace xrx::detail
             requires ConceptObservable<SourceObservable>
                   && ConceptObservable<decltype(produce(std::declval<typename SourceObservable::value_type>()))>
     {
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(produce);
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(Produce);
+        using value_type = typename SourceObservable::value_type;
         using Map_ = FlatMapIdentity;
-        using ProducedObservable = decltype(produce(std::declval<typename SourceObservable_::value_type>()));
+        using ProducedObservable = decltype(produce(std::declval<value_type>()));
+        static_assert(ConceptObservable<ProducedObservable>
+            , "Return value of Produce should be Observable.");
         using Impl = FlatMapObservable<
-              SourceObservable_
+              SourceObservable
             , ProducedObservable
             , Produce
             , Map_
-            , IsAsyncObservable<SourceObservable_>::value
+            , IsAsyncObservable<SourceObservable>::value
             , IsAsyncObservable<ProducedObservable>::value>;
-        return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(produce), FlatMapIdentity()));
+        return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(produce), Map_()));
     }
 } // namespace xrx::detail
 
@@ -5192,9 +5204,11 @@ namespace xrx::observable
             using DetachHandle = Detach_;
 
             template<typename F, typename Observer>
-            static auto invoke_(F&& on_subscribe, Observer&& observer)
+            static auto invoke_(F&& on_subscribe, XRX_RVALUE(Observer&&) observer)
             {
-                return XRX_FWD(on_subscribe)(XRX_FWD(observer));
+                XRX_CHECK_RVALUE(observer);
+                XRX_CHECK_TYPE_NOT_REF(Observer);
+                return XRX_FWD(on_subscribe)(XRX_MOV(observer));
             }
         };
 
@@ -5204,10 +5218,11 @@ namespace xrx::observable
             using DetachHandle = ::xrx::detail::NoopDetach;
 
             template<typename F, typename Observer>
-            static DetachHandle invoke_(F&& on_subscribe, Observer&& observer)
+            static DetachHandle invoke_(F&& on_subscribe, XRX_RVALUE(Observer&&) observer)
             {
-                using Observer_ = std::remove_reference_t<Observer>;
-                using RefObserver = ::xrx::detail::RefTrackingObserver_<Observer_>;
+                XRX_CHECK_RVALUE(observer);
+                XRX_CHECK_TYPE_NOT_REF(Observer);
+                using RefObserver = ::xrx::detail::RefTrackingObserver_<Observer>;
                 ::xrx::detail::RefObserverState state;
                 (void)XRX_FWD(on_subscribe)(RefObserver(&observer, &state));
                 assert(state.is_finalized());
@@ -5264,8 +5279,10 @@ namespace xrx::observable
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, value_type>
-            DetachHandle subscribe(Observer observer) &&
+            DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
+                XRX_CHECK_RVALUE(observer);
+                XRX_CHECK_TYPE_NOT_REF(Observer);
                 return SubscribeDispatch_::invoke_(XRX_MOV(_on_subscribe), XRX_MOV(observer));
             }
         };
@@ -5285,10 +5302,10 @@ namespace xrx::detail::operator_tag
         }
     {
         XRX_CHECK_RVALUE(on_subscribe);
+        XRX_CHECK_TYPE_NOT_REF(F);
         static_assert(not std::is_same_v<Value, void>);
         static_assert(not std::is_reference_v<Value>);
-        using F_ = std::remove_reference_t<F>;
-        using Impl = ::xrx::observable::detail::CustomObservable_<Value, Error, F_>;
+        using Impl = ::xrx::observable::detail::CustomObservable_<Value, Error, F>;
         return Observable_<Impl>(Impl(XRX_MOV(on_subscribe)));
     }
 } // namespace xrx::detail::operator_tag
@@ -5397,11 +5414,11 @@ namespace xrx::detail
         NoopDetach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
-            using Observer_ = std::remove_reference_t<Observer>;
+            XRX_CHECK_TYPE_NOT_REF(Observer);
             auto invoke_ = [](auto&& observer, auto&& observable)
             {
                 RefObserverState state;
-                using OnePass = RefTrackingObserver_<Observer_, false/*no on_completed*/>;
+                using OnePass = RefTrackingObserver_<Observer, false/*no on_completed*/>;
                 auto detach = XRX_FWD(observable).subscribe(OnePass(&observer, &state));
                 static_assert(not decltype(detach)::has_effect::value
                     , "Sync Observable should not have unsubscribe.");
@@ -5563,8 +5580,8 @@ namespace xrx::detail
         DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
-            using Observer_ = std::remove_reference_t<Observer>;
-            auto shared = std::make_shared<Shared_<Observer_>>(XRX_MOV(observer), XRX_MOV(_observables));
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            auto shared = std::make_shared<Shared_<Observer>>(XRX_MOV(observer), XRX_MOV(_observables));
             shared->start_impl(0);
             std::shared_ptr<Unsubscription> unsubscription(shared, &shared->_unsubscription);
             return DetachHandle(XRX_MOV(unsubscription));
@@ -5645,15 +5662,17 @@ namespace xrx::detail
             requires  (AreConcatCompatible<Observable1, Observable2>::value
                    && (AreConcatCompatible<Observable1, ObservablesRest>::value && ...))
     {
-        constexpr bool IsAnyAsync = false
-            or ( IsAsyncObservable<Observable1>())
-            or ( IsAsyncObservable<Observable2>())
-            or ((IsAsyncObservable<ObservablesRest>()) or ...);
+        XRX_CHECK_TYPE_NOT_REF(Observable1);
+        XRX_CHECK_TYPE_NOT_REF(Observable2);
+        static_assert(((not std::is_reference_v<ObservablesRest>) && ...)
+            , "Expected to have non-reference types (not T& ot T&&; to be moved from). ");
 
-        using Tuple = std::tuple<
-            std::remove_reference_t<Observable1>
-            , std::remove_reference_t<Observable2>
-            , std::remove_reference_t<ObservablesRest>...>;
+        constexpr bool IsAnyAsync = false
+            || ( IsAsyncObservable<Observable1>())
+            || ( IsAsyncObservable<Observable2>())
+            || ((IsAsyncObservable<ObservablesRest>()) || ...);
+
+        using Tuple = std::tuple<Observable1, Observable2, ObservablesRest...>;
         using Impl = ConcatObservable<Tuple, IsAnyAsync>;
         return Observable_<Impl>(Impl(Tuple(
             XRX_MOV(observable1)
@@ -5702,8 +5721,8 @@ namespace xrx::detail
         NoopDetach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
-            using Observer_ = std::remove_reference_t<Observer>;
-            using RefObserver_ = RefTrackingObserver_<Observer_, false/*do not call on_complete*/>;
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            using RefObserver_ = RefTrackingObserver_<Observer, false/*do not call on_complete*/>;
 
             auto check_repeat = [this, index = 0]() mutable
             {
@@ -5911,8 +5930,8 @@ namespace xrx::detail
         Detach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
-            using Observer_ = std::remove_reference_t<Observer>;
-            using Shared = Shared_<Observer_>;
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            using Shared = Shared_<Observer>;
             if (not Endless)
             {
                 if (_max_repeats == 0)
@@ -5944,9 +5963,9 @@ namespace xrx::detail
             requires ConceptObservable<SourceObservable>
     {
         XRX_CHECK_RVALUE(source);
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using IsAsync_ = IsAsyncObservable<SourceObservable_>;
-        using Impl = RepeatObservable<SourceObservable_, Endless, IsAsync_::value>;
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        using IsAsync_ = IsAsyncObservable<SourceObservable>;
+        using Impl = RepeatObservable<SourceObservable, Endless, IsAsync_::value>;
         return Observable_<Impl>(Impl(XRX_MOV(source), int(count)));
     }
 } // namespace xrx::detail
@@ -6877,7 +6896,7 @@ namespace xrx::detail
         XRX_CHECK_RVALUE(close_producer);
         using opening_value = typename OpeningsObservable::value_type;
         using CloseObservable = decltype(close_producer(std::declval<opening_value>()));
-        static_assert(not std::is_reference_v<CloseObservable>);
+        XRX_CHECK_TYPE_NOT_REF(CloseObservable);
         static_assert(ConceptObservable<CloseObservable>);
 
         static_assert(IsAsyncObservable<SourceObservable>()
@@ -6887,10 +6906,10 @@ namespace xrx::detail
         static_assert(IsAsyncObservable<OpeningsObservable>()
             , ".window_toggle() does not make sense for Sync Closing Observable.");
 
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using OpeningsObservable_ = std::remove_reference_t<OpeningsObservable>;
-        using CloseObservableProducer_ = std::remove_reference_t<CloseObservableProducer>;
-        using Impl = WindowToggleObservableImpl_<SourceObservable_, OpeningsObservable_, CloseObservableProducer_, CloseObservable>;
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(OpeningsObservable);
+        XRX_CHECK_TYPE_NOT_REF(CloseObservableProducer);
+        using Impl = WindowToggleObservableImpl_<SourceObservable, OpeningsObservable, CloseObservableProducer, CloseObservable>;
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(openings), XRX_MOV(close_producer)));
     }
 } // namespace xrx::detail

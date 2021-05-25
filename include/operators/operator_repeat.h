@@ -36,8 +36,8 @@ namespace xrx::detail
         NoopDetach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
-            using Observer_ = std::remove_reference_t<Observer>;
-            using RefObserver_ = RefTrackingObserver_<Observer_, false/*do not call on_complete*/>;
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            using RefObserver_ = RefTrackingObserver_<Observer, false/*do not call on_complete*/>;
 
             auto check_repeat = [this, index = 0]() mutable
             {
@@ -245,8 +245,8 @@ namespace xrx::detail
         Detach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
-            using Observer_ = std::remove_reference_t<Observer>;
-            using Shared = Shared_<Observer_>;
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            using Shared = Shared_<Observer>;
             if (not Endless)
             {
                 if (_max_repeats == 0)
@@ -278,9 +278,9 @@ namespace xrx::detail
             requires ConceptObservable<SourceObservable>
     {
         XRX_CHECK_RVALUE(source);
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using IsAsync_ = IsAsyncObservable<SourceObservable_>;
-        using Impl = RepeatObservable<SourceObservable_, Endless, IsAsync_::value>;
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        using IsAsync_ = IsAsyncObservable<SourceObservable>;
+        using Impl = RepeatObservable<SourceObservable, Endless, IsAsync_::value>;
         return Observable_<Impl>(Impl(XRX_MOV(source), int(count)));
     }
 } // namespace xrx::detail

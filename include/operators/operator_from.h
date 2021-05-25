@@ -53,10 +53,13 @@ namespace xrx::detail
         , XRX_RVALUE(V&&) v0, XRX_RVALUE(Vs&&)... vs)
     {
         XRX_CHECK_RVALUE(v0);
+        XRX_CHECK_TYPE_NOT_REF(V);
         static_assert(((not std::is_lvalue_reference_v<Vs>) && ...)
+            , ".from(Vs...) requires owns passed values.");
+        static_assert(((not std::is_reference_v<Vs>) && ...)
             , ".from(Vs...) requires Vs to be value-like type.");
 
-        using Tuple = std::tuple<std::remove_reference_t<V>, std::remove_reference_t<Vs>...>;
+        using Tuple = std::tuple<V, Vs...>;
         using Impl = FromObservable<Tuple>;
         return Observable_<Impl>(Impl(Tuple(XRX_MOV(v0), XRX_MOV(vs)...)));
     }

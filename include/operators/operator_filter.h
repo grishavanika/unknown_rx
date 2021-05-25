@@ -16,9 +16,6 @@ namespace xrx::detail
     template<typename SourceObservable, typename Filter>
     struct FilterObservable
     {
-        static_assert(not std::is_reference_v<SourceObservable>);
-        static_assert(not std::is_reference_v<Filter>);
-
         using value_type   = typename SourceObservable::value_type;
         using error_type   = typename SourceObservable::error_type;
         using is_async     = IsAsyncObservable<SourceObservable>;
@@ -72,9 +69,8 @@ namespace xrx::detail
         auto subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
-            using Observer_ = std::remove_reference_t<Observer>;
-            using FilterObserver = FilterObserver<Observer_>;
-            return XRX_MOV(_source).subscribe(FilterObserver(
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            return XRX_MOV(_source).subscribe(FilterObserver<Observer>(
                 XRX_MOV_IF_ASYNC(observer), XRX_MOV_IF_ASYNC(_filter)));
         }
     };
@@ -87,9 +83,9 @@ namespace xrx::detail
     {
         XRX_CHECK_RVALUE(source);
         XRX_CHECK_RVALUE(filter);
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using F_ = std::remove_reference_t<F>;
-        using Impl = FilterObservable<SourceObservable_, F_>;
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(F);
+        using Impl = FilterObservable<SourceObservable, F>;
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(filter)));
     }
 } // namespace xrx::detail

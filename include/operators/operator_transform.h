@@ -65,8 +65,9 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
-            using Observer_ = std::remove_reference_t<Observer>;
-            using TransformObserver = TransformObserver<Observer_>;
+            XRX_CHECK_RVALUE(observer);
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            using TransformObserver = TransformObserver<Observer>;
             return XRX_MOV(_source).subscribe(TransformObserver(
                 XRX_MOV_IF_ASYNC(observer), XRX_MOV_IF_ASYNC(_transform)));
         }
@@ -77,9 +78,11 @@ namespace xrx::detail
         , XRX_RVALUE(SourceObservable&&) source, XRX_RVALUE(F&&) transform)
             requires requires(typename SourceObservable::value_type v) { transform(v); }
     {
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using F_ = std::remove_reference_t<F>;
-        using Impl = TransformObservable<SourceObservable_, F_>;
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(transform);
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(F);
+        using Impl = TransformObservable<SourceObservable, F>;
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(transform)));
     }
 } // namespace xrx::detail

@@ -181,9 +181,10 @@ namespace xrx::detail
         , XRX_RVALUE(SourceObservable&&) source, std::size_t count)
             requires ConceptObservable<SourceObservable>
     {
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using Impl = WindowProducerObservable<SourceObservable_
-            , IsAsyncObservable<SourceObservable_>::value>;
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        using Impl = WindowProducerObservable<SourceObservable
+            , IsAsyncObservable<SourceObservable>::value>;
         return Observable_<Impl>(Impl(XRX_MOV(source), count));
     }
 } // namespace xrx::detail

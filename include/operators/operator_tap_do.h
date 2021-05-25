@@ -66,9 +66,9 @@ namespace xrx::detail
             requires ConceptValueObserverOf<Observer, value_type>
         DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
-            using Observer_ = std::remove_reference_t<Observer>;
-            using ListenerObserver = ListenerObserver<Observer_>;
-            return XRX_MOV(_source).subscribe(ListenerObserver(
+            XRX_CHECK_RVALUE(observer);
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            return XRX_MOV(_source).subscribe(ListenerObserver<Observer>(
                 XRX_MOV_IF_ASYNC(observer), XRX_MOV_IF_ASYNC(_listener)));
         }
     };
@@ -77,9 +77,11 @@ namespace xrx::detail
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::TapOrDo
         , XRX_RVALUE(SourceObservable&&) source, XRX_RVALUE(Observer&&) observer)
     {
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using Observer_ = std::remove_reference_t<Observer>;
-        using Impl = TapOrDoObservable<SourceObservable_, Observer_>;
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(observer);
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(Observer);
+        using Impl = TapOrDoObservable<SourceObservable, Observer>;
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(observer)));
     }
 } // namespace xrx::detail

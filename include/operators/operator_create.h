@@ -20,9 +20,11 @@ namespace xrx::observable
             using DetachHandle = Detach_;
 
             template<typename F, typename Observer>
-            static auto invoke_(F&& on_subscribe, Observer&& observer)
+            static auto invoke_(F&& on_subscribe, XRX_RVALUE(Observer&&) observer)
             {
-                return XRX_FWD(on_subscribe)(XRX_FWD(observer));
+                XRX_CHECK_RVALUE(observer);
+                XRX_CHECK_TYPE_NOT_REF(Observer);
+                return XRX_FWD(on_subscribe)(XRX_MOV(observer));
             }
         };
 
@@ -32,10 +34,11 @@ namespace xrx::observable
             using DetachHandle = ::xrx::detail::NoopDetach;
 
             template<typename F, typename Observer>
-            static DetachHandle invoke_(F&& on_subscribe, Observer&& observer)
+            static DetachHandle invoke_(F&& on_subscribe, XRX_RVALUE(Observer&&) observer)
             {
-                using Observer_ = std::remove_reference_t<Observer>;
-                using RefObserver = ::xrx::detail::RefTrackingObserver_<Observer_>;
+                XRX_CHECK_RVALUE(observer);
+                XRX_CHECK_TYPE_NOT_REF(Observer);
+                using RefObserver = ::xrx::detail::RefTrackingObserver_<Observer>;
                 ::xrx::detail::RefObserverState state;
                 (void)XRX_FWD(on_subscribe)(RefObserver(&observer, &state));
                 assert(state.is_finalized());
@@ -92,8 +95,10 @@ namespace xrx::observable
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, value_type>
-            DetachHandle subscribe(Observer observer) &&
+            DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
+                XRX_CHECK_RVALUE(observer);
+                XRX_CHECK_TYPE_NOT_REF(Observer);
                 return SubscribeDispatch_::invoke_(XRX_MOV(_on_subscribe), XRX_MOV(observer));
             }
         };
@@ -113,10 +118,10 @@ namespace xrx::detail::operator_tag
         }
     {
         XRX_CHECK_RVALUE(on_subscribe);
+        XRX_CHECK_TYPE_NOT_REF(F);
         static_assert(not std::is_same_v<Value, void>);
         static_assert(not std::is_reference_v<Value>);
-        using F_ = std::remove_reference_t<F>;
-        using Impl = ::xrx::observable::detail::CustomObservable_<Value, Error, F_>;
+        using Impl = ::xrx::observable::detail::CustomObservable_<Value, Error, F>;
         return Observable_<Impl>(Impl(XRX_MOV(on_subscribe)));
     }
 } // namespace xrx::detail::operator_tag

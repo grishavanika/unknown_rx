@@ -49,7 +49,7 @@ namespace xrx::observable
             DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
             {
                 XRX_CHECK_RVALUE(observer);
-                using Observer_ = std::remove_reference_t<Observer>;
+                XRX_CHECK_TYPE_NOT_REF(Observer);
 
                 const clock_duration period(_period);
                 // To get zero tick at first. #TODO: revisit this logic.
@@ -57,7 +57,7 @@ namespace xrx::observable
                 
                 struct State
                 {
-                    Observer_ _observer;
+                    Observer _observer;
                     value_type _ticks = 0;
                 };
 
@@ -86,8 +86,9 @@ namespace xrx::detail::operator_tag
         , xrx::detail::operator_tag::Interval
         , Duration period, XRX_RVALUE(Scheduler&&) scheduler)
     {
-        using Scheduler_ = std::remove_reference_t<Scheduler>;
-        using Impl = ::xrx::observable::detail::IntervalObservable_<Duration, Scheduler_>;
+        XRX_CHECK_RVALUE(scheduler);
+        XRX_CHECK_TYPE_NOT_REF(Scheduler);
+        using Impl = ::xrx::observable::detail::IntervalObservable_<Duration, Scheduler>;
         return Observable_<Impl>(Impl(XRX_MOV(period), XRX_MOV(scheduler)));
     }
 } // namespace xrx::detail::operator_tag

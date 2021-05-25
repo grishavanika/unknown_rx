@@ -358,7 +358,7 @@ namespace xrx::detail
         XRX_CHECK_RVALUE(close_producer);
         using opening_value = typename OpeningsObservable::value_type;
         using CloseObservable = decltype(close_producer(std::declval<opening_value>()));
-        static_assert(not std::is_reference_v<CloseObservable>);
+        XRX_CHECK_TYPE_NOT_REF(CloseObservable);
         static_assert(ConceptObservable<CloseObservable>);
 
         static_assert(IsAsyncObservable<SourceObservable>()
@@ -368,10 +368,10 @@ namespace xrx::detail
         static_assert(IsAsyncObservable<OpeningsObservable>()
             , ".window_toggle() does not make sense for Sync Closing Observable.");
 
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using OpeningsObservable_ = std::remove_reference_t<OpeningsObservable>;
-        using CloseObservableProducer_ = std::remove_reference_t<CloseObservableProducer>;
-        using Impl = WindowToggleObservableImpl_<SourceObservable_, OpeningsObservable_, CloseObservableProducer_, CloseObservable>;
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(OpeningsObservable);
+        XRX_CHECK_TYPE_NOT_REF(CloseObservableProducer);
+        using Impl = WindowToggleObservableImpl_<SourceObservable, OpeningsObservable, CloseObservableProducer, CloseObservable>;
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(openings), XRX_MOV(close_producer)));
     }
 } // namespace xrx::detail

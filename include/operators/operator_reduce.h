@@ -16,9 +16,6 @@ namespace xrx::detail
     template<typename SourceObservable, typename Value, typename Op>
     struct ReduceObservable
     {
-        static_assert(not std::is_reference_v<SourceObservable>);
-        static_assert(not std::is_reference_v<Op>);
-
         using source_type = typename SourceObservable::value_type;
         using value_type   = Value;
         using error_type   = typename SourceObservable::error_type;
@@ -75,8 +72,8 @@ namespace xrx::detail
         decltype(auto) subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
-            using Observer_ = std::remove_reference_t<Observer>;
-            using ReduceObserver_ = ReduceObserver<Observer_>;
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            using ReduceObserver_ = ReduceObserver<Observer>;
             return XRX_MOV(_source).subscribe(ReduceObserver_(
                 XRX_MOV_IF_ASYNC(observer), XRX_MOV_IF_ASYNC(_op), XRX_MOV(_initial)));
         }
@@ -91,10 +88,10 @@ namespace xrx::detail
         XRX_CHECK_RVALUE(source);
         XRX_CHECK_RVALUE(value);
         XRX_CHECK_RVALUE(op);
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using F_ = std::remove_reference_t<F>;
-        using Value_ = std::remove_reference_t<Value>;
-        using Impl = ReduceObservable<SourceObservable_, Value_, F_>;
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(Value);
+        XRX_CHECK_TYPE_NOT_REF(F);
+        using Impl = ReduceObservable<SourceObservable, Value, F>;
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(value), XRX_MOV(op)));
     }
 } // namespace xrx::detail

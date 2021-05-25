@@ -56,18 +56,19 @@ namespace xrx::detail
     {
         XRX_CHECK_RVALUE(source);
         XRX_CHECK_RVALUE(v0);
-        static_assert(((not std::is_lvalue_reference_v<Vs>) && ...)
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(V);
+        static_assert(((not std::is_reference_v<Vs>) && ...)
             , ".start_with(Vs...) requires Vs to be value-like type.");
 
-        using Tuple = std::tuple<std::remove_reference_t<V>, std::remove_reference_t<Vs>...>;
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-
+        using Tuple = std::tuple<V, Vs...>;
+        // #XXX: finalize this.
 #if (0)
         static_assert(std::is_same_v<typename std::tuple_element<0, Tuple>::type
-            , typename SourceObservable_::value_type>);
+            , typename SourceObservable::value_type>);
 #endif
 
-        using Impl = StartWithObservable<SourceObservable_, Tuple>;
+        using Impl = StartWithObservable<SourceObservable, Tuple>;
         return Observable_<Impl>(Impl(XRX_MOV(source), Tuple(XRX_MOV(v0), XRX_MOV(vs)...)));
     }
 } // namespace xrx::detail

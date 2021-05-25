@@ -11,6 +11,7 @@
 #define XRX_FWD(...) ::std::forward<decltype(__VA_ARGS__)>(__VA_ARGS__)
 #define XRX_MOV(...) ::std::move(__VA_ARGS__)
 
+// #XXX: move to utils_defines.h.
 // Just an annotation that T&& should be rvalue reference
 // (because of constraints from other places).
 // XRX_MOV() can be used.
@@ -18,4 +19,9 @@
 #define XRX_CHECK_RVALUE(...) \
     static_assert(not std::is_lvalue_reference_v<decltype(__VA_ARGS__)> \
         , "Expected to have rvalue reference. " \
+        # __VA_ARGS__)
+
+#define XRX_CHECK_TYPE_NOT_REF(...) \
+    static_assert(not std::is_reference_v<__VA_ARGS__> \
+        , "Expected to have non-reference type (not T& ot T&&; to be moved from). " \
         # __VA_ARGS__)

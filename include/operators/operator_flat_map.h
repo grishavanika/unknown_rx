@@ -183,9 +183,6 @@ namespace xrx::detail
         , false/*Sync source Observable*/
         , false/*Sync Observables produced*/>
     {
-        static_assert(ConceptObservable<ProducedObservable>
-            , "Return value of Produce should be Observable.");
-
         [[no_unique_address]] SourceObservable _source;
         [[no_unique_address]] Produce _produce;
         [[no_unique_address]] Map _map;
@@ -223,8 +220,8 @@ namespace xrx::detail
         DetachHandle subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
             XRX_CHECK_RVALUE(destination_);
-            using Observer_ = std::remove_reference_t<Observer>;
-            using Root_ = OuterObserver_Sync_Sync<Observer_, Produce, Map, source_type, produce_type>;
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            using Root_ = OuterObserver_Sync_Sync<Observer, Produce, Map, source_type, produce_type>;
             State_Sync_Sync state;
             auto detach = XRX_MOV(_source).subscribe(
                 Root_(&_produce, &_map, &destination_, &state));
@@ -486,9 +483,6 @@ namespace xrx::detail
         , false /*Sync source Observable*/
         , true  /*Async Observables produced*/>
     {
-        static_assert(ConceptObservable<ProducedObservable>
-            , "Return value of Produce should be Observable.");
-
         [[no_unique_address]] SourceObservable _source;
         [[no_unique_address]] Produce _produce;
         [[no_unique_address]] Map _map;
@@ -527,10 +521,10 @@ namespace xrx::detail
         DetachHandle subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
             XRX_CHECK_RVALUE(destination_);
-            using Observer_ = std::remove_reference_t<Observer>;
-            using Root_ = OuterObserver_Sync_Async<Observer_, Produce, ProducedObservable, source_type>;
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            using Root_ = OuterObserver_Sync_Async<Observer, Produce, ProducedObservable, source_type>;
             using AllObsevables = AllObservablesState_Sync_Async<ProducedObservable, source_type>;
-            using SharedState_ = SharedState_Sync_Async<Observer_, Map, ProducedObservable, source_type, produce_type>;
+            using SharedState_ = SharedState_Sync_Async<Observer, Map, ProducedObservable, source_type, produce_type>;
             using InnerObserver_ = InnerObserver_Sync_Async<SharedState_, produce_type, error_type>;
 
             State_Sync_Sync state;
@@ -636,9 +630,6 @@ namespace xrx::detail
         , true  /*Async source Observable*/
         , false /*Sync Observables produced*/>
     {
-        static_assert(ConceptObservable<ProducedObservable>
-            , "Return value of Produce should be Observable.");
-
         [[no_unique_address]] SourceObservable _source;
         [[no_unique_address]] Produce _produce;
         [[no_unique_address]] Map _map;
@@ -921,9 +912,6 @@ namespace xrx::detail
         , true /*Async source Observable*/
         , true /*Async Observables produced*/>
     {
-        static_assert(ConceptObservable<ProducedObservable>
-            , "Return value of Produce should be Observable.");
-
         [[no_unique_address]] SourceObservable _source;
         [[no_unique_address]] Produce _produce;
         [[no_unique_address]] Map _map;
@@ -980,17 +968,23 @@ namespace xrx::detail
     auto tag_invoke(tag_t<make_operator>, ::xrx::detail::operator_tag::FlatMap
         , XRX_RVALUE(SourceObservable&&) source, XRX_RVALUE(Produce&&) produce, XRX_RVALUE(Map&&) map)
             requires ConceptObservable<SourceObservable>
-                  && ConceptObservable<decltype(produce(std::declval<typename SourceObservable::value_type>()))>
     {
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using Map_ = std::remove_reference_t<Map>;
-        using ProducedObservable = decltype(produce(std::declval<typename SourceObservable_::value_type>()));
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(produce);
+        XRX_CHECK_RVALUE(map);
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(Map);
+        XRX_CHECK_TYPE_NOT_REF(Produce);
+        using value_type = typename SourceObservable::value_type;
+        using ProducedObservable = decltype(produce(std::declval<value_type>()));
+        static_assert(ConceptObservable<ProducedObservable>
+            , "Return value of Produce should be Observable.");
         using Impl = FlatMapObservable<
-              SourceObservable_
+              SourceObservable
             , ProducedObservable
             , Produce
-            , Map_
-            , IsAsyncObservable<SourceObservable_>::value
+            , Map
+            , IsAsyncObservable<SourceObservable>::value
             , IsAsyncObservable<ProducedObservable>::value>;
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(produce), XRX_MOV(map)));
     }
@@ -1001,17 +995,23 @@ namespace xrx::detail
             requires ConceptObservable<SourceObservable>
                   && ConceptObservable<decltype(produce(std::declval<typename SourceObservable::value_type>()))>
     {
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
+        XRX_CHECK_RVALUE(source);
+        XRX_CHECK_RVALUE(produce);
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(Produce);
+        using value_type = typename SourceObservable::value_type;
         using Map_ = FlatMapIdentity;
-        using ProducedObservable = decltype(produce(std::declval<typename SourceObservable_::value_type>()));
+        using ProducedObservable = decltype(produce(std::declval<value_type>()));
+        static_assert(ConceptObservable<ProducedObservable>
+            , "Return value of Produce should be Observable.");
         using Impl = FlatMapObservable<
-              SourceObservable_
+              SourceObservable
             , ProducedObservable
             , Produce
             , Map_
-            , IsAsyncObservable<SourceObservable_>::value
+            , IsAsyncObservable<SourceObservable>::value
             , IsAsyncObservable<ProducedObservable>::value>;
-        return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(produce), FlatMapIdentity()));
+        return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(produce), Map_()));
     }
 } // namespace xrx::detail
 

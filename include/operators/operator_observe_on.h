@@ -209,9 +209,9 @@ namespace xrx::detail::operator_tag
     {
         XRX_CHECK_RVALUE(source);
         XRX_CHECK_RVALUE(scheduler);
-        using Source_ = std::remove_reference_t<SourceObservable>;
-        using Scheduler_ = std::remove_reference_t<Scheduler>;
-        using Impl = ::xrx::observable::detail::ObserveOnObservable_<Source_, Scheduler_>;
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(Scheduler);
+        using Impl = ::xrx::observable::detail::ObserveOnObservable_<SourceObservable, Scheduler>;
         // #TODO: add overload that directly accepts `StreamScheduler` so
         // client can pass more narrow interface.
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(scheduler).stream_scheduler()));

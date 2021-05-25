@@ -46,11 +46,11 @@ namespace xrx::detail
         , XRX_RVALUE(Container&&) values)
     {
         XRX_CHECK_RVALUE(values);
-        using Container_ = std::remove_reference_t<Container>;
+        XRX_CHECK_TYPE_NOT_REF(Container);
         using Iterator = decltype(std::begin(values));
         static_assert(std::forward_iterator<Iterator>);
 
-        using Impl = IterateObservable<Container_>;
+        using Impl = IterateObservable<Container>;
         return Observable_<Impl>(Impl(XRX_MOV(values)));
     }
 } // namespace xrx::detail

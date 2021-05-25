@@ -281,9 +281,9 @@ namespace xrx::detail::operator_tag
     {
         XRX_CHECK_RVALUE(source);
         XRX_CHECK_RVALUE(scheduler);
-        using SourceObservable_ = std::remove_reference_t<SourceObservable>;
-        using Scheduler_ = std::remove_reference_t<Scheduler>;
-        using Impl = ::xrx::observable::detail::SubscribeOnObservable_<SourceObservable_, Scheduler_>;
+        XRX_CHECK_TYPE_NOT_REF(SourceObservable);
+        XRX_CHECK_TYPE_NOT_REF(Scheduler);
+        using Impl = ::xrx::observable::detail::SubscribeOnObservable_<SourceObservable, Scheduler>;
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(scheduler)));
     }
 } // namespace xrx::detail::operator_tag

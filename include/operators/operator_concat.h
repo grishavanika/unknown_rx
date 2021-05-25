@@ -100,11 +100,11 @@ namespace xrx::detail
         NoopDetach subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
-            using Observer_ = std::remove_reference_t<Observer>;
+            XRX_CHECK_TYPE_NOT_REF(Observer);
             auto invoke_ = [](auto&& observer, auto&& observable)
             {
                 RefObserverState state;
-                using OnePass = RefTrackingObserver_<Observer_, false/*no on_completed*/>;
+                using OnePass = RefTrackingObserver_<Observer, false/*no on_completed*/>;
                 auto detach = XRX_FWD(observable).subscribe(OnePass(&observer, &state));
                 static_assert(not decltype(detach)::has_effect::value
                     , "Sync Observable should not have unsubscribe.");
@@ -266,8 +266,8 @@ namespace xrx::detail
         DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
         {
             XRX_CHECK_RVALUE(observer);
-            using Observer_ = std::remove_reference_t<Observer>;
-            auto shared = std::make_shared<Shared_<Observer_>>(XRX_MOV(observer), XRX_MOV(_observables));
+            XRX_CHECK_TYPE_NOT_REF(Observer);
+            auto shared = std::make_shared<Shared_<Observer>>(XRX_MOV(observer), XRX_MOV(_observables));
             shared->start_impl(0);
             std::shared_ptr<Unsubscription> unsubscription(shared, &shared->_unsubscription);
             return DetachHandle(XRX_MOV(unsubscription));
@@ -348,15 +348,17 @@ namespace xrx::detail
             requires  (AreConcatCompatible<Observable1, Observable2>::value
                    && (AreConcatCompatible<Observable1, ObservablesRest>::value && ...))
     {
-        constexpr bool IsAnyAsync = false
-            or ( IsAsyncObservable<Observable1>())
-            or ( IsAsyncObservable<Observable2>())
-            or ((IsAsyncObservable<ObservablesRest>()) or ...);
+        XRX_CHECK_TYPE_NOT_REF(Observable1);
+        XRX_CHECK_TYPE_NOT_REF(Observable2);
+        static_assert(((not std::is_reference_v<ObservablesRest>) && ...)
+            , "Expected to have non-reference types (not T& ot T&&; to be moved from). ");
 
-        using Tuple = std::tuple<
-            std::remove_reference_t<Observable1>
-            , std::remove_reference_t<Observable2>
-            , std::remove_reference_t<ObservablesRest>...>;
+        constexpr bool IsAnyAsync = false
+            || ( IsAsyncObservable<Observable1>())
+            || ( IsAsyncObservable<Observable2>())
+            || ((IsAsyncObservable<ObservablesRest>()) || ...);
+
+        using Tuple = std::tuple<Observable1, Observable2, ObservablesRest...>;
         using Impl = ConcatObservable<Tuple, IsAnyAsync>;
         return Observable_<Impl>(Impl(Tuple(
             XRX_MOV(observable1)
