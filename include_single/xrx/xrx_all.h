@@ -3915,6 +3915,18 @@ namespace xrx::detail
                 assert(_values._size <= _count);
                 if (_values._size == _count)
                 {
+                    // #XXX: since we store/cache emitted values to Vector,
+                    // we do not preserver Time information. Should this
+                    // be the issue for Sync source observable ?
+                    // If we are not going to cache, there
+                    // should be something like Subject<> passed as a window.
+                    // This would also mean window would be single pass/one time pass.
+                    // (I.e., caller needs to subscribe immediately.)
+                    // How RxCpp behaves ?
+                    // Also, any Observable/Operator (window_toggle currently) that uses
+                    // Subject<> as implementation detail has same issue:
+                    // passed to the client Observable is single-pass; needs to be consumed
+                    // immediately right during source/parent values emission.
                     const auto action = on_next_with_action(*_observer
                         , value_type(ObservableValue_(XRX_MOV(_values))));
                     if (action._stop)
@@ -6345,25 +6357,44 @@ namespace xrx
 // #pragma once
 // #include "any_observer.h"
 // #include "utils_containers.h"
+// #include "utils_observers.h"
 // #include "observable_interface.h"
 // #include "debug/assert_mutex.h"
 
+#include <variant>
 #include <mutex>
 #include <memory>
 #include <cassert>
 
 namespace xrx
 {
+    namespace detail
+    {
+        template<typename ToAvoidVoid>
+        struct OnErrorWithValue_ { ToAvoidVoid _error; };
+        template<>
+        struct OnErrorWithValue_<void> { };
+    } // namespace detail
+
     template<typename Value, typename Error = void>
     struct Subject_
     {
         using Subscriptions = detail::HandleVector<AnyObserver<Value, Error>>;
         using Handle = typename Subscriptions::Handle;
 
+        struct InProgress_ {};
+        struct OnCompleted_ {};
+        using OnErrorWithValue_ = detail::OnErrorWithValue_<Error>;
+
+        using State = std::variant<InProgress_
+            , OnCompleted_
+            , OnErrorWithValue_>;
+
         struct SharedImpl_
         {
             std::mutex _mutex;
             Subscriptions _subscriptions;
+            State _state;
         };
 
         using value_type = Value;
@@ -6428,13 +6459,35 @@ namespace xrx
                 auto shared = _shared_weak.lock();
                 if (not shared)
                 {
-                    // #XXX: this is also the case when we try to
-                    // subscribe on the subject that is already completed.
-                    // Should we assert ? What's the expected behavior ?
+                    // No Producer/Subject is alive anymore. Can't have any values emitted.
                     return DetachHandle();
                 }
-                AnyObserver<value_type, error_type> erased(XRX_MOV(observer));
+
                 auto guard = std::lock_guard(shared->_mutex);
+                if (std::get_if<OnCompleted_>(&shared->_state))
+                {
+                    // on_completed() was already called.
+                    // Finalize this Observer.
+                    detail::on_completed_optional(XRX_MOV(observer));
+                    return DetachHandle();
+                }
+                else if (auto* error_copy = std::get_if<OnErrorWithValue_>(&shared->_state))
+                {
+                    // on_error() was already called.
+                    // Finalize this Observer.
+                    if constexpr (std::is_same_v<Error, void>)
+                    {
+                        detail::on_error_optional(XRX_MOV(observer));
+                    }
+                    else
+                    {
+                        detail::on_error_optional(XRX_MOV(observer), Error(error_copy->_error));
+                    }
+                    return DetachHandle();
+                }
+                assert(std::get_if<InProgress_>(&shared->_state));
+
+                AnyObserver<value_type, error_type> erased(XRX_MOV(observer));
                 DetachHandle detach;
                 detach._shared_weak = _shared_weak;
                 detach._handle = shared->_subscriptions.push_back(XRX_MOV(erased));
@@ -6471,65 +6524,69 @@ namespace xrx
 
         void on_next(XRX_RVALUE(value_type&&) v)
         {
-            // Note: on_next() and {on_error(), on_completed()} should not be called in-parallel.
-            if (not _shared)
+            auto lock = std::unique_lock(_shared->_mutex);
+            if (not std::get_if<InProgress_>(&_shared->_state))
             {
-                assert(false);
+                // We are already finalized, nothing to do there.
                 return;
             }
-            auto lock = std::unique_lock(_shared->_mutex);
+
             for (auto&& [observer, handle] : _shared->_subscriptions.iterate_with_handle())
             {
                 const auto action = observer.on_next(value_type(v)); // copy.
                 if (action._stop)
                 {
-                    // Notice: we have mutex lock.
                     _shared->_subscriptions.erase(handle);
                 }
             }
-            // Note: should we unsubscribe if there are no observers/subscriptions anymore ?
-            // Seems like nope, someone can subscribe later.
         }
 
         template<typename... Es>
+             requires ((std::is_same_v<Error, void> && (sizeof...(Es) == 0))
+                || (not std::is_same_v<Error, void> && (sizeof...(Es) == 1)))
         void on_error(Es&&... errors)
         {
-            // Note: on_completed() should not be called in-parallel.
-            auto shared = std::exchange(_shared, {});
-            if (not shared)
+            auto lock = std::unique_lock(_shared->_mutex);
+            if (not std::get_if<InProgress_>(&_shared->_state))
             {
-                assert(false);
+                // Double-call to on_error() or call to on_error() after on_completed().
                 return;
             }
-            auto lock = std::unique_lock(shared->_mutex);
-            for (AnyObserver<Value, Error>& observer : shared->_subscriptions)
+            if constexpr (sizeof...(Es) == 0)
             {
-                if constexpr (sizeof...(errors) == 0)
+                _shared->_state.template emplace<OnErrorWithValue_>();
+                for (AnyObserver<Value, Error>& observer : _shared->_subscriptions)
                 {
                     observer.on_error();
                 }
-                else
+            }
+            else
+            {
+                const Error& error = _shared->_state.template emplace<OnErrorWithValue_>(XRX_FWD(errors)...)._error;
+                for (AnyObserver<Value, Error>& observer : _shared->_subscriptions)
                 {
-                    static_assert(sizeof...(errors) == 1);
-                    observer.on_error(Es(errors)...); // copy.
+                    observer.on_error(Error(error)); // copy.
                 }
+                // Clean-up everything, not needed anymore.
+                _shared->_subscriptions = {};
             }
         }
 
         void on_completed()
         {
-            // Note: on_completed() should not be called in-parallel.
-            auto shared = std::exchange(_shared, {});
-            if (not shared)
+            auto lock = std::unique_lock(_shared->_mutex);
+            if (not std::get_if<InProgress_>(&_shared->_state))
             {
-                assert(false);
+                // Double-call to on_completed() or call to on_completed() after on_error().
                 return;
             }
-            auto lock = std::unique_lock(shared->_mutex);
-            for (AnyObserver<Value, Error>& observer : shared->_subscriptions)
+            _shared->_state.template emplace<OnCompleted_>();
+            for (AnyObserver<Value, Error>& observer : _shared->_subscriptions)
             {
                 observer.on_completed();
             }
+            // Clean-up everything, not needed anymore.
+            _shared->_subscriptions = {};
         }
     };
 } // namespace xrx

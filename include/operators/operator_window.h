@@ -100,6 +100,18 @@ namespace xrx::detail
                 assert(_values._size <= _count);
                 if (_values._size == _count)
                 {
+                    // #XXX: since we store/cache emitted values to Vector,
+                    // we do not preserver Time information. Should this
+                    // be the issue for Sync source observable ?
+                    // If we are not going to cache, there
+                    // should be something like Subject<> passed as a window.
+                    // This would also mean window would be single pass/one time pass.
+                    // (I.e., caller needs to subscribe immediately.)
+                    // How RxCpp behaves ?
+                    // Also, any Observable/Operator (window_toggle currently) that uses
+                    // Subject<> as implementation detail has same issue:
+                    // passed to the client Observable is single-pass; needs to be consumed
+                    // immediately right during source/parent values emission.
                     const auto action = on_next_with_action(*_observer
                         , value_type(ObservableValue_(XRX_MOV(_values))));
                     if (action._stop)

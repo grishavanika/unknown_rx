@@ -90,3 +90,103 @@ TEST(Subject, MT_Serialized)
         , std::begin(observed));
     ASSERT_TRUE(all_observed);
 }
+
+TEST(Subject, Subscribe_After_OnCompleted_Invokes_OnCompleted)
+{
+    ObserverMock observer;
+    Sequence s;
+
+    EXPECT_CALL(observer, on_next(1)).InSequence(s);
+
+    EXPECT_CALL(observer, on_completed()).Times(3).InSequence(s);
+    EXPECT_CALL(observer, on_error()).Times(0);
+
+    Subject_<int> subject;
+    subject.subscribe(observer.ref());
+    subject.on_next(1);
+    subject.on_completed();
+    
+    subject.subscribe(observer.ref());
+    subject.subscribe(observer.ref());
+}
+
+TEST(Subject, Subscribe_After_OnError_Invokes_OnError)
+{
+    ObserverMock observer;
+    Sequence s;
+
+    EXPECT_CALL(observer, on_next(1)).InSequence(s);
+
+    EXPECT_CALL(observer, on_completed()).Times(0);
+    EXPECT_CALL(observer, on_error()).Times(3).InSequence(s);
+
+    Subject_<int> subject;
+    subject.subscribe(observer.ref());
+    subject.on_next(1);
+    subject.on_error();
+
+    subject.subscribe(observer.ref());
+    subject.subscribe(observer.ref());
+}
+
+
+TEST(Subject, Subscribe_After_OnError_Invokes_OnError_WithSameError)
+{
+    ObserverMock_Error observer;
+    Sequence s;
+
+    EXPECT_CALL(observer, on_next(1)).InSequence(s);
+
+    EXPECT_CALL(observer, on_completed()).Times(0);
+    EXPECT_CALL(observer, on_error(-2)).Times(3).InSequence(s);
+
+    Subject_<int, int> subject;
+    subject.subscribe(observer.ref());
+    subject.on_next(1);
+    subject.on_error(-2);
+
+    subject.subscribe(observer.ref());
+    subject.subscribe(observer.ref());
+}
+
+TEST(Subject, OnNext_Ignore_AfterOnCompleted)
+{
+    ObserverMock observer;
+    Sequence s;
+
+    EXPECT_CALL(observer, on_next(1)).InSequence(s);
+    EXPECT_CALL(observer, on_next(2)).InSequence(s);
+
+    EXPECT_CALL(observer, on_completed()).InSequence(s);
+    EXPECT_CALL(observer, on_error()).Times(0);
+
+    Subject_<int> subject;
+    subject.subscribe(observer.ref());
+
+    subject.on_next(1);
+    subject.on_next(2);
+    subject.on_completed();
+    subject.on_next(-1);
+    subject.on_next(-2);
+}
+
+TEST(Subject, OnNext_Ignore_AfterOnError)
+{
+    ObserverMock observer;
+    Sequence s;
+
+    EXPECT_CALL(observer, on_next(1)).InSequence(s);
+    EXPECT_CALL(observer, on_next(2)).InSequence(s);
+
+    EXPECT_CALL(observer, on_completed()).Times(0);
+    EXPECT_CALL(observer, on_error()).InSequence(s);
+
+    Subject_<int> subject;
+    subject.subscribe(observer.ref());
+
+    subject.on_next(1);
+    subject.on_next(2);
+    subject.on_error();
+    subject.on_next(-1);
+    subject.on_next(-2);
+}
