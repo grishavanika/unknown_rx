@@ -2,6 +2,7 @@
 #include "operator_tags.h"
 #include "cpo_make_operator.h"
 #include "observable_interface.h"
+#include "xrx_prologue.h"
 #include <utility>
 #include <variant>
 #include <mutex>
@@ -287,3 +288,5 @@ namespace xrx::detail::operator_tag
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(scheduler)));
     }
 } // namespace xrx::detail::operator_tag
+
+#include "xrx_epilogue.h"

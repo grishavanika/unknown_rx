@@ -1,7 +1,7 @@
 #pragma once
 #include "utils_containers.h"
-#include "utils_fast_FWD.h"
 #include "debug/assert_mutex.h"
+#include "xrx_prologue.h"
 
 #include <functional>
 #include <memory>
@@ -271,4 +271,4 @@ namespace xrx::debug
     };
 } // namespace xrx::debug
 
-
+#include "xrx_epilogue.h"

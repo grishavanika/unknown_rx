@@ -6,6 +6,7 @@
 #include "utils_observable.h"
 #include "observable_interface.h"
 #include "utils_ref_tracking_observer.h"
+#include "xrx_prologue.h"
 #include <utility>
 #include <type_traits>
 
@@ -125,3 +126,5 @@ namespace xrx::detail::operator_tag
         return Observable_<Impl>(Impl(XRX_MOV(on_subscribe)));
     }
 } // namespace xrx::detail::operator_tag
+
+#include "xrx_epilogue.h"

@@ -2,6 +2,8 @@
 $Src = Join-Path -Path $PSScriptRoot -ChildPath "../include" -Resolve
 $Folders = @(".", "debug", "operators")
 $Extensions = @("*.h", "*.hpp")
+$Header_Prologue = "xrx_prologue.h"
+$Header_Epilogue = "xrx_epilogue.h"
 $OutputFile = "../include_single/xrx/xrx_all.h"
 $RegExpHeader = '#include(.*)((<(?<name>(.*))>)|"(?<name>(.*))")'
 $RegExpPragmaOnce = '#pragma(.*)once'
@@ -122,6 +124,18 @@ $prelude =
 '@
 $prelude | Out-File -FilePath $OutFile -Encoding utf8
 
+
+# PROLOGUE.
+# We require it has no dependencies.
+# This is validated by the for loop below thru $already_included check.
+$path = Join-Path -Path $Src -ChildPath $Header_Prologue
+"`r`n// Header: $Header_Prologue.`r`n" `
+    | Out-File -FilePath $OutFile -Append -Encoding utf8
+Get-Content $path `
+    | % { Get-Line $_ } `
+    | Out-File -FilePath $OutFile -Append -Encoding utf8
+
+
 foreach ($header in $ordered)
 {
     $already_included.Add($header.Header) | Out-Null
@@ -133,6 +147,15 @@ foreach ($header in $ordered)
         }
     }
 
+    if ($header.Header -eq $Header_Prologue)
+    {
+        continue
+    }
+    if ($header.Header -eq $Header_Epilogue)
+    {
+        continue
+    }
+
     $path = Join-Path -Path $Src -ChildPath $header.Header
 
     "`r`n// Header: $($header.Header).`r`n" `
@@ -142,3 +165,11 @@ foreach ($header in $ordered)
         | Out-File -FilePath $OutFile -Append -Encoding utf8
 }
 
+
+# EPILOGUE.
+$path = Join-Path -Path $Src -ChildPath $Header_Epilogue
+"`r`n// Header: $Header_Epilogue.`r`n" `
+    | Out-File -FilePath $OutFile -Append -Encoding utf8
+Get-Content $path `
+    | % { Get-Line $_ } `
+    | Out-File -FilePath $OutFile -Append -Encoding utf8

@@ -4,6 +4,7 @@
 #include "cpo_make_operator.h"
 #include "observable_interface.h"
 #include "utils_observers.h"
+#include "xrx_prologue.h"
 #include <utility>
 #include <chrono>
 #include <cstdint>
@@ -92,3 +93,5 @@ namespace xrx::detail::operator_tag
         return Observable_<Impl>(Impl(XRX_MOV(period), XRX_MOV(scheduler)));
     }
 } // namespace xrx::detail::operator_tag
+
+#include "xrx_epilogue.h"

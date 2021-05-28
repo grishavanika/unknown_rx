@@ -36,8 +36,6 @@ set(xrx_HEADERS
     "include/subject.h"
     "include/tag_invoke_with_extension.h"
     "include/utils_containers.h"
-    "include/utils_defines.h"
-    "include/utils_fast_FWD.h"
     "include/utils_observable.h"
     "include/utils_observers.h"
     "include/tag_invoke.hpp"
@@ -64,6 +62,8 @@ set(xrx_HEADERS
     "include/simple_scheduler_event_loop.h"
     "include/operators/operator_window_toggle.h"
     "include/operators/operator_start_with.h"
+    "include/xrx_prologue.h"
+    "include/xrx_epilogue.h"
     )
 
 add_library(xrx INTERFACE ${xrx_HEADERS})

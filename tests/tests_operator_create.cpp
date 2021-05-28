@@ -80,7 +80,7 @@ TEST(Create, SimpleAsyncSequence)
 
     auto o = observable::create<int>([&subject](auto observer)
     {
-        return subject.as_observable().subscribe(XRX_MOV(observer));
+        return subject.as_observable().subscribe(std::move(observer));
     });
     static_assert(decltype(o)::is_async() == true); // !
 
@@ -95,6 +95,6 @@ TEST(Create, SimpleAsyncSequence)
 TEST(Compile, Create)
 {
     auto on_subscribe = [](auto) {};
-    auto o = make_operator(Create<int, int>(), XRX_MOV(on_subscribe));
+    auto o = make_operator(Create<int, int>(), std::move(on_subscribe));
     static_assert(ConceptObservable<decltype(o)>);
 }

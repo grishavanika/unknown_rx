@@ -27,7 +27,7 @@ TEST(WindowToggle, Compile)
         })
         .flat_map([](auto window)
         {
-            return XRX_MOV(window);
+            return std::move(window);
         })
         .subscribe([](int v)
         {

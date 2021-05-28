@@ -4,6 +4,7 @@
 #include "cpo_make_operator.h"
 #include "utils_observers.h"
 #include "observable_interface.h"
+#include "xrx_prologue.h"
 #include <type_traits>
 #include <utility>
 #include <memory>
@@ -217,3 +218,5 @@ namespace xrx::detail::operator_tag
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(scheduler).stream_scheduler()));
     }
 } // namespace xrx::detail::operator_tag
+
+#include "xrx_epilogue.h"

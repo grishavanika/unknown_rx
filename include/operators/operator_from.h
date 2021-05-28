@@ -4,7 +4,7 @@
 #include "observable_interface.h"
 #include "utils_observers.h"
 #include "utils_observable.h"
-#include "utils_fast_FWD.h"
+#include "xrx_prologue.h"
 #include <utility>
 #include <type_traits>
 #include <tuple>
@@ -64,3 +64,5 @@ namespace xrx::detail
         return Observable_<Impl>(Impl(Tuple(XRX_MOV(v0), XRX_MOV(vs)...)));
     }
 } // namespace xrx::detail
+
+#include "xrx_epilogue.h"

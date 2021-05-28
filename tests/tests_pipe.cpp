@@ -21,7 +21,7 @@ TEST(Pipe, Compose)
     auto pipe_ = pipe(take(1), filter([](int) { return true; }));
 
     observable::range(0)
-        | XRX_MOV(pipe_)
+        | std::move(pipe_)
         | subscribe(observer.ref());
 }
 

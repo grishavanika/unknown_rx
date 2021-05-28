@@ -1,8 +1,6 @@
 #pragma once
 #include "concepts_observer.h"
-#include "utils_fast_FWD.h"
-#include "utils_defines.h"
-
+#include "xrx_prologue.h"
 #include <type_traits>
 #include <utility>
 
@@ -257,3 +255,4 @@ namespace xrx::observer
     }
 } // namespace xrx::observer
 
+#include "xrx_epilogue.h"

@@ -1,13 +1,10 @@
 #pragma once
-#include "utils_defines.h"
+#include "xrx_prologue.h"
+
 #include <type_traits>
 
 namespace xrx::detail
 {
-    // Hint that V is reference and may be moved from
-    // to MaybeRef<>.
-#define XRX_MOV_IF_ASYNC(V) V
-
     template<typename T, bool MustBeValue>
     struct MaybeRef;
 
@@ -42,3 +39,4 @@ namespace xrx::detail
     };
 } // namespace xrx::detail
 
+#include "xrx_epilogue.h"

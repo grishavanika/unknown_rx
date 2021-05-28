@@ -5,6 +5,7 @@
 #include "utils_observable.h"
 #include "observable_interface.h"
 #include "debug/assert_mutex.h"
+#include "xrx_prologue.h"
 #include <type_traits>
 #include <utility>
 #include <memory>
@@ -374,7 +375,6 @@ namespace xrx::detail
             }
             else
             {
-                auto guard = std::lock_guard(_observables._serialize);
                 on_error_optional(XRX_MOV(_observer), XRX_MOV(e)...);
             }
             _observables._unsubscribe = true;
@@ -1043,3 +1043,4 @@ namespace xrx
         };
     }
 } // namespace xrx
+#include "xrx_epilogue.h"

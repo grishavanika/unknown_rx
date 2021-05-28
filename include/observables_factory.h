@@ -1,7 +1,7 @@
 #pragma once
+#include "xrx_prologue.h"
 #include "operator_tags.h"
 #include "cpo_make_operator.h"
-#include "utils_fast_FWD.h"
 #include <utility>
 
 namespace xrx::observable
@@ -68,3 +68,5 @@ namespace xrx::observable
             , XRX_MOV(values));
     }
 } // namespace xrx::observable
+
+#include "xrx_epilogue.h"

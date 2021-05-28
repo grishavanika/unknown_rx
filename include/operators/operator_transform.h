@@ -3,8 +3,8 @@
 #include "cpo_make_operator.h"
 #include "utils_observers.h"
 #include "utils_wrappers.h"
-#include "utils_defines.h"
 #include "observable_interface.h"
+#include "xrx_prologue.h"
 #include <type_traits>
 #include <utility>
 
@@ -101,3 +101,5 @@ namespace xrx
         };
     }
 } // namespace xrx
+
+#include "xrx_epilogue.h"

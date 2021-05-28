@@ -1,7 +1,7 @@
 #pragma once
+#include "xrx_prologue.h"
 #include "tag_invoke_with_extension.h"
 #include "meta_utils.h"
-#include "utils_defines.h"
 
 #include <utility>
 #include <type_traits>
@@ -221,3 +221,5 @@ namespace xrx
           && detail::ConceptWithOnCompleted<Observer>
           && detail::ConceptWithOnError<Observer, Error>;
 } // namespace xrx
+
+#include "xrx_epilogue.h"

@@ -16,7 +16,7 @@ struct NotRealTaskScheduler
     template<typename F>
     int task_post(F task)
     {
-        *_task = [f = XRX_MOV(task)]() mutable
+        *_task = [f = std::move(task)]() mutable
         {
             f();
         };
@@ -55,7 +55,7 @@ TEST(ObserveOn, SourceEmit_RequestsToScheduleTask)
     EXPECT_CALL(observer, on_error()).Times(0);
 
     subject.as_observable()
-        .observe_on(XRX_MOV(scheduler))
+        .observe_on(std::move(scheduler))
         .subscribe(observer.ref());
 
     ASSERT_EQ(0, posts_count);

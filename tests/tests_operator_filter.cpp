@@ -47,7 +47,7 @@ TEST(Filter, Filter_AllWhenFalse)
 TEST(Compile, Filter)
 {
     auto filter = [](int) { return false; };
-    auto o = make_operator(Filter(), Noop_Observable<int, void>(), XRX_MOV(filter));
+    auto o = make_operator(Filter(), Noop_Observable<int, void>(), std::move(filter));
     static_assert(ConceptObservable<decltype(o)>);
 }
 

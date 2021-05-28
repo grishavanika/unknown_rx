@@ -1,6 +1,7 @@
 #pragma once
 #include "concepts_observer.h"
 #include "utils_observers.h"
+#include "xrx_prologue.h"
 #include <type_traits>
 #include <utility>
 #include <memory>
@@ -25,7 +26,6 @@ namespace xrx
     {
         static_assert(not std::is_reference_v<Value>);
         static_assert(not std::is_reference_v<Error>);
-#define X_ANY_OBSERVER_SUPPORTS_COPY() 0
 
         struct ObserverConcept
         {
@@ -266,4 +266,4 @@ namespace xrx
 
 } // namespace xrx
 
-#undef X_ANY_OBSERVER_SUPPORTS_COPY
+#include "xrx_epilogue.h"

@@ -4,6 +4,7 @@
 #include "utils_observers.h"
 #include "observable_interface.h"
 #include "debug/assert_mutex.h"
+#include "xrx_prologue.h"
 
 #include <variant>
 #include <mutex>
@@ -234,3 +235,5 @@ namespace xrx
         }
     };
 } // namespace xrx
+
+#include "xrx_epilogue.h"

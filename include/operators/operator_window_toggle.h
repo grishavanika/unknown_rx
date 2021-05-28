@@ -4,11 +4,11 @@
 #include "utils_observers.h"
 #include "utils_observable.h"
 #include "utils_wrappers.h"
-#include "utils_defines.h"
 #include "concepts_observer.h"
 #include "subject.h"
 #include "observable_interface.h"
 #include "utils_containers.h"
+#include "xrx_prologue.h"
 #include <type_traits>
 #include <utility>
 #include <memory>
@@ -375,3 +375,5 @@ namespace xrx::detail
         return Observable_<Impl>(Impl(XRX_MOV(source), XRX_MOV(openings), XRX_MOV(close_producer)));
     }
 } // namespace xrx::detail
+
+#include "xrx_epilogue.h"

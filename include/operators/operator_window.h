@@ -7,7 +7,7 @@
 #include "utils_observers.h"
 #include "utils_observable.h"
 #include "utils_containers.h"
-#include "utils_defines.h"
+#include "xrx_prologue.h"
 #include <type_traits>
 #include <algorithm>
 #include <vector>
@@ -212,3 +212,5 @@ namespace xrx
         };
     }
 } // namespace xrx
+
+#include "xrx_epilogue.h"

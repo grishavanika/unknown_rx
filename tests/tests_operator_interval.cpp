@@ -22,7 +22,7 @@ struct NotRealScheduler
     int tick_every(clock_point, clock_duration, F f, State state)
     {
         assert(_request);
-        *_request = [f_ = XRX_MOV(f), state_ = XRX_MOV(state)]() mutable
+        *_request = [f_ = std::move(f), state_ = std::move(state)]() mutable
         {
             f_(state_);
         };
@@ -45,7 +45,7 @@ TEST(Interval, WhenSubscribed_RequestsScheduler)
 {
     std::function<void ()> request;
     NotRealScheduler fake(&request);
-    auto tick = observable::interval(std::chrono::seconds(1), XRX_MOV(fake));
+    auto tick = observable::interval(std::chrono::seconds(1), std::move(fake));
     ASSERT_FALSE(request);
 
     ObserverMockAny<std::uint64_t> observer;

@@ -6,6 +6,7 @@
 #include "utils_containers.h"
 #include "debug/assert_mutex.h"
 #include "any_observer.h"
+#include "xrx_prologue.h"
 #include <type_traits>
 #include <utility>
 #include <memory>
@@ -342,3 +343,5 @@ namespace xrx
         };
     }
 } // namespace xrx
+
+#include "xrx_epilogue.h"

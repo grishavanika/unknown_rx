@@ -1,8 +1,6 @@
 #pragma once
-
-#include "utils_defines.h"
-#include "utils_fast_FWD.h"
 #include "utils_observers.h"
+#include "xrx_prologue.h"
 #include <cassert>
 
 namespace xrx::detail
@@ -70,3 +68,4 @@ namespace xrx::detail
     };
 }
 
+#include "xrx_epilogue.h"

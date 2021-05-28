@@ -4,10 +4,9 @@
 #include "cpo_make_operator.h"
 #include "utils_observers.h"
 #include "utils_observable.h"
-#include "utils_fast_FWD.h"
-#include "utils_defines.h"
 #include "utils_wrappers.h"
 #include "observable_interface.h"
+#include "xrx_prologue.h"
 #include <utility>
 #include <concepts>
 
@@ -111,3 +110,5 @@ namespace xrx
         };
     }
 } // namespace xrx
+
+#include "xrx_epilogue.h"

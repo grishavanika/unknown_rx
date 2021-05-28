@@ -15,7 +15,7 @@ using xrx::detail::operator_tag::Transform;
 TEST(Compile, Transform)
 {
     auto transform = [](int v) { return v; };
-    auto o = make_operator(Transform(), Noop_Observable<int, void>(), XRX_MOV(transform));
+    auto o = make_operator(Transform(), Noop_Observable<int, void>(), std::move(transform));
     static_assert(ConceptObservable<decltype(o)>);
 }
 

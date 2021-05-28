@@ -4,6 +4,7 @@
 #include "observable_interface.h"
 #include "utils_observers.h"
 #include "utils_observable.h"
+#include "xrx_prologue.h"
 #include <utility>
 #include <type_traits>
 #include <cstdint>
@@ -86,3 +87,5 @@ namespace xrx::detail
         return Observable_<Impl>(Impl(first, last, step));
     }
 } // namespace xrx::detail
+
+#include "xrx_epilogue.h"

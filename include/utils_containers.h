@@ -8,8 +8,7 @@
 #include <cassert>
 #include <cstring>
 
-#include "utils_fast_FWD.h"
-#include "utils_defines.h"
+#include "xrx_prologue.h"
 
 namespace xrx::detail
 {
@@ -425,3 +424,4 @@ namespace xrx::detail
         }
     };
 } // namespace xrx::detail
+#include "xrx_epilogue.h"

@@ -5,7 +5,7 @@
 #include "utils_observers.h"
 #include "utils_observable.h"
 #include "utils_ref_tracking_observer.h"
-#include "utils_fast_FWD.h"
+#include "xrx_prologue.h"
 #include <utility>
 #include <mutex>
 #include <type_traits>
@@ -307,3 +307,5 @@ namespace xrx
         };
     }
 } // namespace xrx
+
+#include "xrx_epilogue.h"

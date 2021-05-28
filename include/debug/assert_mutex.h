@@ -1,5 +1,5 @@
 #pragma once
-#include "utils_fast_FWD.h"
+#include "xrx_prologue.h"
 #include <shared_mutex>
 #include <mutex>
 #include <utility>
@@ -75,3 +75,4 @@ namespace xrx::debug
     };
 } // namespace xrx::debug
 
+#include "xrx_epilogue.h"

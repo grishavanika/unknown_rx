@@ -5,6 +5,7 @@
 #include "concepts_observable.h"
 #include "observable_interface.h"
 #include "utils_observers.h"
+#include "xrx_prologue.h"
 #include <type_traits>
 #include <utility>
 #include <cassert>
@@ -83,3 +84,5 @@ namespace xrx
         };
     }
 } // namespace xrx
+
+#include "xrx_epilogue.h"

@@ -3,8 +3,7 @@
 #include "concepts_observable.h"
 #include "operator_tags.h"
 #include "cpo_make_operator.h"
-#include "utils_fast_FWD.h"
-#include "utils_defines.h"
+#include "xrx_prologue.h"
 
 #include <type_traits>
 
@@ -222,3 +221,5 @@ namespace xrx::detail
         return ::xrx::pipe(XRX_MOV(*this), XRX_MOV(f), XRX_MOV(fs)...);
     }
 } // namespace xrx::detail
+
+#include "xrx_epilogue.h"

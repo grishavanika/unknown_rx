@@ -33,6 +33,6 @@ TEST(Iterate, Array)
     EXPECT_CALL(observer, on_error()).Times(0);
 
     std::array<int, 3> vs{{1, 2, 3}};
-    observable::iterate(XRX_MOV(vs))
+    observable::iterate(std::move(vs))
         .subscribe(observer.ref());
 }
