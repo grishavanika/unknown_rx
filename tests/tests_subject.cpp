@@ -33,6 +33,30 @@ TEST(Subject, HappyPath)
     subject.on_completed();
 }
 
+TEST(Subject, HappyPath_ExternalState)
+{
+    ObserverMock observer;
+    Sequence s;
+
+    EXPECT_CALL(observer, on_next(1)).InSequence(s);
+    EXPECT_CALL(observer, on_next(2)).InSequence(s);
+
+    EXPECT_CALL(observer, on_completed()).InSequence(s);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
+
+    using Subject_ = Subject_<int>;
+    using State = typename Subject_::SharedState;
+    State state;
+    Subject_ subject(state, unsafe());
+    auto unsubscriber = subject.subscribe(observer.ref());
+    ASSERT_TRUE(unsubscriber);
+    ASSERT_EQ(1, int(state._subscriptions.size()));
+
+    subject.on_next(1);
+    subject.on_next(2);
+    subject.on_completed();
+}
+
 TEST(Subject, DoesntEmitAfterUnsubscribe)
 {
     ObserverMock observer;

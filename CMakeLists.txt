@@ -64,6 +64,7 @@ set(xrx_HEADERS
     "include/debug/malloc_allocator.h"
     "include/debug/tracking_allocator.h"
     "include/utils_ref_tracking_observer.h"
+    "include/utils_maybe_shared_ptr.h"
     "include/simple_scheduler_event_loop.h"
     "include/operators/operator_window_toggle.h"
     "include/operators/operator_start_with.h"

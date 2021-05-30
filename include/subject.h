@@ -2,6 +2,7 @@
 #include "any_observer.h"
 #include "utils_containers.h"
 #include "utils_observers.h"
+#include "utils_maybe_shared_ptr.h"
 #include "observable_interface.h"
 #include "debug/assert_mutex.h"
 #include "xrx_prologue.h"
@@ -13,6 +14,8 @@
 
 namespace xrx
 {
+    struct unsafe {};
+
     template<typename Value, typename Error = void_
         , typename Alloc = std::allocator<void>>
     struct Subject_
@@ -58,7 +61,7 @@ namespace xrx
             // [weak_ptr]: if weak reference is expired, there is no actual
             // reference to Subject<> that can push/emit new items to the stream.
             // Nothing to unsubscribe from.
-            std::weak_ptr<SharedState> _shared_weak;
+            detail::MaybeWeakPtr<SharedState> _shared_weak;
             Handle _handle;
 
             bool operator()()
@@ -79,7 +82,7 @@ namespace xrx
         };
         using DetachHandle = Detach;
 
-        std::shared_ptr<SharedState> _shared;
+        detail::MaybeSharedPtr<SharedState> _shared;
 
         explicit Subject_()
             : Subject_(Alloc())
@@ -87,9 +90,20 @@ namespace xrx
         }
 
         explicit Subject_(const Alloc& alloc)
-            : _shared(std::allocate_shared<SharedState>(
+            : _shared(detail::MaybeSharedPtr<SharedState>::from_shared(
+                std::allocate_shared<SharedState>(
                   SharedAlloc(alloc) // for allocate_shared<>.
-                , alloc)) // for SharedState.
+                , alloc))) // for SharedState.
+        {
+        }
+
+        explicit Subject_(detail::MaybeSharedPtr<SharedState>&& impl, unsafe)
+            : _shared(XRX_MOV(impl))
+        {
+        }
+
+        explicit Subject_(SharedState& impl_ref, unsafe)
+            : _shared(detail::MaybeSharedPtr<SharedState>::from_ref(impl_ref))
         {
         }
 
@@ -102,7 +116,7 @@ namespace xrx
             // [weak_ptr]: if weak reference is expired, there is no actual
             // reference to Subject<> that can push/emit new items to the stream.
             // The stream is dangling; any new Observer will not get any event.
-            std::weak_ptr<SharedState> _shared_weak;
+            detail::MaybeWeakPtr<SharedState> _shared_weak;
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, Value>
@@ -165,7 +179,8 @@ namespace xrx
 
         Observer as_observer()
         {
-            return Observer(_shared);
+            auto copy = _shared;
+            return Observer(XRX_MOV(copy), unsafe());
         }
 
         void on_next(XRX_RVALUE(value_type&&) v)
@@ -219,12 +234,6 @@ namespace xrx
             }
             // Clean-up everything, not needed anymore.
             _shared->_subscriptions = {};
-        }
-
-    private:
-        explicit Subject_(std::shared_ptr<SharedState> impl)
-            : _shared(XRX_MOV(impl))
-        {
         }
     };
 } // namespace xrx
