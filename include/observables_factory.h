@@ -14,10 +14,11 @@ namespace xrx::observable
             , XRX_MOV(period), XRX_MOV(scheduler));
     }
 
-    template<typename Value, typename Error = void, typename F>
+    template<typename Value, typename Error = void_, typename F>
     auto create(XRX_RVALUE(F&&) on_subscribe)
     {
         static_assert(not std::is_same_v<Value, void>);
+        static_assert(not std::is_same_v<Error, void>);
         XRX_CHECK_RVALUE(on_subscribe);
         using Tag_ = xrx::detail::operator_tag::Create<Value, Error>;
         return ::xrx::detail::make_operator(Tag_()

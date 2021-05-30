@@ -20,7 +20,7 @@ TEST(Concat, ConcatTwoStreams_WithSingleNumber)
     EXPECT_CALL(observer, on_next(2)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     auto o1 = observable::range(1, 1); // [1, 1]
     auto o2 = observable::range(2, 2); // [2, 2]
@@ -41,7 +41,7 @@ TEST(Concat, ConcatTwoStreams_ProcessStreamsInOrder)
     EXPECT_CALL(observer, on_next(11)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     auto o1 = observable::range(1).take(2);  // [1, 2]
     auto o2 = observable::range(10).take(2); // [10, 11]
@@ -56,7 +56,7 @@ TEST(Concat, CanStopWhileProcessingFirstStream)
     EXPECT_CALL(observer, on_next(1));
 
     EXPECT_CALL(observer, on_completed()).Times(0);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     auto o1 = observable::range(1); // infinity
     auto o2 = observable::range(10);// infinity
@@ -64,7 +64,7 @@ TEST(Concat, CanStopWhileProcessingFirstStream)
     merged.fork().subscribe(observer::make(
           [&](int v) { observer.on_next(v); return unsubscribe(true); }
         , [&]() { observer.on_completed(); }
-        , [&]() { observer.on_error(); }));
+        , [&](void_) { observer.on_error(void_()); }));
 }
 
 TEST(Concat, AsyncConcat_Simple)
@@ -78,7 +78,7 @@ TEST(Concat, AsyncConcat_Simple)
     EXPECT_CALL(observer, on_next(45)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     Subject_<int> o1;
     Subject_<int> o2;
@@ -104,9 +104,9 @@ TEST(Concat, AsyncConcat_WhenOneIsSync)
     EXPECT_CALL(observer, on_next(45)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
-    Subject_<int, none_tag> o2;
+    Subject_<int> o2;
     auto merged = observable::concat(observable::from(42, 43), o2.as_observable());
     merged.fork_move().subscribe(observer.ref());
     o2.on_next(44);
@@ -122,7 +122,7 @@ TEST(Concat, AsyncConcat_Unsubscribe_FirstObservable)
     EXPECT_CALL(observer, on_next(42)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).Times(0);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     Subject_<int> o1;
     Subject_<int> o2;
@@ -148,7 +148,7 @@ TEST(Concat, AsyncConcat_Unsubscribe_SecondObservable)
     EXPECT_CALL(observer, on_next(44)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).Times(0);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     Subject_<int> o1;
     Subject_<int> o2;
@@ -172,7 +172,7 @@ TEST(Concat, AsyncConcat_Behaves_AsSingleObservable)
     EXPECT_CALL(observer, on_next(42)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     Subject_<int> o1;
     Subject_<int> o2;

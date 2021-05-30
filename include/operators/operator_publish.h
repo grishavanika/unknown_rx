@@ -33,9 +33,8 @@ namespace xrx::detail
             std::shared_ptr<SharedImpl_> _shared;
             bool _do_refcount = false;
 
-            void on_next(value_type&& v);
-            template<typename... VoidOrError>
-            void on_error(XRX_RVALUE(VoidOrError&&)... e);
+            void on_next(XRX_RVALUE(value_type&&) v);
+            void on_error(XRX_RVALUE(error_type&&) e);
             void on_completed();
         };
 
@@ -170,20 +169,12 @@ namespace xrx::detail
                     }
                 }
             }
-            template<typename... VoidOrError>
-            void on_error_impl(XRX_RVALUE(VoidOrError&&)... e)
+            void on_error_impl(XRX_RVALUE(error_type&&) e)
             {
                 auto guard = std::unique_lock(_mutex);
                 for (AnyObserver_& observer : _subscriptions)
                 {
-                    if constexpr ((sizeof...(e)) == 0)
-                    {
-                        observer.on_error();
-                    }
-                    else
-                    {
-                        observer.on_error(error_type(e)...); // copy error.
-                    }
+                    observer.on_error(error_type(e)); // copy error.
                 }
             }
             void on_completed_impl()
@@ -275,11 +266,10 @@ namespace xrx::detail
     }
 
     template<typename SourceObservable>
-    template<typename... VoidOrError>
-    void ConnectObservableState_<SourceObservable>::ConnectObserver_::on_error(XRX_RVALUE(VoidOrError&&)... e)
+    void ConnectObservableState_<SourceObservable>::ConnectObserver_::on_error(XRX_RVALUE(error_type&&) e)
     {
         assert(_shared);
-        _shared->on_error_impl(XRX_MOV(e)...);
+        _shared->on_error_impl(XRX_MOV(e));
     }
 
     template<typename SourceObservable>

@@ -16,7 +16,7 @@ TEST(From, SingleElement_InvokedOnce)
     EXPECT_CALL(observer, on_next(42)).Times(1).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).Times(1).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(42)
         .subscribe(observer.ref());
@@ -35,7 +35,7 @@ TEST(From, AllRangePassedToOnNext)
     EXPECT_CALL(observer, on_next(47)).Times(1).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).Times(1).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(42, 43, 44, 45, 46, 47)
         .subscribe(observer.ref());

@@ -23,7 +23,7 @@ TEST(Filter, Filter_NooneWhenTrue)
     EXPECT_CALL(observer, on_next(3)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(1, 2, 3)
         .filter([](int) { return true; })
@@ -37,7 +37,7 @@ TEST(Filter, Filter_AllWhenFalse)
     EXPECT_CALL(observer, on_next(_)).Times(0);
 
     EXPECT_CALL(observer, on_completed());
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(1, 2, 3)
         .filter([](int) { return false; })
@@ -47,13 +47,13 @@ TEST(Filter, Filter_AllWhenFalse)
 TEST(Compile, Filter)
 {
     auto filter = [](int) { return false; };
-    auto o = make_operator(Filter(), Noop_Observable<int, void>(), std::move(filter));
+    auto o = make_operator(Filter(), Noop_Observable<int, void_>(), std::move(filter));
     static_assert(ConceptObservable<decltype(o)>);
 }
 
 TEST(Compile, FilterPipe)
 {
-    using O = Observable_<Noop_Observable<int, void>>;
+    using O = Observable_<Noop_Observable<int, void_>>;
     auto o = O() | filter([](int) { return false; });
     (void)o.fork().subscribe(Noop_Observer<int, void>());
     static_assert(ConceptObservable<decltype(o)>);

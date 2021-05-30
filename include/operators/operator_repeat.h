@@ -180,18 +180,10 @@ namespace xrx::detail
                     self->try_subscribe_next(XRX_MOV(_shared));
                 }
 
-                template<typename... VoidOrError>
-                void on_error(XRX_RVALUE(VoidOrError&&)... e)
+                void on_error(XRX_RVALUE(error_type&&) e)
                 {
                     auto guard = std::lock_guard(_shared->mutex());
-                    if constexpr ((sizeof...(e)) == 0)
-                    {
-                        on_error_optional(XRX_MOV(_shared->_observer));
-                    }
-                    else
-                    {
-                        on_error_optional(XRX_MOV(_shared->_observer), XRX_MOV(e)...);
-                    }
+                    on_error_optional(XRX_MOV(_shared->_observer), XRX_MOV(e));
                 }
             };
 

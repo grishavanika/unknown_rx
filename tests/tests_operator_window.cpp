@@ -21,7 +21,7 @@ TEST(Window, SimpleSequence_SplitInTwo)
     EXPECT_CALL(observer, on_next(4)).InSequence(s);
     EXPECT_CALL(observer, on_completed()).InSequence(s);
 
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(1, 2, 3, 4)
         | window(2)
@@ -44,7 +44,7 @@ TEST(Window, SimpleSequence_EmitedAll_WhenFinalPartIsNotComplete)
     EXPECT_CALL(observer, on_next(4)).InSequence(s);
     EXPECT_CALL(observer, on_completed()).InSequence(s);
 
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(1, 2, 3, 4)
         | window(3)

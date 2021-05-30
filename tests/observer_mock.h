@@ -8,7 +8,7 @@ struct ObserverMockAny
 {
     MOCK_METHOD(void, on_next, (Value));
     MOCK_METHOD(void, on_completed, ());
-    MOCK_METHOD(void, on_error, ());
+    MOCK_METHOD(void, on_error, (::xrx::void_));
 
     auto ref() & { return ::xrx::observer::ref(*this); }
 };

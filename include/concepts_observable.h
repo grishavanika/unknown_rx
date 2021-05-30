@@ -41,22 +41,6 @@ namespace xrx::detail
         void on_completed();
     };
 
-    template<typename Value>
-    struct ObserverArchetype<Value, void>
-    {
-        void on_next(Value);
-        void on_error();
-        void on_completed();
-    };
-
-    template<typename Value>
-    struct ObserverArchetype<Value, none_tag>
-    {
-        void on_next(Value);
-        void on_error();
-        void on_completed();
-    };
-
     template<typename ObservableLike_>
     concept ConceptObservable =
            (not std::is_reference_v<ObservableLike_>)

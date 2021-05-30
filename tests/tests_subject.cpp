@@ -22,7 +22,7 @@ TEST(Subject, HappyPath)
     EXPECT_CALL(observer, on_next(2)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     Subject_<int> subject;
     auto unsubscriber = subject.subscribe(observer.ref());
@@ -42,7 +42,7 @@ TEST(Subject, DoesntEmitAfterUnsubscribe)
     EXPECT_CALL(observer, on_next(2)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).Times(0);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     Subject_<int> subject;
     auto DetachHandle = subject.subscribe(observer.ref());
@@ -103,7 +103,7 @@ TEST(Subject, Subscribe_After_OnCompleted_Invokes_OnCompleted)
     EXPECT_CALL(observer, on_next(1)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).Times(3).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     Subject_<int> subject;
     subject.subscribe(observer.ref());
@@ -122,12 +122,12 @@ TEST(Subject, Subscribe_After_OnError_Invokes_OnError)
     EXPECT_CALL(observer, on_next(1)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).Times(0);
-    EXPECT_CALL(observer, on_error()).Times(3).InSequence(s);
+    EXPECT_CALL(observer, on_error(_)).Times(3).InSequence(s);
 
     Subject_<int> subject;
     subject.subscribe(observer.ref());
     subject.on_next(1);
-    subject.on_error();
+    subject.on_error(void_());
 
     subject.subscribe(observer.ref());
     subject.subscribe(observer.ref());
@@ -162,7 +162,7 @@ TEST(Subject, OnNext_Ignore_AfterOnCompleted)
     EXPECT_CALL(observer, on_next(2)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     Subject_<int> subject;
     subject.subscribe(observer.ref());
@@ -183,14 +183,14 @@ TEST(Subject, OnNext_Ignore_AfterOnError)
     EXPECT_CALL(observer, on_next(2)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).Times(0);
-    EXPECT_CALL(observer, on_error()).InSequence(s);
+    EXPECT_CALL(observer, on_error(_)).InSequence(s);
 
     Subject_<int> subject;
     subject.subscribe(observer.ref());
 
     subject.on_next(1);
     subject.on_next(2);
-    subject.on_error();
+    subject.on_error(void_());
     subject.on_next(-1);
     subject.on_next(-2);
 }
@@ -228,7 +228,7 @@ TEST(Subject, Construct_WithCustomAlloc_WithObserver)
     ObserverMock observer;
 
     NewAllocsStats::get().reset();
-    Subject_<int, none_tag, Alloc> subject(alloc);
+    Subject_<int, void_, Alloc> subject(alloc);
     subject.subscribe(observer.ref());
     // No global new allocations.
     ASSERT_EQ(0, int(NewAllocsStats::get()._count));

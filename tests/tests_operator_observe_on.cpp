@@ -52,7 +52,7 @@ TEST(ObserveOn, SourceEmit_RequestsToScheduleTask)
     EXPECT_CALL(observer, on_next(43)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     subject.as_observable()
         .observe_on(std::move(scheduler))

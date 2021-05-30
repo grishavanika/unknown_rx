@@ -15,14 +15,14 @@ using xrx::detail::operator_tag::Transform;
 TEST(Compile, Transform)
 {
     auto transform = [](int v) { return v; };
-    auto o = make_operator(Transform(), Noop_Observable<int, void>(), std::move(transform));
+    auto o = make_operator(Transform(), Noop_Observable<int, void_>(), std::move(transform));
     static_assert(ConceptObservable<decltype(o)>);
 }
 
 
 TEST(Compile, TransformPipe)
 {
-    using O = Observable_<Noop_Observable<int, void>>;
+    using O = Observable_<Noop_Observable<int, void_>>;
     auto o = O() | transform([](int) { return false; });
     static_assert(ConceptObservable<decltype(o)>);
     (void)o.fork().subscribe(Noop_Observer<bool, void>());
@@ -37,7 +37,7 @@ TEST(Transform, IdentityTransform)
     EXPECT_CALL(observer, on_next(2)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(1, 2)
         .transform([_ = debug::CopyMoveTrack(42)](int v) { return v; })
@@ -53,7 +53,7 @@ TEST(Transform, IdentityTransform_CopyMoveTrack)
     EXPECT_CALL(observer, on_next(2)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(1, 2)
         .transform([_ = debug::CopyMoveTrack(42)](int v)

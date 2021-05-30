@@ -16,7 +16,7 @@ namespace xrx::detail
     struct IterateObservable
     {
         using value_type = std::remove_reference_t<decltype(*std::begin(std::declval<Container>()))>;
-        using error_type = none_tag;
+        using error_type = void_;
         using is_async = std::false_type;
         using DetachHandle = NoopDetach;
 

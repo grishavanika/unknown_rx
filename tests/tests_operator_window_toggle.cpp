@@ -31,7 +31,7 @@ TEST(WindowToggle, Compile)
         })
         .subscribe([](int v)
         {
-            printf("%i\n", v);
+            std::printf("%i\n", v);
         });
 
     source.on_next(-1);

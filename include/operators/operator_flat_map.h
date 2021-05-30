@@ -32,18 +32,6 @@ namespace xrx::detail
         using are_compatible = std::is_same<E1, E2>;
         using E = E1;
     };
-    template<>
-    struct MergedErrors<void, none_tag>
-    {
-        using are_compatible = std::true_type;
-        using E = void;
-    };
-    template<>
-    struct MergedErrors<none_tag, void>
-    {
-        using are_compatible = std::true_type;
-        using E = void;
-    };
 
     template<typename SourceObservable
         , typename ProducedObservable
@@ -60,7 +48,8 @@ namespace xrx::detail
         bool _completed = false;
     };
 
-    template<typename Observer, typename Value, typename Map, typename SourceValue>
+    template<typename Observer, typename Value, typename Map
+        , typename SourceValue, typename ErrorValue>
     struct InnerObserver_Sync_Sync
     {
         Observer* _destination = nullptr;
@@ -86,25 +75,17 @@ namespace xrx::detail
             assert(not _state->_unsubscribed);
             _state->_completed = true; // on_completed(): nothing to do, move to next observable.
         }
-        template<typename... VoidOrError>
-        XRX_FORCEINLINE() void on_error(XRX_RVALUE(VoidOrError&&)... e)
+        XRX_FORCEINLINE() void on_error(XRX_RVALUE(ErrorValue&&) e)
         {
             assert(not _state->_end_with_error);
             assert(not _state->_completed);
             assert(not _state->_unsubscribed);
-            if constexpr ((sizeof...(e)) == 0)
-            {
-                on_error_optional(XRX_MOV(*_destination));
-            }
-            else
-            {
-                on_error_optional(XRX_MOV(*_destination), XRX_MOV(e)...);
-            }
+            on_error_optional(XRX_MOV(*_destination), XRX_MOV(e));
             _state->_end_with_error = true;
         }
     };
 
-    template<typename ProducedValue, typename Observer, typename Observable, typename Map, typename SourceValue>
+    template<typename ProducedValue, typename ErrorValue, typename Observer, typename Observable, typename Map, typename SourceValue>
     XRX_FORCEINLINE() static bool invoke_inner_sync_sync(Observer& destination_
         , XRX_RVALUE(Observable&&) inner
         , Map& map
@@ -112,7 +93,7 @@ namespace xrx::detail
     {
         XRX_CHECK_RVALUE(inner);
         XRX_CHECK_RVALUE(source_value);
-        using InnerSync_ = InnerObserver_Sync_Sync<Observer, ProducedValue, Map, SourceValue>;
+        using InnerSync_ = InnerObserver_Sync_Sync<Observer, ProducedValue, Map, SourceValue, ErrorValue>;
         State_Sync_Sync state;
         auto detach = XRX_MOV(inner).subscribe(
             InnerSync_(&destination_, &state, &map, &source_value));
@@ -124,7 +105,12 @@ namespace xrx::detail
         return (not stop);
     };
 
-    template<typename Observer, typename Producer, typename Map, typename SourceValue, typename ProducedValue>
+    template<typename Observer
+        , typename Producer
+        , typename Map
+        , typename SourceValue
+        , typename ErrorValue
+        , typename ProducedValue>
     struct OuterObserver_Sync_Sync
     {
         Producer* _produce = nullptr;
@@ -138,7 +124,7 @@ namespace xrx::detail
             assert(not _state->_completed);
             assert(not _state->_unsubscribed);
             SourceValue copy = source_value;
-            const bool continue_ = invoke_inner_sync_sync<ProducedValue>(
+            const bool continue_ = invoke_inner_sync_sync<ProducedValue, ErrorValue>(
                 *_destination
                 , (*_produce)(XRX_MOV(source_value))
                 , *_map
@@ -154,20 +140,12 @@ namespace xrx::detail
             on_completed_optional(*_destination);
             _state->_completed = true;
         }
-        template<typename... VoidOrError>
-        XRX_FORCEINLINE() void on_error(XRX_RVALUE(VoidOrError&&)... e)
+        XRX_FORCEINLINE() void on_error(XRX_RVALUE(ErrorValue&&) e)
         {
             assert(not _state->_end_with_error);
             assert(not _state->_completed);
             assert(not _state->_unsubscribed);
-            if constexpr ((sizeof...(e)) == 0)
-            {
-                on_error_optional(XRX_MOV(*_destination));
-            }
-            else
-            {
-                on_error_optional(XRX_MOV(*_destination), XRX_MOV(e)...);
-            }
+            on_error_optional(XRX_MOV(*_destination), XRX_MOV(e));
             _state->_end_with_error = true;
         }
     };
@@ -222,7 +200,7 @@ namespace xrx::detail
         {
             XRX_CHECK_RVALUE(destination_);
             XRX_CHECK_TYPE_NOT_REF(Observer);
-            using Root_ = OuterObserver_Sync_Sync<Observer, Produce, Map, source_type, produce_type>;
+            using Root_ = OuterObserver_Sync_Sync<Observer, Produce, Map, source_type, error_type, produce_type>;
             State_Sync_Sync state;
             auto detach = XRX_MOV(_source).subscribe(
                 Root_(&_produce, &_map, &destination_, &state));
@@ -299,6 +277,7 @@ namespace xrx::detail
         , typename Map
         , typename Observable
         , typename SourceValue
+        , typename ErrorValue
         , typename InnerValue>
     struct SharedState_Sync_Async
     {
@@ -363,20 +342,12 @@ namespace xrx::detail
             }
             return unsubscribe(false);
         }
-        template<typename... VoidOrError>
-        void on_error(std::size_t child_index, XRX_RVALUE(VoidOrError&&)... e)
+        void on_error(std::size_t child_index, XRX_RVALUE(ErrorValue&&) e)
         {
             auto guard = std::lock_guard(*_observables._mutex);
             assert(child_index < _observables._children.size());
             assert(not _observables._unsubscribe);
-            if constexpr ((sizeof...(e)) == 0)
-            {
-                on_error_optional(XRX_MOV(_observer));
-            }
-            else
-            {
-                on_error_optional(XRX_MOV(_observer), XRX_MOV(e)...);
-            }
+            on_error_optional(XRX_MOV(_observer), XRX_MOV(e));
             _observables._unsubscribe = true;
             unsubscribe_all(child_index);
         }
@@ -413,21 +384,14 @@ namespace xrx::detail
         {
             return _shared->on_completed(_index);
         }
-        template<typename... VoidOrError>
-        XRX_FORCEINLINE() void on_error(XRX_RVALUE(VoidOrError&&)... e)
+        XRX_FORCEINLINE() void on_error(XRX_RVALUE(Error&&) e)
         {
-            if constexpr ((sizeof...(e)) == 0)
-            {
-                return _shared->on_error(_index);
-            }
-            else
-            {
-                return _shared->on_error(_index, XRX_MOV(e)...);
-            }
+            return _shared->on_error(_index, XRX_MOV(e));
         }
     };
 
-    template<typename Observer, typename Producer, typename Observable, typename SourceValue>
+    template<typename Observer, typename Producer, typename Observable
+        , typename SourceValue, typename ErrorValue>
     struct OuterObserver_Sync_Async
     {
         Observer* _destination = nullptr;
@@ -453,20 +417,12 @@ namespace xrx::detail
             // emit all children items.
             _state->_completed = true;
         }
-        template<typename... VoidOrError>
-        XRX_FORCEINLINE() void on_error(XRX_RVALUE(VoidOrError&&)... e)
+        XRX_FORCEINLINE() void on_error(XRX_RVALUE(ErrorValue&&) e)
         {
             assert(not _state->_end_with_error);
             assert(not _state->_completed);
             assert(not _state->_unsubscribed);
-            if constexpr ((sizeof...(e)) == 0)
-            {
-                on_error_optional(XRX_MOV(*_destination));
-            }
-            else
-            {
-                on_error_optional(XRX_MOV(*_destination), XRX_MOV(e)...);
-            }
+            on_error_optional(XRX_MOV(*_destination), XRX_MOV(e));
             _state->_end_with_error = true;
         }
     };
@@ -522,9 +478,9 @@ namespace xrx::detail
         {
             XRX_CHECK_RVALUE(destination_);
             XRX_CHECK_TYPE_NOT_REF(Observer);
-            using Root_ = OuterObserver_Sync_Async<Observer, Produce, ProducedObservable, source_type>;
+            using Root_ = OuterObserver_Sync_Async<Observer, Produce, ProducedObservable, source_type, error_type>;
             using AllObsevables = AllObservablesState_Sync_Async<ProducedObservable, source_type>;
-            using SharedState_ = SharedState_Sync_Async<Observer, Map, ProducedObservable, source_type, produce_type>;
+            using SharedState_ = SharedState_Sync_Async<Observer, Map, ProducedObservable, source_type, error_type, produce_type>;
             using InnerObserver_ = InnerObserver_Sync_Async<SharedState_, produce_type, error_type>;
 
             State_Sync_Sync state;
@@ -562,7 +518,12 @@ namespace xrx::detail
         }
     };
 
-    template<typename Observer, typename Producer, typename Map, typename SourceValue, typename ProducedValue>
+    template<typename Observer
+        , typename Producer
+        , typename Map
+        , typename SourceValue
+        , typename ErrorValue
+        , typename ProducedValue>
     struct OuterObserver_Async_Sync
     {
         Producer _produce;
@@ -584,7 +545,7 @@ namespace xrx::detail
             assert(not _state._completed);
             assert(not _state._unsubscribed);
             SourceValue copy = source_value;
-            const bool continue_ = invoke_inner_sync_sync<ProducedValue>(
+            const bool continue_ = invoke_inner_sync_sync<ProducedValue, ErrorValue>(
                 _destination
                 , (_produce)(XRX_MOV(source_value))
                 , _map
@@ -600,20 +561,12 @@ namespace xrx::detail
             on_completed_optional(_destination);
             _state._completed = true;
         }
-        template<typename... VoidOrError>
-        void on_error(XRX_RVALUE(VoidOrError&&)... e)
+        void on_error(XRX_RVALUE(ErrorValue&&) e)
         {
             assert(not _state._end_with_error);
             assert(not _state._completed);
             assert(not _state._unsubscribed);
-            if constexpr ((sizeof...(e)) == 0)
-            {
-                on_error_optional(XRX_MOV(_destination));
-            }
-            else
-            {
-                on_error_optional(XRX_MOV(_destination), XRX_MOV(e)...);
-            }
+            on_error_optional(XRX_MOV(_destination), XRX_MOV(e));
             _state._end_with_error = true;
         }
     };
@@ -668,7 +621,7 @@ namespace xrx::detail
         DetachHandle subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
             XRX_CHECK_RVALUE(destination_);
-            using OuterObserver_ = OuterObserver_Async_Sync<Observer, Produce, Map, source_type, produce_type>;
+            using OuterObserver_ = OuterObserver_Async_Sync<Observer, Produce, Map, source_type, error_type, produce_type>;
             return XRX_MOV(_source).subscribe(OuterObserver_(
                 XRX_MOV(_produce), XRX_MOV(_map), XRX_MOV(destination_)));
         }
@@ -759,6 +712,7 @@ namespace xrx::detail
         , typename Observer
         , typename Produce
         , typename SourceValue
+        , typename ErrorValue
         , typename ChildObservable>
     struct SharedState_Async_Async
     {
@@ -820,26 +774,17 @@ namespace xrx::detail
             on_completed_optional(XRX_MOV(_destination));
         }
 
-        template<typename... VoidOrError>
-        void on_error_source(std::size_t child_index, XRX_RVALUE(VoidOrError&&)... e)
+        void on_error_source(std::size_t child_index, XRX_RVALUE(ErrorValue&&) e)
         {
             auto lock = std::lock_guard(_observables._mutex);
             _observables.detach_all_unsafe(child_index);
-            if constexpr ((sizeof...(e)) == 0)
-            {
-                on_error_optional(XRX_MOV(_destination));
-            }
-            else
-            {
-                on_error_optional(XRX_MOV(_destination), XRX_MOV(e)...);
-            }
+            on_error_optional(XRX_MOV(_destination), XRX_MOV(e));
         }
 
-        template<typename... VoidOrError>
-        auto on_error(std::size_t child_index, XRX_RVALUE(VoidOrError&&)... e)
+        auto on_error(std::size_t child_index, XRX_RVALUE(ErrorValue&&) e)
         {
             (void)child_index;
-            on_error_source(child_index, XRX_MOV(e)...);
+            on_error_source(child_index, XRX_MOV(e));
         }
 
         auto on_completed(std::size_t child_index)
@@ -864,7 +809,7 @@ namespace xrx::detail
         }
     };
 
-    template<typename Shared, typename SourceValue, typename Produce>
+    template<typename Shared, typename SourceValue, typename ErrorValue, typename Produce>
     struct OuterObserver_Async_Async
     {
         std::shared_ptr<Shared> _shared;
@@ -889,13 +834,12 @@ namespace xrx::detail
             _shared->on_completed_source(std::size_t(-1));
             _state._completed = true;
         }
-        template<typename... VoidOrError>
-        void on_error(XRX_RVALUE(VoidOrError&&)... e)
+        void on_error(XRX_RVALUE(ErrorValue&&) e)
         {
             assert(not _state._end_with_error);
             assert(not _state._completed);
             assert(not _state._unsubscribed);
-            _shared->on_error_source(std::size_t(-1), XRX_MOV(e)...);
+            _shared->on_error_source(std::size_t(-1), XRX_MOV(e));
             _state._end_with_error = true;
         }
     };
@@ -953,9 +897,9 @@ namespace xrx::detail
         DetachHandle subscribe(XRX_RVALUE(Observer&&) destination_) &&
         {
             XRX_CHECK_RVALUE(destination_);
-            using Shared_ = SharedState_Async_Async<Map, Observer, Produce, source_type, ProducedObservable>;
+            using Shared_ = SharedState_Async_Async<Map, Observer, Produce, source_type, error_type, ProducedObservable>;
             using AllObservablesRef = std::shared_ptr<typename Shared_::AllObservables>;
-            using OuterObserver_ = OuterObserver_Async_Async<Shared_, source_type, Produce>;
+            using OuterObserver_ = OuterObserver_Async_Async<Shared_, source_type, error_type, Produce>;
 
             auto shared = std::make_shared<Shared_>(XRX_MOV(_map), XRX_MOV(destination_), XRX_MOV(_produce));
             auto observables_ref = AllObservablesRef(shared, &shared->_observables);

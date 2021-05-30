@@ -23,7 +23,7 @@ TEST(FlatMap, CollapseSingleRangeWithSingleElement)
     EXPECT_CALL(observer, on_next(1)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(1)
         | flat_map([](int v) { return observable::from(int(v)); })
@@ -38,7 +38,7 @@ TEST(FlatMap, TerminateAfterSingleElementEmit)
     EXPECT_CALL(observer, on_next(5)).Times(1).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(1, 2, 3)
         | flat_map([](int) { return observable::from(5, 2, 3); })
@@ -58,7 +58,7 @@ TEST(FlatMap, WithMap)
     EXPECT_CALL(observer, on_next(pair(2, 2 * 3))).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(1, 2)
         | flat_map([](int source)
@@ -84,7 +84,7 @@ TEST(FlatMap, WithMap_DifferentTypes)
     EXPECT_CALL(observer, on_next(pair(2, "6"))).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(1, 2)
         | flat_map([](int source)
@@ -109,7 +109,7 @@ TEST(FlatMap, SyncSource_WithAsyncProducer)
     EXPECT_CALL(observer, on_next(43)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).Times(0);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     Subject_<int> inner;
     auto DetachHandle = observable::from(1)
@@ -138,7 +138,7 @@ TEST(FlatMap, SyncSource_WithAsyncProducer_MultipleChildren)
     EXPECT_CALL(observer, on_next("48")).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     Subject_<std::string> inner1;
     Subject_<std::string> inner2;
@@ -174,7 +174,7 @@ TEST(FlatMap, SyncSource_WithAsyncProducer_Interleaving)
     EXPECT_CALL(observer, on_next(pair(2, "48"))).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     Subject_<std::string> inner1;
     Subject_<std::string> inner2;
@@ -278,7 +278,7 @@ TEST(FlatMap, AsyncSource_SyncInner)
     EXPECT_CALL(observer, on_next(62)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     Subject_<int> source;
 
@@ -303,7 +303,7 @@ TEST(FlatMap, AsyncSource_AsyncInner)
     EXPECT_CALL(observer, on_next(3)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     Subject_<int> source;
     Subject_<int> inner;

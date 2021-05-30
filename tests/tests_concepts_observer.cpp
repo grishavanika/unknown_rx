@@ -120,36 +120,6 @@ namespace tests::on_error_
         constexpr int on_error(int) const { return -1; }
     };
     static_assert(on_error(WithCombination(), 1) == 1);
-
-    // void case.
-    struct Void_WithOnly_OnError
-    {
-        constexpr int on_error() const { return 2; }
-    };
-    static_assert(on_error(Void_WithOnly_OnError()) == 2);
-
-    struct Void_WithOnly_FunctionCall
-    {
-        constexpr int operator()() const { return -1; }
-    };
-    static_assert(not is_cpo_invocable_v<tag_t<on_error>, Void_WithOnly_FunctionCall>);
-
-    struct Void_WithOnly_TagInvoke
-    {
-        friend constexpr int tag_invoke(tag_t<::on_error>
-            , Void_WithOnly_TagInvoke)
-        { return 2; }
-    };
-    static_assert(on_error(Void_WithOnly_TagInvoke()) == 2);
-
-    struct Void_WithCombination
-    {
-        friend constexpr int tag_invoke(tag_t<::on_error>
-            , Void_WithCombination)
-        { return 2; }
-        constexpr int on_error(int) const { return -1; }
-    };
-    static_assert(on_error(Void_WithCombination()) == 2);
 } // namespace tests::on_error_
 
 namespace tests::concepts_
@@ -157,31 +127,29 @@ namespace tests::concepts_
     struct Callback
     {
         void operator()(int) const;
-        void operator()() const;
+        void operator()(void_) const;
     };
     static_assert(ConceptValueObserverOf<Callback, int>);
-    static_assert(ConceptValueObserverOf<Callback, void>);
+    static_assert(ConceptValueObserverOf<Callback, void_>);
     static_assert(not ConceptValueObserverOf<Callback, char*>);
     static_assert(not ConceptObserverOf<Callback, int/*value*/, int/*error*/>);
 
     struct Custom
     {
         void on_next(int) const;
-        void operator()() const;
+        void operator()(void_) const;
     };
     static_assert(ConceptValueObserverOf<Custom, int>);
-    static_assert(ConceptValueObserverOf<Custom, void>);
+    static_assert(ConceptValueObserverOf<Custom, void_>);
     static_assert(not ConceptValueObserverOf<Custom, char*>);
     static_assert(not ConceptObserverOf<Custom, int/*value*/, int/*error*/>);
 
     struct StrictCustom
     {
         void on_next(int) const;
-        void on_error() const;
         void on_error(int) const;
         void on_completed() const;
     };
-    static_assert(ConceptObserverOf<StrictCustom, int/*value*/, void/*error*/>);
     static_assert(ConceptObserverOf<StrictCustom, int/*value*/, int/*error*/>);
     static_assert(ConceptValueObserverOf<StrictCustom, int>);
 } // namespace tests::concepts_

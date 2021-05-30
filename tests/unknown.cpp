@@ -31,7 +31,7 @@ using namespace detail;
 struct InitialSourceObservable_
 {
     using value_type = int;
-    using error_type = none_tag;
+    using error_type = void_;
     using DetachHandle = NoopDetach;
 
     template<typename Observer>

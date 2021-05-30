@@ -67,8 +67,7 @@ namespace xrx::observable
                 return ::xrx::unsubscribe(false);
             }
 
-            template<typename... VoidOrError>
-            void on_error(XRX_RVALUE(VoidOrError&&)... e)
+            void on_error(XRX_RVALUE(Error&&) e)
             {
                 if constexpr (::xrx::detail::ConceptWithOnError<DestinationObserver_, Error>)
                 {
@@ -77,36 +76,15 @@ namespace xrx::observable
                         return;
                     }
                     auto self = _shared;
-
-                    if constexpr ((sizeof...(e)) == 0)
+                    const auto handle = self->_sheduler.task_post(
+                        [self, e_ = XRX_MOV(e)]() mutable
                     {
-                        const auto handle = self->_sheduler.task_post(
-                            [self]() mutable
+                        if (not self->_unsubscribed)
                         {
-                            if (not self->_unsubscribed)
-                            {
-                                (void)::xrx::detail::on_error(XRX_MOV(self->_target));
-                            }
-                        });
-                        (void)handle;
-                    }
-                    else
-                    {
-                        const auto handle = self->_sheduler.task_post(
-                            [self, es = std::make_tuple(XRX_MOV(e)...)]() mutable
-                        {
-                            if (not self->_unsubscribed)
-                            {
-                                std::apply([&](auto&&... error) // error is rvalue.
-                                {
-                                    (void)::xrx::detail::on_error(
-                                        XRX_MOV(self->_target), XRX_FWD(error)...);
-                                }
-                                    , XRX_MOV(es));
-                            }
-                        });
-                        (void)handle;
-                    }
+                            (void)::xrx::detail::on_error(XRX_MOV(self->_target), XRX_MOV(e_));
+                        }
+                    });
+                    (void)handle;
                 }
                 else
                 {

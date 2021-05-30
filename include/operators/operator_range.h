@@ -16,7 +16,7 @@ namespace xrx::detail
     struct RangeObservable
     {
         using value_type   = Integer;
-        using error_type   = none_tag;
+        using error_type   = void_;
         using is_async = std::false_type;
         using DetachHandle = NoopDetach;
 

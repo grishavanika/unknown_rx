@@ -40,7 +40,7 @@ TEST(Range, WhenBoundariesAreEqual_InvokedOnce)
         EXPECT_CALL(observer, on_next(0)).Times(1).InSequence(s);
 
         EXPECT_CALL(observer, on_completed()).Times(1).InSequence(s);
-        EXPECT_CALL(observer, on_error()).Times(0);
+        EXPECT_CALL(observer, on_error(_)).Times(0);
 
         observable::range(0, 0)
             .subscribe(observer.ref());
@@ -52,7 +52,7 @@ TEST(Range, WhenBoundariesAreEqual_InvokedOnce)
         EXPECT_CALL(observer, on_next(0)).Times(1).InSequence(s);
 
         EXPECT_CALL(observer, on_completed()).Times(1).InSequence(s);
-        EXPECT_CALL(observer, on_error()).Times(0);
+        EXPECT_CALL(observer, on_error(_)).Times(0);
 
         observable::range(0, 0, 1)
             .subscribe(observer.ref());
@@ -64,7 +64,7 @@ TEST(Range, WhenBoundariesAreEqual_InvokedOnce)
         EXPECT_CALL(observer, on_next(0)).Times(1).InSequence(s);
 
         EXPECT_CALL(observer, on_completed()).Times(1).InSequence(s);
-        EXPECT_CALL(observer, on_error()).Times(0);
+        EXPECT_CALL(observer, on_error(_)).Times(0);
 
         observable::range(0, 0, -1)
             .subscribe(observer.ref());
@@ -79,7 +79,7 @@ TEST(Range, BoundariesAreInclusive_DirectionRight)
     EXPECT_CALL(observer, on_next(_)).Times(11).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).Times(1).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::range(0, 10)
         .subscribe(observer.ref());
@@ -93,7 +93,7 @@ TEST(Range, BoundariesAreInclusive_DirectionLeft)
     EXPECT_CALL(observer, on_next(_)).Times(11).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).Times(1).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::range(10, 0, -1)
         .subscribe(observer.ref());

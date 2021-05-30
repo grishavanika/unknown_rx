@@ -22,7 +22,7 @@ TEST(Repeat, Pipe)
     EXPECT_CALL(observer, on_next(42)).Times(0);
 
     EXPECT_CALL(observer, on_completed()).Times(1);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(42)
         | repeat(0)
@@ -36,7 +36,7 @@ TEST(Repeat, Endless)
     EXPECT_CALL(observer, on_next(_)).Times(42);
 
     EXPECT_CALL(observer, on_completed()).Times(1);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(3)
         | repeat()
@@ -51,7 +51,7 @@ TEST(Repeat, SingleElement_RepeatedZeroTimes)
     EXPECT_CALL(observer, on_next(42)).Times(0);
 
     EXPECT_CALL(observer, on_completed()).Times(1);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(42)
         .repeat(0)
@@ -66,7 +66,7 @@ TEST(Repeat, SingleElement_RepeatedOnce)
     EXPECT_CALL(observer, on_next(42)).Times(1).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).Times(1).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(42)
         .repeat(1)
@@ -81,7 +81,7 @@ TEST(Repeat, SingleElement_RepeatedN)
     EXPECT_CALL(observer, on_next(42)).Times(10).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).Times(1).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(42)
         .repeat(10)
@@ -95,7 +95,7 @@ TEST(Repeat, SingleElement_Terminated)
     EXPECT_CALL(observer, on_next(42)).Times(1);
 
     EXPECT_CALL(observer, on_completed()).Times(0);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(42)
         .repeat(10)
@@ -104,8 +104,8 @@ TEST(Repeat, SingleElement_Terminated)
         observer.on_next(v);
         return unsubscribe(true);
     }
-        , [&]() { observer.on_completed(); }
-        , [&]() { observer.on_error(); }));
+        , [&]()      { observer.on_completed(); }
+        , [&](void_) { observer.on_error(void_()); }));
 }
 
 TEST(Repeat, TwoElemens_RepeatedZeroTime)
@@ -115,7 +115,7 @@ TEST(Repeat, TwoElemens_RepeatedZeroTime)
     EXPECT_CALL(observer, on_next(_)).Times(0);
 
     EXPECT_CALL(observer, on_completed()).Times(1);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::range(0, 1)
         .repeat(0)
@@ -131,7 +131,7 @@ TEST(Repeat, TwoElemens_RepeatedOnce)
     EXPECT_CALL(observer, on_next(4)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::range(3, 4)
         .repeat(1)
@@ -149,7 +149,7 @@ TEST(Repeat, TwoElemens_RepeatedTwice)
     EXPECT_CALL(observer, on_next(4)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::range(3, 4)
         .repeat(2)
@@ -164,7 +164,7 @@ TEST(Repeat, Terminated_OnFirstPass)
     EXPECT_CALL(observer, on_next(3)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     // #XXX: accept Observers that are std::reference_wrapper<>.
     observable::range(3, 4)
@@ -178,7 +178,7 @@ TEST(Repeat, Async_Simple_ZeroRepeat)
     ObserverMockAny<std::uint64_t> observer;
     EXPECT_CALL(observer, on_next(_)).Times(0);
     EXPECT_CALL(observer, on_completed()).Times(1);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     debug::EventLoop event_loop;
     auto async = observable::interval(std::chrono::milliseconds(1), event_loop.scheduler());
@@ -202,7 +202,7 @@ TEST(Repeat, Async_Simple_RepeatOnce)
     EXPECT_CALL(observer, on_next(1)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     debug::EventLoop event_loop;
     auto async = observable::interval(std::chrono::milliseconds(1), event_loop.scheduler());
@@ -228,7 +228,7 @@ TEST(Repeat, Async_Simple_RepeatTwice)
     EXPECT_CALL(observer, on_next(1)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     debug::EventLoop event_loop;
     auto async = observable::interval(std::chrono::milliseconds(1), event_loop.scheduler());
@@ -253,7 +253,7 @@ TEST(Repeat, Async_Infinity)
     EXPECT_CALL(observer, on_next(0)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     debug::EventLoop event_loop;
     auto async = observable::interval(std::chrono::milliseconds(1), event_loop.scheduler());

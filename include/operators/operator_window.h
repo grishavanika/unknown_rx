@@ -22,7 +22,7 @@ namespace xrx::detail
     struct WindowSyncObservable
     {
         using value_type = Value;
-        using error_type = none_tag;
+        using error_type = void_;
         using is_async = std::false_type;
         using DetachHandle = NoopDetach;
 
@@ -143,21 +143,13 @@ namespace xrx::detail
                 _state->_completed = true;
             }
 
-            template<typename... VoidOrError>
-            void on_error(XRX_RVALUE(VoidOrError&&)... e)
+            void on_error(XRX_RVALUE(error_type&&) e)
             {
                 assert(not _state->_unsubscribed);
                 assert(not _state->_end_with_error);
                 assert(not _state->_completed);
 
-                if constexpr ((sizeof...(e)) == 0)
-                {
-                    on_error_optional(XRX_MOV(*_observer));
-                }
-                else
-                {
-                    on_error_optional(XRX_MOV(*_observer), XRX_MOV(e)...);
-                }
+                on_error_optional(XRX_MOV(*_observer), XRX_MOV(e));
                 _state->_end_with_error = true;
             }
         };

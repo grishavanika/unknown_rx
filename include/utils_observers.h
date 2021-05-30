@@ -132,9 +132,6 @@ namespace xrx::detail
         XRX_FORCEINLINE() constexpr void on_error(Error&&) const noexcept
         {
         }
-        XRX_FORCEINLINE() constexpr void on_error() const noexcept
-        {
-        }
     };
 
     template<typename OnNext, typename OnCompleted, typename OnError>
@@ -169,12 +166,6 @@ namespace xrx::detail
         {
             return XRX_MOV(_on_error)(XRX_FWD(error));
         }
-
-        XRX_FORCEINLINE() constexpr decltype(auto) on_error()
-            requires requires { XRX_MOV(_on_error)(); }
-        {
-            return XRX_MOV(_on_error)();
-        }
     };
 
     template<typename Observer>
@@ -189,11 +180,7 @@ namespace xrx::detail
             requires ConceptWithOnError<Observer, Error>
         XRX_FORCEINLINE() auto on_error(Error&& e)
         { return _ref->on_error(XRX_FWD(e)); }
-        
-        XRX_FORCEINLINE() auto on_error()
-            requires ConceptWithOnError<Observer, void>
-        { return _ref->on_error(); }
-        
+
         auto on_completed() { return _ref->on_completed(); }
     };
 } // namespace xrx::detail

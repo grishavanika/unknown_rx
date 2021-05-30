@@ -19,7 +19,7 @@ TEST(StartsWith, SingleElement)
     EXPECT_CALL(observer, on_next(42)).Times(1).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).Times(1).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(42)
         .starts_with(1)

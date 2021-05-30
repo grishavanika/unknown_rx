@@ -18,7 +18,7 @@ TEST(Reduce, SimpleSumFold)
 
     EXPECT_CALL(observer, on_next(45));
     EXPECT_CALL(observer, on_completed());
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     observable::from(1, 2, 3, 4, 5, 6, 7, 8, 9)
         .reduce(int(0), std::plus<>())

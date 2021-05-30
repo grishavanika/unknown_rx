@@ -27,6 +27,7 @@ namespace xrx::detail
         template<typename Value>
         XRX_FORCEINLINE() OnNextAction on_next(Value&& v)
         {
+            XRX_CHECK_RVALUE(v);
             assert(not _state->_completed);
             assert(not _state->_unsubscribed);
             assert(not _state->_with_error);
@@ -48,21 +49,15 @@ namespace xrx::detail
             _state->_completed = true;
         }
 
-        template<typename... VoidOrError>
-        XRX_FORCEINLINE() void on_error(XRX_RVALUE(VoidOrError&&)... e)
+        template<typename Error>
+        XRX_FORCEINLINE() void on_error(XRX_RVALUE(Error&&) e)
         {
+            XRX_CHECK_RVALUE(e);
             assert(not _state->_completed);
             assert(not _state->_unsubscribed);
             assert(not _state->_with_error);
 
-            if constexpr ((sizeof...(e)) == 0)
-            {
-                on_error_optional(XRX_MOV(*_observer));
-            }
-            else
-            {
-                on_error_optional(XRX_MOV(*_observer), XRX_MOV(e)...);
-            }
+            on_error_optional(XRX_MOV(*_observer), XRX_MOV(e));
             _state->_with_error = true;
         }
     };

@@ -56,7 +56,7 @@ TEST(Interval, WhenSubscribed_RequestsScheduler)
     EXPECT_CALL(observer, on_next(2)).InSequence(s);
 
     EXPECT_CALL(observer, on_completed()).Times(0);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     auto fake_detach = tick.fork_move().subscribe(observer.ref());
     ASSERT_TRUE(request);

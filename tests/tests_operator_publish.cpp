@@ -34,18 +34,18 @@ TEST(Publish, SourceSubscribe_CalledOnceWhenPublished)
         EXPECT_CALL(o1, on_next(42)).Times(1).InSequence(s1);
         EXPECT_CALL(o1, on_next(43)).Times(1).InSequence(s1);
         EXPECT_CALL(o1, on_completed()).Times(1).InSequence(s1);
-        EXPECT_CALL(o1, on_error()).Times(0);
+        EXPECT_CALL(o1, on_error(_)).Times(0);
     }
     {
         EXPECT_CALL(o2, on_next(42)).Times(1).InSequence(s2);
         EXPECT_CALL(o2, on_next(43)).Times(1).InSequence(s2);
         EXPECT_CALL(o2, on_completed()).Times(1).InSequence(s2);
-        EXPECT_CALL(o2, on_error()).Times(0);
+        EXPECT_CALL(o2, on_error(_)).Times(0);
     }
     {
         EXPECT_CALL(o3_unsubscribe, on_next(_)).Times(0);
         EXPECT_CALL(o3_unsubscribe, on_completed()).Times(0);
-        EXPECT_CALL(o3_unsubscribe, on_error()).Times(0);
+        EXPECT_CALL(o3_unsubscribe, on_error(_)).Times(0);
     }
 
     connected.fork().subscribe(o1.ref());
@@ -130,9 +130,9 @@ TEST(PublishX, RefCount_ConnectsOnFirstSubscribe)
     EXPECT_CALL(o1, on_next(42)).Times(1).InSequence(s1);
     EXPECT_CALL(o1, on_next(43)).Times(1).InSequence(s1);
     EXPECT_CALL(o1, on_completed()).Times(1).InSequence(s1);
-    EXPECT_CALL(o1, on_error()).Times(0);
+    EXPECT_CALL(o1, on_error(_)).Times(0);
 
-    EXPECT_CALL(o1, on_error()).Times(0);
+    EXPECT_CALL(o1, on_error(_)).Times(0);
 
     auto shared = source.fork_move()
         .publish()

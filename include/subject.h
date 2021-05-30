@@ -13,15 +13,7 @@
 
 namespace xrx
 {
-    namespace detail
-    {
-        template<typename ToAvoidVoid>
-        struct OnErrorWithValue_ { ToAvoidVoid _error; };
-        template<>
-        struct OnErrorWithValue_<void> { };
-    } // namespace detail
-
-    template<typename Value, typename Error = void
+    template<typename Value, typename Error = void_
         , typename Alloc = std::allocator<void>>
     struct Subject_
     {
@@ -35,11 +27,11 @@ namespace xrx
 
         struct InProgress_ {};
         struct OnCompleted_ {};
-        using OnErrorWithValue_ = detail::OnErrorWithValue_<Error>;
+        struct OnError_ { Error _error; };
 
         using State = std::variant<InProgress_
             , OnCompleted_
-            , OnErrorWithValue_>;
+            , OnError_>;
 
         struct SharedState
         {
@@ -132,18 +124,11 @@ namespace xrx
                     detail::on_completed_optional(XRX_MOV(observer));
                     return DetachHandle();
                 }
-                else if (auto* error_copy = std::get_if<OnErrorWithValue_>(&shared->_state))
+                else if (auto* error_copy = std::get_if<OnError_>(&shared->_state))
                 {
                     // on_error() was already called.
                     // Finalize this Observer.
-                    if constexpr (std::is_same_v<Error, void>)
-                    {
-                        detail::on_error_optional(XRX_MOV(observer));
-                    }
-                    else
-                    {
-                        detail::on_error_optional(XRX_MOV(observer), Error(error_copy->_error));
-                    }
+                    detail::on_error_optional(XRX_MOV(observer), Error(error_copy->_error));
                     return DetachHandle();
                 }
                 assert(std::get_if<InProgress_>(&shared->_state));
@@ -202,8 +187,7 @@ namespace xrx
             }
         }
 
-        template<typename... Es>
-        void on_error(Es&&... errors)
+        void on_error(XRX_RVALUE(error_type&&) e)
         {
             auto lock = std::unique_lock(_shared->_mutex);
             if (not std::get_if<InProgress_>(&_shared->_state))
@@ -211,24 +195,13 @@ namespace xrx
                 // Double-call to on_error() or call to on_error() after on_completed().
                 return;
             }
-            if constexpr (sizeof...(Es) == 0)
+            const error_type& error = _shared->_state.template emplace<OnError_>(XRX_MOV(e))._error;
+            for (AnyObserver_& observer : _shared->_subscriptions)
             {
-                _shared->_state.template emplace<OnErrorWithValue_>();
-                for (AnyObserver_& observer : _shared->_subscriptions)
-                {
-                    observer.on_error();
-                }
+                observer.on_error(error_type(error)); // copy.
             }
-            else
-            {
-                const Error& error = _shared->_state.template emplace<OnErrorWithValue_>(XRX_FWD(errors)...)._error;
-                for (AnyObserver_& observer : _shared->_subscriptions)
-                {
-                    observer.on_error(Error(error)); // copy.
-                }
-                // Clean-up everything, not needed anymore.
-                _shared->_subscriptions = {};
-            }
+            // Clean-up everything, not needed anymore.
+            _shared->_subscriptions = {};
         }
 
         void on_completed()

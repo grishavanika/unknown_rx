@@ -25,6 +25,10 @@ namespace xrx::detail
             , "Observable<> does not support emitting values of reference type.");
         static_assert(not std::is_reference_v<error_type>
             , "Observable<> does not support emitting error of reference type.");
+        static_assert(not std::is_same_v<value_type, void>
+            , "Observable<> does not support void type. Use ::xrx::void_ instead.");
+        static_assert(not std::is_same_v<error_type, void>
+            , "Observable<> does not support void type. Use ::xrx::void_ instead.");
 
         SourceObservable _source;
 

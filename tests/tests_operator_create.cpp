@@ -16,7 +16,7 @@ TEST(Create, OnlyComplete)
 
     EXPECT_CALL(observer, on_next(_)).Times(0);
     EXPECT_CALL(observer, on_completed());
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     auto o = observable::create<int>([](auto observer)
     {
@@ -33,11 +33,11 @@ TEST(Create, OnlyError)
 
     EXPECT_CALL(observer, on_next(_)).Times(0);
     EXPECT_CALL(observer, on_completed()).Times(0);
-    EXPECT_CALL(observer, on_error()).Times(1);
+    EXPECT_CALL(observer, on_error(_)).Times(1);
 
     auto o = observable::create<int>([](auto observer)
     {
-        observer.on_error();
+        observer.on_error(void_());
     });
     static_assert(not decltype(o)::is_async());
 
@@ -52,7 +52,7 @@ TEST(Create, SimpleSyncSequence)
     EXPECT_CALL(observer, on_next(43)).Times(1).InSequence(s);
     EXPECT_CALL(observer, on_next(44)).Times(1).InSequence(s);
     EXPECT_CALL(observer, on_completed()).Times(1).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     auto o = observable::create<int>([](auto observer)
     {
@@ -74,7 +74,7 @@ TEST(Create, SimpleAsyncSequence)
     EXPECT_CALL(observer, on_next(43)).Times(1).InSequence(s);
     EXPECT_CALL(observer, on_next(44)).Times(1).InSequence(s);
     EXPECT_CALL(observer, on_completed()).Times(1).InSequence(s);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     Subject_<int> subject;
 

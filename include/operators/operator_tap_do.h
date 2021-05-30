@@ -45,20 +45,10 @@ namespace xrx::detail
                 return on_completed_optional(XRX_MOV(_observer.get()));
             }
 
-            template<typename... VoidOrError>
-            XRX_FORCEINLINE() auto on_error(XRX_RVALUE(VoidOrError&&)... e)
+            XRX_FORCEINLINE() auto on_error(XRX_RVALUE(error_type&&) e)
             {
-                if constexpr ((sizeof...(e)) == 0)
-                {
-                    (void)on_error_optional(XRX_MOV(_listener.get()));
-                    return on_error_optional(XRX_MOV(_observer.get()));
-                }
-                else
-                {
-                    auto copy = [](auto e) { return XRX_MOV(e); };
-                    (void)on_error_optional(XRX_MOV(_listener.get()), copy(e)...);
-                    return on_error_optional(XRX_MOV(_observer.get()), XRX_MOV(e)...);
-                }
+                (void)on_error_optional(XRX_MOV(_listener.get()), error_type(e));
+                return on_error_optional(XRX_MOV(_observer.get()), XRX_MOV(e)...);
             }
         };
 

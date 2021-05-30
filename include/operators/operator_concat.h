@@ -186,8 +186,7 @@ namespace xrx::detail
 
             auto on_next(XRX_RVALUE(value_type&&) value);
             void on_completed();
-            template<typename... VoidOrError>
-            void on_error(XRX_RVALUE(VoidOrError&&)... e);
+            void on_error(XRX_RVALUE(error_type&&) e);
         };
 
         template<typename Observer>
@@ -243,18 +242,10 @@ namespace xrx::detail
                 start_impl(_cursor);
             }
 
-            template<typename... VoidOrError>
-            void on_error(XRX_RVALUE(VoidOrError&&)... e)
+            void on_error(XRX_RVALUE(error_type&&) e)
             {
                 auto guard = std::lock_guard(mutex());
-                if constexpr ((sizeof...(e)) == 0)
-                {
-                    on_error_optional(XRX_MOV(_destination));
-                }
-                else
-                {
-                    on_error_optional(XRX_MOV(_destination), XRX_MOV(e)...);
-                }
+                on_error_optional(XRX_MOV(_destination), XRX_MOV(e));
             }
         };
 
@@ -288,33 +279,19 @@ namespace xrx::detail
     }
     template<typename Tuple>
     template<typename Observer>
-    template<typename... VoidOrError>
-    void ConcatObservable<Tuple, true/*Async*/>::OnePassObserver<Observer>::on_error(XRX_RVALUE(VoidOrError&&)... e)
+    void ConcatObservable<Tuple, true/*Async*/>::OnePassObserver<Observer>::on_error(XRX_RVALUE(error_type&&) e)
     {
-        return _shared->on_error(XRX_MOV(e)...);
+        return _shared->on_error(XRX_MOV(e));
     }
 
     template<typename Observable1, typename Observable2, bool>
     struct HaveSameStreamTypes
     {
-        // #XXX: there is another similar code somewhere; move to helper.
-        using error1 = typename Observable1::error_type;
-        using error2 = typename Observable2::error_type;
-
-        static constexpr bool is_void_like_error1 =
-               std::is_same_v<error1, void>
-            or std::is_same_v<error1, none_tag>;
-        static constexpr bool is_void_like_error2 =
-               std::is_same_v<error2, void>
-            or std::is_same_v<error2, none_tag>;
-        static constexpr bool are_compatibe_errors =
-               (is_void_like_error1 and is_void_like_error2)
-            or std::is_same_v<error1, error2>;
-
         static constexpr bool value =
                std::is_same_v<typename Observable1::value_type
                             , typename Observable2::value_type>
-            && are_compatibe_errors;
+            && std::is_same_v<typename Observable1::error_type
+                            , typename Observable2::error_type>;
     };
 
     template<typename Observable1, typename Observable2>

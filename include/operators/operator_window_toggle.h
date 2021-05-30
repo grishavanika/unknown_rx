@@ -99,20 +99,12 @@ namespace xrx::detail
             }
         }
         // From any of (Openings, Closings, Source) stream.
-        template<typename... VoidOrError>
-        void on_any_error_unsafe(XRX_RVALUE(VoidOrError&&)... e)
+        void on_any_error_unsafe(XRX_RVALUE(ErrorValue&&) e)
         {
             // 1. We own the mutex.
             for (Subject& window : _windows)
             {
-                if constexpr ((sizeof...(e)) == 0)
-                {
-                    window.on_error();
-                }
-                else
-                {
-                    window.on_error(XRX_MOV(e)...);
-                }
+                window.on_error(XRX_MOV(e));
             }
         }
     };
@@ -154,13 +146,12 @@ namespace xrx::detail
             // Opened window remains opened if no
             // on_next() close event triggered.
         }
-        template<typename... VoidOrError>
-        void on_error(XRX_RVALUE(VoidOrError&&)... e)
+        void on_error(XRX_RVALUE(auto&&) e)
         {
             // Do not ignore errors. Propagate them from anywhere (closings stream).
             auto guard = std::lock_guard(_shared->mutex());
             unsubscribe_rest_unsafe();
-            _shared->on_any_error_unsafe(XRX_MOV(e)...);
+            _shared->on_any_error_unsafe(XRX_MOV(e));
         }
     };
 
@@ -184,7 +175,7 @@ namespace xrx::detail
             }
             closings.clear();
         }
-        unsubscribe on_next(XRX_RVALUE(auto) open_value)
+        unsubscribe on_next(XRX_RVALUE(auto&&) open_value)
         {
             CloseObservable closer = _close_producer(XRX_MOV(open_value));
 
@@ -204,13 +195,12 @@ namespace xrx::detail
         {
             // Done. No more windows possible.
         }
-        template<typename... VoidOrError>
-        void on_error(XRX_RVALUE(VoidOrError&&)... e)
+        void on_error(XRX_RVALUE(auto&&) e)
         {
             // Do not ignore errors. Propagate them from anywhere (openings stream).
             auto guard = std::lock_guard(_shared->mutex());
             unsubscribe_rest_unsafe();
-            _shared->on_any_error_unsafe(XRX_MOV(e)...);
+            _shared->on_any_error_unsafe(XRX_MOV(e));
         }
     };
 
@@ -233,7 +223,7 @@ namespace xrx::detail
             closings.clear();
         }
 
-        auto on_next(auto source_value)
+        auto on_next(XRX_RVALUE(auto&&) source_value)
         {
             auto guard = std::lock_guard(_shared->mutex());
             _shared->on_next_source(XRX_MOV(source_value));
@@ -244,12 +234,11 @@ namespace xrx::detail
             unsubscribe_rest_unsafe();
             _shared->on_completed_source();
         }
-        template<typename... VoidOrError>
-        void on_error(XRX_RVALUE(VoidOrError&&)... e)
+        void on_error(XRX_RVALUE(auto&&) e)
         {
             auto guard = std::lock_guard(_shared->mutex());
             unsubscribe_rest_unsafe();
-            _shared->on_any_error_unsafe(XRX_MOV(e)...);
+            _shared->on_any_error_unsafe(XRX_MOV(e));
         }
     };
 
@@ -286,15 +275,8 @@ namespace xrx::detail
     template<typename E1, typename E2, typename E3>
     struct MergedErrors3
     {
-        static constexpr bool is_void_like1 = (std::is_same_v<E1, void> or std::is_same_v<E1, none_tag>);
-        static constexpr bool is_void_like2 = (std::is_same_v<E2, void> or std::is_same_v<E2, none_tag>);
-        static constexpr bool is_void_like3 = (std::is_same_v<E3, void> or std::is_same_v<E3, none_tag>);
-
-        static constexpr bool are_all_voids = (is_void_like1 and is_void_like2 and is_void_like3);
         static constexpr bool are_all_same = (std::is_same_v<E1, E2> and std::is_same_v<E1, E3>);
-        using are_compatible = std::bool_constant<are_all_voids or are_all_same>;
-        // #TODO: it should be void if at least one is void.
-        // Should be none_tag if all of them are none_tag.
+        using are_compatible = std::bool_constant<are_all_same>;
         using E = E1;
     };
 

@@ -114,7 +114,6 @@ namespace xrx::detail
 
     struct on_error_fn
     {
-        // on_error() with single argument.
         template<typename S, typename E>
         XRX_FORCEINLINE() constexpr decltype(auto) resolve1_(S&& s, E&& e, priority_tag<1>) const
             noexcept(noexcept(tag_invoke(*this, std::forward<S>(s), std::forward<E>(e))))
@@ -136,71 +135,16 @@ namespace xrx::detail
         {
             return resolve1_(std::forward<S>(s), std::forward<E>(e), priority_tag<1>());
         }
-        // on_error() with no argument.
-        template<typename S>
-        XRX_FORCEINLINE() constexpr decltype(auto) resolve0_(S&& s, priority_tag<1>) const
-            noexcept(noexcept(tag_invoke(*this, std::forward<S>(s))))
-                requires tag_invocable<on_error_fn, S>
-        {
-            return tag_invoke(*this, std::forward<S>(s));
-        }
-        template<typename S>
-        XRX_FORCEINLINE() constexpr auto resolve0_(S&& s, priority_tag<0>) const
-            noexcept(noexcept(std::forward<S>(s).on_error()))
-                -> decltype(std::forward<S>(s).on_error())
-        {
-            return std::forward<S>(s).on_error();
-        }
-        template<typename S>
-        XRX_FORCEINLINE() constexpr auto operator()(S&& s) const
-            noexcept(noexcept(resolve0_(std::forward<S>(s), priority_tag<1>())))
-                -> decltype(resolve0_(std::forward<S>(s), priority_tag<1>()))
-        {
-            return resolve0_(std::forward<S>(s), priority_tag<1>());
-        }
     };
 
     inline const on_error_fn on_error{};
 
     template<typename Observer, typename Value>
-    struct OnNext_Invocable
-        : std::bool_constant<
-            is_cpo_invocable_v<tag_t<on_next>, Observer, Value>>
-    {
-    };
+    concept ConceptWithOnNext = is_cpo_invocable_v<tag_t<on_next>, Observer, Value>;
     template<typename Observer>
-    struct OnNext_Invocable<Observer, void>
-        : std::bool_constant<
-            is_cpo_invocable_v<tag_t<on_next>, Observer>>
-    {
-    };
-
-    template<typename Observer>
-    struct OnCompleted_Invocable
-        : std::bool_constant<
-            is_cpo_invocable_v<tag_t<on_completed>, Observer>>
-    {
-    };
-
-    template<typename Observer, typename Value>
-    struct OnError_Invocable
-        : std::bool_constant<
-            is_cpo_invocable_v<tag_t<on_error>, Observer, Value>>
-    {
-    };
-    template<typename Observer>
-    struct OnError_Invocable<Observer, void>
-        : std::bool_constant<
-            is_cpo_invocable_v<tag_t<on_error>, Observer>>
-    {
-    };
-
-    template<typename Observer, typename Value>
-    concept ConceptWithOnNext = OnNext_Invocable<Observer, Value>::value;
-    template<typename Observer>
-    concept ConceptWithOnCompleted = OnCompleted_Invocable<Observer>::value;
+    concept ConceptWithOnCompleted = is_cpo_invocable_v<tag_t<on_completed>, Observer>;
     template<typename Observer, typename Error>
-    concept ConceptWithOnError = OnError_Invocable<Observer, Error>::value;
+    concept ConceptWithOnError = is_cpo_invocable_v<tag_t<on_error>, Observer, Error>;
 } // namespace xrx::detail
 
 namespace xrx

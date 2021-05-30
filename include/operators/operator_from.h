@@ -17,7 +17,7 @@ namespace xrx::detail
     struct FromObservable
     {
         using value_type = typename std::tuple_element<0, Tuple>::type;
-        using error_type = none_tag;
+        using error_type = void_;
         using is_async = std::false_type;
         using DetachHandle = NoopDetach;
 

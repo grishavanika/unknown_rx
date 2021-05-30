@@ -17,7 +17,7 @@ namespace xrx::observable
         struct IntervalObservable_
         {
             using value_type = std::uint64_t;
-            using error_type = ::xrx::detail::none_tag;
+            using error_type = void_;
             using clock = typename Scheduler::clock;
             using clock_duration = typename Scheduler::clock_duration;
             using clock_point = typename Scheduler::clock_point;

@@ -20,33 +20,13 @@ namespace xrx
         template<typename Value, typename Error, typename Alloc>
         struct IsAnyObserver<AnyObserver<Value, Error, Alloc>> : std::true_type {};
 
-        template<typename E>
-        struct ErrorInterface
-        {
-            virtual void on_error(XRX_RVALUE(E&&) e) = 0;
-
-        protected:
-            ~ErrorInterface() = default;
-        };
-
-        template<>
-        struct ErrorInterface<void>
-        {
-            virtual void on_error() = 0;
-
-        protected:
-            ~ErrorInterface() = default;
-        };
-
-        template<>
-        struct ErrorInterface<none_tag> : ErrorInterface<void> {};
-
         template<typename Value, typename Error>
-        struct ObserverConcept : ErrorInterface<Error>
+        struct ObserverConcept
         {
             virtual ::xrx::detail::OnNextAction on_next(XRX_RVALUE(Value&&) v) = 0;
             virtual void on_completed() = 0;
             virtual void destroy_() = 0;
+            virtual void on_error(XRX_RVALUE(Error&&) e) = 0;
 
         protected:
             ~ObserverConcept() = default;
@@ -55,17 +35,16 @@ namespace xrx
         template<typename Alloc
             , typename Value
             , typename Error
-            , typename ConcreateObserver
-            , typename SelfCRTP>
-        struct ObserverBase : ObserverConcept<Value, Error>
+            , typename ConcreateObserver>
+        struct ErasedObserver : ObserverConcept<Value, Error>
         {
-            using SelfAlloc = std::allocator_traits<Alloc>::template rebind_alloc<SelfCRTP>;
+            using SelfAlloc = std::allocator_traits<Alloc>::template rebind_alloc<ErasedObserver>;
             using AllocTraits = std::allocator_traits<SelfAlloc>;
 
-            ObserverBase(const ObserverBase&) = delete;
-            ObserverBase(ObserverBase&&) = delete;
-            ObserverBase& operator=(const ObserverBase&) = delete;
-            ObserverBase& operator=(ObserverBase&&) = delete;
+            ErasedObserver(const ErasedObserver&) = delete;
+            ErasedObserver(ErasedObserver&&) = delete;
+            ErasedObserver& operator=(const ErasedObserver&) = delete;
+            ErasedObserver& operator=(ErasedObserver&&) = delete;
 
             virtual ::xrx::detail::OnNextAction on_next(XRX_RVALUE(Value&&) v) override
             {
@@ -77,7 +56,12 @@ namespace xrx
                 return ::xrx::detail::on_completed_optional(XRX_MOV(_observer));
             }
 
-            explicit ObserverBase(XRX_RVALUE(ConcreateObserver&&) o, const Alloc& alloc)
+            virtual void on_error(XRX_RVALUE(Error&&) e) override
+            {
+                return on_error_optional(XRX_MOV(this->_observer), XRX_MOV(e));
+            }
+
+            explicit ErasedObserver(XRX_RVALUE(ConcreateObserver&&) o, const Alloc& alloc)
                 : _alloc(alloc)
                 , _observer(XRX_MOV(o))
             {
@@ -87,7 +71,7 @@ namespace xrx
             static ObserverConcept<Value, Error>* make_(XRX_RVALUE(ConcreateObserver&&) o, const Alloc& alloc_)
             {
                 SelfAlloc allocator(alloc_);
-                SelfCRTP* mem = AllocTraits::allocate(allocator, 1);
+                ErasedObserver* mem = AllocTraits::allocate(allocator, 1);
                 AllocTraits::construct(allocator, mem, XRX_MOV(o), alloc_);
                 return mem;
             }
@@ -95,53 +79,13 @@ namespace xrx
             virtual void destroy_() override
             {
                 SelfAlloc allocator(_alloc);
-                SelfCRTP* self = static_cast<SelfCRTP*>(this);
+                ErasedObserver* self = this;
                 AllocTraits::destroy(allocator, self);
                 AllocTraits::deallocate(allocator, self, 1);
             }
 
             [[no_unique_address]] Alloc _alloc;
             ConcreateObserver _observer;
-        };
-
-        template<typename Alloc, typename Value, typename Error, typename ConcreateObserver>
-        struct ErasedObserver
-            : ObserverBase<Alloc, Value, Error, ConcreateObserver
-                , ErasedObserver<Alloc, Value, Error, ConcreateObserver>>
-        {
-            using Base = ObserverBase<Alloc, Value, Error, ConcreateObserver
-                , ErasedObserver<Alloc, Value, Error, ConcreateObserver>>;
-            using Base::Base;
-            virtual void on_error(XRX_RVALUE(Error&&) e) override
-            {
-                on_error_optional(XRX_MOV(this->_observer), XRX_MOV(e));
-            }
-        };
-        template<typename Alloc, typename Value, typename ConcreateObserver>
-        struct ErasedObserver<Alloc, Value, void, ConcreateObserver>
-            : ObserverBase<Alloc, Value, void, ConcreateObserver
-                , ErasedObserver<Alloc, Value, void, ConcreateObserver>>
-        {
-            using Base = ObserverBase<Alloc, Value, void, ConcreateObserver
-                , ErasedObserver<Alloc, Value, void, ConcreateObserver>>;
-            using Base::Base;
-            virtual void on_error() override
-            {
-                on_error_optional(XRX_MOV(this->_observer));
-            }
-        };
-        template<typename Alloc, typename Value, typename ConcreateObserver>
-        struct ErasedObserver<Alloc, Value, none_tag, ConcreateObserver>
-            : ObserverBase<Alloc, Value, none_tag, ConcreateObserver
-                , ErasedObserver<Alloc, Value, none_tag, ConcreateObserver>>
-        {
-            using Base = ObserverBase<Alloc, Value, none_tag, ConcreateObserver
-                , ErasedObserver<Alloc, Value, none_tag, ConcreateObserver>>;
-            using Base::Base;
-            virtual void on_error() override
-            {
-                on_error_optional(XRX_MOV(this->_observer));
-            }
         };
     } // namespace detail
 
@@ -222,18 +166,10 @@ namespace xrx
             return _observer->on_next(XRX_MOV(v));
         }
 
-        template<typename... VoidOrError>
-        void on_error(XRX_RVALUE(VoidOrError&&)... e)
+        void on_error(XRX_RVALUE(Error&&) e)
         {
             assert(_observer);
-            if constexpr ((sizeof...(e)) == 0)
-            {
-                return _observer->on_error();
-            }
-            else
-            {
-                return _observer->on_error(XRX_MOV(e)...);
-            }
+            return _observer->on_error(XRX_MOV(e));
         }
 
         void on_completed()

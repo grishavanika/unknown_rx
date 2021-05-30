@@ -29,7 +29,7 @@ TEST(SubscribeOn, SubscribeExecutedOnScheduler)
 
     EXPECT_CALL(observer, on_next(_)).Times(0);
     EXPECT_CALL(observer, on_completed()).Times(1);
-    EXPECT_CALL(observer, on_error()).Times(0);
+    EXPECT_CALL(observer, on_error(_)).Times(0);
 
     auto on_scheduler = source.fork_move()
         .subscribe_on(event_loop.scheduler());
