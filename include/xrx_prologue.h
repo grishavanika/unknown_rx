@@ -1,3 +1,5 @@
+// NO include guard.
+
 #if defined(XRX_PROLOGUE_INCLUDED)
 #  error Prologue is already included.
 #endif
@@ -53,5 +55,3 @@
     static_assert(not std::is_reference_v<__VA_ARGS__> \
         , "Expected to have non-reference type (not T& ot T&&; to be moved from). " \
         # __VA_ARGS__)
-
-#define X_ANY_OBSERVER_SUPPORTS_COPY() 0

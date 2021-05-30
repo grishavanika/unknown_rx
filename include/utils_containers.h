@@ -1,6 +1,7 @@
 #pragma once
 #include <type_traits>
 #include <vector>
+#include <memory>
 #include <limits>
 #include <algorithm>
 
@@ -12,7 +13,7 @@
 
 namespace xrx::detail
 {
-    template<typename T>
+    template<typename T, typename Alloc = std::allocator<void>>
     struct HandleVector
     {
         static_assert(std::is_default_constructible_v<T>
@@ -45,9 +46,27 @@ namespace xrx::detail
             }
         };
 
-        std::uint32_t _version = 0;
-        std::vector<std::size_t> _free_indexes;
-        std::vector<Value> _values;
+        using allocator_type = Alloc;
+        using ValuesAlloc = std::allocator_traits<Alloc>::template rebind_alloc<Value>;
+        using IndexesAlloc = std::allocator_traits<Alloc>::template rebind_alloc<std::size_t>;
+
+        std::uint32_t _version;
+        std::vector<std::size_t, IndexesAlloc> _free_indexes;
+        std::vector<Value, ValuesAlloc> _values;
+
+        HandleVector()
+            : _version(0)
+            , _free_indexes()
+            , _values()
+        {
+        }
+
+        explicit HandleVector(const Alloc& alloc)
+            : _version(0)
+            , _free_indexes(IndexesAlloc(alloc))
+            , _values(ValuesAlloc(alloc))
+        {
+        }
 
         template<typename U>
         Handle push_back(U&& v)

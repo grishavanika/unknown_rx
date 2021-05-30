@@ -4,8 +4,12 @@
 #include <algorithm>
 #include "observer_mock.h"
 #include "noop_archetypes.h"
+#include "debug/new_allocs_stats.h"
+#include "debug/malloc_allocator.h"
+#include "debug/tracking_allocator.h"
 using namespace testing;
 using namespace xrx;
+using namespace xrx::debug;
 using namespace xrx::detail;
 using namespace tests;
 
@@ -189,4 +193,45 @@ TEST(Subject, OnNext_Ignore_AfterOnError)
     subject.on_error();
     subject.on_next(-1);
     subject.on_next(-2);
+}
+
+// Tests should not run in parallel.
+TEST(Subject, Construct_Default_Allocates)
+{
+    NewAllocsStats::get().reset();
+    Subject_<int> subject;
+    (void)subject;
+    ASSERT_NE(0, int(NewAllocsStats::get()._count));
+}
+
+TEST(Subject, Construct_WithCustomAlloc)
+{
+    using Alloc = TrackingAllocator<int, MallocAllocator<int>>;
+    TrackingAllocatorState state;
+    Alloc alloc(&state);
+
+    NewAllocsStats::get().reset();
+    Subject_<int, int, Alloc> subject(alloc);
+    (void)subject;
+    // No global new allocations.
+    ASSERT_EQ(0, int(NewAllocsStats::get()._count));
+    // All went to custom allocator.
+    ASSERT_NE(0, int(state._allocs_count));
+}
+
+TEST(Subject, Construct_WithCustomAlloc_WithObserver)
+{
+    using Alloc = TrackingAllocator<int, MallocAllocator<int>>;
+    TrackingAllocatorState state;
+
+    Alloc alloc(&state);
+    ObserverMock observer;
+
+    NewAllocsStats::get().reset();
+    Subject_<int, none_tag, Alloc> subject(alloc);
+    subject.subscribe(observer.ref());
+    // No global new allocations.
+    ASSERT_EQ(0, int(NewAllocsStats::get()._count));
+    // All went to custom allocator.
+    ASSERT_NE(0, int(state._allocs_count));
 }

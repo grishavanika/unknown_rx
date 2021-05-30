@@ -21,10 +21,16 @@ namespace xrx
         struct OnErrorWithValue_<void> { };
     } // namespace detail
 
-    template<typename Value, typename Error = void>
+    template<typename Value, typename Error = void
+        , typename Alloc = std::allocator<void>>
     struct Subject_
     {
-        using Subscriptions = detail::HandleVector<AnyObserver<Value, Error>>;
+        using allocator_type = Alloc;
+        using value_type = Value;
+        using error_type = Error;
+        using AnyObserver_ = AnyObserver<Value, Error, Alloc>;
+        using SubscriptionAlloc = std::allocator_traits<Alloc>::template rebind_alloc<AnyObserver_>;
+        using Subscriptions = detail::HandleVector<AnyObserver_, SubscriptionAlloc>;
         using Handle = typename Subscriptions::Handle;
 
         struct InProgress_ {};
@@ -35,15 +41,23 @@ namespace xrx
             , OnCompleted_
             , OnErrorWithValue_>;
 
-        struct SharedImpl_
+        struct SharedState
         {
+            [[no_unique_address]] Alloc _alloc;
             std::mutex _mutex;
             Subscriptions _subscriptions;
             State _state;
+
+            explicit SharedState(const Alloc& alloc = {})
+                : _alloc(alloc)
+                , _mutex()
+                , _subscriptions(SubscriptionAlloc(alloc))
+                , _state()
+            {
+            }
         };
 
-        using value_type = Value;
-        using error_type = Error;
+        using SharedAlloc = std::allocator_traits<Alloc>::template rebind_alloc<SharedState>;
 
         struct Detach
         {
@@ -52,7 +66,7 @@ namespace xrx
             // [weak_ptr]: if weak reference is expired, there is no actual
             // reference to Subject<> that can push/emit new items to the stream.
             // Nothing to unsubscribe from.
-            std::weak_ptr<SharedImpl_> _shared_weak;
+            std::weak_ptr<SharedState> _shared_weak;
             Handle _handle;
 
             bool operator()()
@@ -73,15 +87,17 @@ namespace xrx
         };
         using DetachHandle = Detach;
 
-        std::shared_ptr<SharedImpl_> _shared;
+        std::shared_ptr<SharedState> _shared;
 
         explicit Subject_()
-            : _shared(std::make_shared<SharedImpl_>())
+            : Subject_(Alloc())
         {
         }
 
-        explicit Subject_(std::shared_ptr<SharedImpl_> impl)
-            : _shared(XRX_MOV(impl))
+        explicit Subject_(const Alloc& alloc)
+            : _shared(std::allocate_shared<SharedState>(
+                  SharedAlloc(alloc) // for allocate_shared<>.
+                , alloc)) // for SharedState.
         {
         }
 
@@ -94,7 +110,7 @@ namespace xrx
             // [weak_ptr]: if weak reference is expired, there is no actual
             // reference to Subject<> that can push/emit new items to the stream.
             // The stream is dangling; any new Observer will not get any event.
-            std::weak_ptr<SharedImpl_> _shared_weak;
+            std::weak_ptr<SharedState> _shared_weak;
 
             template<typename Observer>
                 requires ConceptValueObserverOf<Observer, Value>
@@ -132,7 +148,7 @@ namespace xrx
                 }
                 assert(std::get_if<InProgress_>(&shared->_state));
 
-                AnyObserver<value_type, error_type> erased(XRX_MOV(observer));
+                AnyObserver_ erased(XRX_MOV(observer), shared->_alloc);
                 DetachHandle detach;
                 detach._shared_weak = _shared_weak;
                 detach._handle = shared->_subscriptions.push_back(XRX_MOV(erased));
@@ -187,8 +203,6 @@ namespace xrx
         }
 
         template<typename... Es>
-             requires ((std::is_same_v<Error, void> && (sizeof...(Es) == 0))
-                || (not std::is_same_v<Error, void> && (sizeof...(Es) == 1)))
         void on_error(Es&&... errors)
         {
             auto lock = std::unique_lock(_shared->_mutex);
@@ -200,7 +214,7 @@ namespace xrx
             if constexpr (sizeof...(Es) == 0)
             {
                 _shared->_state.template emplace<OnErrorWithValue_>();
-                for (AnyObserver<Value, Error>& observer : _shared->_subscriptions)
+                for (AnyObserver_& observer : _shared->_subscriptions)
                 {
                     observer.on_error();
                 }
@@ -208,7 +222,7 @@ namespace xrx
             else
             {
                 const Error& error = _shared->_state.template emplace<OnErrorWithValue_>(XRX_FWD(errors)...)._error;
-                for (AnyObserver<Value, Error>& observer : _shared->_subscriptions)
+                for (AnyObserver_& observer : _shared->_subscriptions)
                 {
                     observer.on_error(Error(error)); // copy.
                 }
@@ -226,12 +240,18 @@ namespace xrx
                 return;
             }
             _shared->_state.template emplace<OnCompleted_>();
-            for (AnyObserver<Value, Error>& observer : _shared->_subscriptions)
+            for (AnyObserver_& observer : _shared->_subscriptions)
             {
                 observer.on_completed();
             }
             // Clean-up everything, not needed anymore.
             _shared->_subscriptions = {};
+        }
+
+    private:
+        explicit Subject_(std::shared_ptr<SharedState> impl)
+            : _shared(XRX_MOV(impl))
+        {
         }
     };
 } // namespace xrx

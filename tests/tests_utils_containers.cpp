@@ -1,9 +1,11 @@
 #include "utils_containers.h"
+#include "debug/tracking_allocator.h"
 #include <vector>
 #include <algorithm>
 #include <gtest/gtest.h>
 
 using namespace xrx::detail;
+using namespace xrx::debug;
 
 template<typename V>
 static bool equal_to_(V& v, std::initializer_list<int> to)
@@ -357,4 +359,43 @@ TEST(HandleVector, Iterator_WithHandle_EraseAll)
     ASSERT_EQ(0, int(vs.size()));
     ASSERT_EQ(42, copy[0]);
     ASSERT_EQ(43, copy[1]);
+}
+
+TEST(HandleVector, Construct_WithAllocator)
+{
+    using Alloc = TrackingAllocator<int>;
+    TrackingAllocatorState stats;
+
+    {
+        HandleVector<int, Alloc> vs{Alloc(&stats)};
+#if defined(NDEBUG) // Release-only. In Debug, MSVC allocates some memory for debug purpose.
+        ASSERT_EQ(0, int(stats._allocs_count));
+#endif
+        (void)vs;
+    }
+    ASSERT_EQ(stats._allocs_count, stats._deallocs_count);
+    ASSERT_EQ(stats._allocs_size, stats._deallocs_size);
+}
+
+TEST(HandleVector, Construct_WithAllocator_OnePush)
+{
+    using Alloc = TrackingAllocator<int>;
+    TrackingAllocatorState stats;
+
+    {
+        HandleVector<int, Alloc> vs{Alloc(&stats)};
+        (void)vs.push_back(1);
+        ASSERT_EQ(1, int(stats._constructs_count));
+#if defined(NDEBUG) // Release-only. In Debug, MSVC allocates some memory for debug purpose.
+        ASSERT_EQ(1, int(stats._allocs_count));
+#else
+        ASSERT_GT(int(stats._allocs_count), 1);
+#endif
+
+        std::printf("Allocates count: %i.\n", int(stats._allocs_count));
+        std::printf("Allocations size: %i.\n", int(stats._allocs_size));
+    }
+    ASSERT_EQ(stats._allocs_count, stats._deallocs_count);
+    ASSERT_EQ(stats._allocs_size, stats._deallocs_size);
+    ASSERT_EQ(stats._constructs_count, stats._destroys_count);
 }

@@ -14,7 +14,6 @@
 #include "operators/operator_observe_on.h"
 #include "operators/operator_range.h"
 #include "operators/operator_take.h"
-
 #include "simple_scheduler_event_loop.h"
 
 #include <string>
@@ -24,48 +23,10 @@
 #include <cstdio>
 #include <cinttypes>
 
+#include "debug/operator_new_override_for_stats.h"
+
 using namespace xrx;
 using namespace detail;
-
-#if (1)
-struct Allocs
-{
-    std::size_t _count = 0;
-    std::size_t _size = 0;
-
-    static Allocs& get()
-    {
-        static Allocs o;
-        return o;
-    }
-};
-
-void* operator new(std::size_t count)
-{
-    auto& x = Allocs::get();
-    ++x._count;
-    ++x._size += count;
-    return malloc(count);
-}
-
-void* operator new[](std::size_t count)
-{
-    auto& x = Allocs::get();
-    ++x._count;
-    ++x._size += count;
-    return malloc(count);
-}
-
-void operator delete(void* ptr) noexcept
-{
-    free(ptr);
-}
-
-void operator delete[](void* ptr) noexcept
-{
-    free(ptr);
-}
-#endif
 
 struct InitialSourceObservable_
 {
