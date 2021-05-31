@@ -63,6 +63,7 @@ set(xrx_HEADERS
     "include/debug/operator_new_override_for_stats.h"
     "include/debug/malloc_allocator.h"
     "include/debug/tracking_allocator.h"
+    "include/debug/copy_move_life_tracking.h"
     "include/utils_ref_tracking_observer.h"
     "include/utils_maybe_shared_ptr.h"
     "include/simple_scheduler_event_loop.h"
