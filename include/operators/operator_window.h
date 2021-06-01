@@ -7,6 +7,7 @@
 #include "utils_observers.h"
 #include "utils_observable.h"
 #include "utils_containers.h"
+#include "subject.h"
 #include "xrx_prologue.h"
 #include <type_traits>
 #include <algorithm>
@@ -63,7 +64,7 @@ namespace xrx::detail
         using source_error = typename SourceObservable::error_type;
         using ObservableValue_  = WindowSyncObservable<source_value>;
         using value_type   = Observable_<ObservableValue_>;
-        using error_type   = typename SourceObservable::error_type;
+        using error_type   = source_error;
         using is_async     = std::false_type;
         using DetachHandle = NoopDetach;
 
@@ -174,6 +175,121 @@ namespace xrx::detail
             assert((state._completed || stop)
                 && "Sync Observable should be ended after .subscribe() return.");
             return DetachHandle();
+        }
+
+        WindowProducerObservable fork() && { return WindowProducerObservable(XRX_MOV(_source), _count); };
+        WindowProducerObservable fork() &  { return WindowProducerObservable(_source.fork(), _count); };
+    };
+
+    template<typename SourceObservable>
+    struct WindowProducerObservable<SourceObservable, true/*Async*/>
+    {
+        SourceObservable _source;
+        std::size_t _count = 0;
+
+        using source_value = typename SourceObservable::value_type;
+        using source_error = typename SourceObservable::error_type;
+        using Subject_ = Subject_<source_value, source_error>;
+
+        using value_type   = typename Subject_::Observable;
+        using error_type   = source_error;
+        using is_async     = std::true_type;
+        using DetachHandle = typename SourceObservable::DetachHandle;
+
+        template<typename Observer>
+        struct StateImpl_
+        {
+            Observer _observer;
+            Subject_ _producer;
+            std::size_t _count = 0;
+            std::size_t _cursor = 0;
+
+            explicit StateImpl_(XRX_RVALUE(Observer&&) observer, std::size_t count)
+                : _observer(XRX_MOV(observer))
+                , _producer()
+                , _count(count)
+                , _cursor(0)
+            {}
+
+            bool try_start()
+            {
+                _producer = Subject_();
+                const auto action = on_next_with_action(_observer, _producer.as_observable());
+                return (not action._stop);
+            }
+
+            auto on_next(XRX_RVALUE(source_value&&) value)
+            {
+                assert(_cursor < _count);
+                _producer.on_next(XRX_MOV(value));
+                ++_cursor;
+                if (_cursor == _count)
+                {
+                    _cursor = 0;
+                    _producer.on_completed();
+                    if (not try_start())
+                    {
+                        return ::xrx::unsubscribe(true);
+                    }
+                }
+                return ::xrx::unsubscribe(false);
+            }
+
+            void on_completed()
+            {
+                _producer.on_completed();
+                on_completed_optional(XRX_MOV(_observer));
+            }
+
+            void on_error(XRX_RVALUE(error_type&&) e)
+            {
+                _producer.on_error(error_type(e)); // copy.
+                on_error_optional(XRX_MOV(_observer), XRX_MOV(e));
+            }
+        };
+
+        template<typename Observer>
+        struct ObserverImpl_
+        {
+            // shared_ptr<> is needed there only because of
+            // initial call to .try_start() that triggers target's
+            // Observer on_next(). After that we can't move
+            // target, hence need to save it to a box and move a box instead.
+            std::shared_ptr<StateImpl_<Observer>> _shared;
+
+            auto on_next(XRX_RVALUE(source_value&&) value)
+            {
+                return _shared->on_next(XRX_MOV(value));
+            }
+
+            void on_completed()
+            {
+                return _shared->on_completed();
+            }
+
+            void on_error(XRX_RVALUE(error_type&&) e)
+            {
+                return _shared->on_error(XRX_MOV(e));
+            }
+        };
+
+        template<typename Observer>
+            requires ConceptValueObserverOf<Observer, value_type>
+        DetachHandle subscribe(XRX_RVALUE(Observer&&) observer) &&
+        {
+            if (_count == 0)
+            {
+                // It's unknown how many observables we should emit, just end the sequence.
+                (void)on_completed_optional(XRX_MOV(observer));
+                return DetachHandle();
+            }
+
+            auto shared = std::make_shared<StateImpl_<Observer>>(XRX_MOV(observer), _count);
+            if (not shared->try_start())
+            {
+                return DetachHandle();
+            }
+            return XRX_FWD(_source).subscribe(XRX_MOV(ObserverImpl_<Observer>(XRX_MOV(shared))));
         }
 
         WindowProducerObservable fork() && { return WindowProducerObservable(XRX_MOV(_source), _count); };

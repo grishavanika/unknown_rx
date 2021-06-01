@@ -57,6 +57,7 @@ set(xrx_HEADERS
     "include/operators/operator_reduce.h"
     "include/operators/operator_iterate.h"
     "include/operators/operator_tap_do.h"
+    "include/operators/operator_as_async.h"
     "include/debug/assert_mutex.h"
     "include/debug/tracking_allocator.h"
     "include/debug/new_allocs_stats.h"
