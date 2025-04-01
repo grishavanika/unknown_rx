@@ -177,8 +177,8 @@ namespace xrx::detail
             return DetachHandle();
         }
 
-        WindowProducerObservable fork() && { return WindowProducerObservable(XRX_MOV(_source), _count); };
-        WindowProducerObservable fork() &  { return WindowProducerObservable(_source.fork(), _count); };
+        WindowProducerObservable fork() && { return WindowProducerObservable(XRX_MOV(_source), _count); }
+        WindowProducerObservable fork() &  { return WindowProducerObservable(_source.fork(), _count); }
     };
 
     template<typename SourceObservable>
@@ -292,8 +292,8 @@ namespace xrx::detail
             return XRX_FWD(_source).subscribe(XRX_MOV(ObserverImpl_<Observer>(XRX_MOV(shared))));
         }
 
-        WindowProducerObservable fork() && { return WindowProducerObservable(XRX_MOV(_source), _count); };
-        WindowProducerObservable fork() &  { return WindowProducerObservable(_source.fork(), _count); };
+        WindowProducerObservable fork() && { return WindowProducerObservable(XRX_MOV(_source), _count); }
+        WindowProducerObservable fork() &  { return WindowProducerObservable(_source.fork(), _count); }
     };
 
     template<typename SourceObservable>

@@ -285,7 +285,7 @@ namespace xrx::detail
     template<typename T, std::size_t Size = 1>
     struct SmallVector
     {
-        using Element = std::aligned_storage_t<sizeof(T), alignof(T)>;
+        struct Element { alignas(T) std::byte buff[sizeof(T)]; };
         Element _static[Size];
         T* _dynamic;
         std::size_t _size;

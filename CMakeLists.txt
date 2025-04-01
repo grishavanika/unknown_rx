@@ -1,13 +1,9 @@
-cmake_minimum_required(VERSION 3.12.4 FATAL_ERROR)
-# 3.12.4 is required because of C++20 support.
+cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
+# 3.12.4 is required because of C++23 support.
 project(xrx)
 
-# For proper work of CMAKE_EXPORT_COMPILE_COMMANDS.
-set(CMAKE_C_USE_RESPONSE_FILE_FOR_INCLUDES OFF)
-set(CMAKE_CXX_USE_RESPONSE_FILE_FOR_INCLUDES OFF)
-
-include(tools/cmake/utils.cmake)
-include(tools/cmake/clang_msvc_integration.cmake)
+include(cmake_utils.cmake)
+include(cmake_clang_msvc.cmake)
 include(CTest)
 
 # Enable folders for VS.
@@ -16,13 +12,16 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "" FORCE)
 
 detect_compilers()
-set_cpp20_standard()
 
 if (clang_on_msvc)
     make_clang_work_on_windows()
 endif()
 
-add_subdirectory(third_party)
+# third_party ----
+add_library(GTest_Integrated INTERFACE)
+find_package(GTest CONFIG REQUIRED)
+target_link_libraries(GTest_Integrated INTERFACE
+    GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
 
 set(xrx_HEADERS
     "include/any_observer.h"
@@ -76,6 +75,19 @@ set(xrx_HEADERS
 
 add_library(xrx INTERFACE ${xrx_HEADERS})
 target_include_directories(xrx INTERFACE "include/")
+set_property(TARGET xrx PROPERTY CXX_STANDARD 23)
+if (clang_on_msvc)
+    target_compile_options(xrx INTERFACE
+        -Wno-ctad-maybe-unsupported
+        -Wno-unknown-attributes
+        -Wno-c++20-extensions
+        -Wno-c++20-compat
+        -Wno-exit-time-destructors
+        -Wno-undefined-func-template
+        -Wno-non-virtual-dtor
+        -Wno-delete-non-abstract-non-virtual-dtor
+        )
+endif()
 
 set(xrx_single_HEADERS
     "include_single/xrx/xrx_all.h"
@@ -83,8 +95,25 @@ set(xrx_single_HEADERS
 
 add_library(xrx_all INTERFACE ${xrx_single_HEADERS})
 target_include_directories(xrx_all INTERFACE "include_single/")
+set_property(TARGET xrx_all PROPERTY CXX_STANDARD 23)
+if (clang_on_msvc)
+    target_compile_options(xrx_all INTERFACE
+        -Wno-ctad-maybe-unsupported
+        -Wno-unknown-attributes
+        -Wno-c++20-extensions
+        -Wno-c++20-compat
+        -Wno-exit-time-destructors
+        -Wno-undefined-func-template
+        -Wno-non-virtual-dtor
+        -Wno-delete-non-abstract-non-virtual-dtor
+        )
+endif()
 
-add_subdirectory(tests)
-add_subdirectory(examples)
+add_subdirectory(test_xrx)
+add_subdirectory(test_single_compile)
+add_subdirectory(sample_RxCpp_linesfrombytes)
+if (WIN32)
+    add_subdirectory(sample_UI_window_clicks)
+endif ()
 
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT "tests_xrx")

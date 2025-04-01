@@ -58,8 +58,8 @@ namespace xrx::detail
             return XRX_MOV(_source).subscribe(TakeObserver_(XRX_MOV(observer), _count));
         }
 
-        TakeObservable fork() && { return TakeObservable(XRX_MOV(_source), _count); };
-        TakeObservable fork() &  { return TakeObservable(_source.fork(), _count); };
+        TakeObservable fork() && { return TakeObservable(XRX_MOV(_source), _count); }
+        TakeObservable fork() &  { return TakeObservable(_source.fork(), _count); }
     };
 
     template<typename SourceObservable>

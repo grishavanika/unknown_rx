@@ -1,7 +1,7 @@
 ﻿#pragma once
 // 
 // Auto-generated single-header file:
-// powershell -File tools/generate_single_header.ps1
+// powershell -File generate_single_header.ps1
 // 
 
 // Header: xrx_prologue.h.
@@ -1245,7 +1245,7 @@ namespace xrx::detail
     template<typename T, std::size_t Size = 1>
     struct SmallVector
     {
-        using Element = std::aligned_storage_t<sizeof(T), alignof(T)>;
+        struct Element { alignas(T) std::byte buff[sizeof(T)]; };
         Element _static[Size];
         T* _dynamic;
         std::size_t _size;
@@ -2382,7 +2382,7 @@ namespace xrx
                 return ::xrx::detail::on_next_with_action(_observer, XRX_MOV(v));
             }
 
-            virtual void on_completed()
+            virtual void on_completed() override
             {
                 return ::xrx::detail::on_completed_optional(XRX_MOV(_observer));
             }
@@ -3218,8 +3218,8 @@ namespace xrx::detail
             return XRX_MOV(_source).subscribe(TakeObserver_(XRX_MOV(observer), _count));
         }
 
-        TakeObservable fork() && { return TakeObservable(XRX_MOV(_source), _count); };
-        TakeObservable fork() &  { return TakeObservable(_source.fork(), _count); };
+        TakeObservable fork() && { return TakeObservable(XRX_MOV(_source), _count); }
+        TakeObservable fork() &  { return TakeObservable(_source.fork(), _count); }
     };
 
     template<typename SourceObservable>
@@ -4200,6 +4200,8 @@ namespace xrx::detail
             {
                 if constexpr (Endless)
                 {
+                    (void)this;
+                    (void)index;
                     return true;
                 }
                 else
@@ -4513,7 +4515,7 @@ namespace xrx::detail
         if constexpr (std::is_constructible_v<T, Value&&>)
         {
             assert(index == I); (void)index;
-            variant.emplace<I>(XRX_FWD(value));
+            variant.template emplace<I>(XRX_FWD(value));
             return true;
         }
         else
@@ -6427,7 +6429,7 @@ namespace xrx
         struct SharedState
         {
             [[no_unique_address]] Alloc _alloc;
-            std::mutex _mutex;
+            std::recursive_mutex _mutex; // temp; I forgot how things work
             Subscriptions _subscriptions;
             State _state;
 
@@ -6809,8 +6811,8 @@ namespace xrx::detail
             return DetachHandle();
         }
 
-        WindowProducerObservable fork() && { return WindowProducerObservable(XRX_MOV(_source), _count); };
-        WindowProducerObservable fork() &  { return WindowProducerObservable(_source.fork(), _count); };
+        WindowProducerObservable fork() && { return WindowProducerObservable(XRX_MOV(_source), _count); }
+        WindowProducerObservable fork() &  { return WindowProducerObservable(_source.fork(), _count); }
     };
 
     template<typename SourceObservable>
@@ -6924,8 +6926,8 @@ namespace xrx::detail
             return XRX_FWD(_source).subscribe(XRX_MOV(ObserverImpl_<Observer>(XRX_MOV(shared))));
         }
 
-        WindowProducerObservable fork() && { return WindowProducerObservable(XRX_MOV(_source), _count); };
-        WindowProducerObservable fork() &  { return WindowProducerObservable(_source.fork(), _count); };
+        WindowProducerObservable fork() && { return WindowProducerObservable(XRX_MOV(_source), _count); }
+        WindowProducerObservable fork() &  { return WindowProducerObservable(_source.fork(), _count); }
     };
 
     template<typename SourceObservable>

@@ -1,9 +1,1 @@
-build/
-unknown2.sln
-unknown2.vcxproj.filters
-unknown2.vcxproj.user
-unknown2.vcxproj
-.vs
-x64
-sh.exe.stackdump
-bash.exe.stackdump
+build*/*

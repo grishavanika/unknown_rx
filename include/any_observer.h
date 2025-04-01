@@ -51,7 +51,7 @@ namespace xrx
                 return ::xrx::detail::on_next_with_action(_observer, XRX_MOV(v));
             }
 
-            virtual void on_completed()
+            virtual void on_completed() override
             {
                 return ::xrx::detail::on_completed_optional(XRX_MOV(_observer));
             }

@@ -43,6 +43,8 @@ namespace xrx::detail
             {
                 if constexpr (Endless)
                 {
+                    (void)this;
+                    (void)index;
                     return true;
                 }
                 else

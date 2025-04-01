@@ -39,7 +39,7 @@ namespace xrx
         struct SharedState
         {
             [[no_unique_address]] Alloc _alloc;
-            std::mutex _mutex;
+            std::recursive_mutex _mutex; // temp; I forgot how things work
             Subscriptions _subscriptions;
             State _state;
 

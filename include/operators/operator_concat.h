@@ -50,7 +50,7 @@ namespace xrx::detail
         if constexpr (std::is_constructible_v<T, Value&&>)
         {
             assert(index == I); (void)index;
-            variant.emplace<I>(XRX_FWD(value));
+            variant.template emplace<I>(XRX_FWD(value));
             return true;
         }
         else
